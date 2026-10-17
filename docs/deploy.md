@@ -11,7 +11,7 @@ A `.dmg` installer image and the `Osen` app in `/Applications`. The window title
 - Installed dependencies:
 
 ```bash
-cd "/Users/korat/Desktop/Мозговой штурм" && npm install
+npm install
 ```
 
 - Network access for the first build: a helper package of the image builder is downloaded once.
@@ -23,17 +23,17 @@ The version comes from the `version` field in `apps/desktop/package.json` (curre
 1. Run the build (about a minute):
 
 ```bash
-cd "/Users/korat/Desktop/Мозговой штурм" && npm run dist
+npm run dist
 ```
 
-2. The last line of the output is the path to the image: `/Users/korat/Desktop/Мозговой штурм/apps/desktop/release/osen-<version>-arm64.dmg`. The `apps/desktop/release/` folder is not tracked by git.
+2. The last line of the output is the path to the image: `<repository root>/apps/desktop/release/osen-<version>-arm64.dmg`. The `apps/desktop/release/` folder is not tracked by git.
 
 ## Checking the image
 
 1. Check the contents of the newest image:
 
 ```bash
-cd "/Users/korat/Desktop/Мозговой штурм" && npm run dist:check
+npm run dist:check
 ```
 
 The check looks for the newest `osen-*.dmg` in `apps/desktop/release/`. To check a different image, pass its path: `npm run dist:check -- <path to .dmg>`.
@@ -95,11 +95,11 @@ tail -n 20 "$HOME/Library/Application Support/osen/logs/app.log"
 
 ## Update
 
-1. Complete the two-stage release procedure in README, "Versions and releases": `npm run release` prepares the version and CHANGELOG on a release branch; push it, squash merge its PR after CI, synchronize `main`, then run `npm run release -- publish` to publish its annotated tag. GitHub Actions builds and checks a DMG and creates a draft release. Review and publish that draft separately. App installation still requires the owner's approval.
+1. Complete the two-stage release procedure in [docs/releases.md, "Versions and releases"](releases.md#versions-and-releases): `npm run release` prepares the version and CHANGELOG on a release branch; push it, squash merge its PR after CI, synchronize `main`, then run `npm run release -- publish` to publish its annotated tag. GitHub Actions builds and checks a DMG and creates a draft release. Review and publish that draft separately. App installation still requires the owner's approval.
 2. Download the checked arm64 DMG and `SHA256SUMS` from the matching GitHub draft/release and verify its checksum with `shasum -a 256 -c SHA256SUMS`. To build locally, use a clean checkout of the published `vX.Y.Z` tag before running the following commands; do not package a main branch that has advanced beyond that tag under the released version:
 
 ```bash
-cd "/Users/korat/Desktop/Мозговой штурм" && npm run dist && npm run dist:check
+npm run dist && npm run dist:check
 ```
 
 3. Keep the image of the current (old) version: you need it for a rollback. The images are in `apps/desktop/release/`; building a new version does not delete the old one.
