@@ -91,6 +91,8 @@ try {
   ];
   const segs = (s: string) => s.split(/[/:]/);
 
+  report(existsSync(join(res, "LICENSE")), "LICENSE is present in the app resources");
+
   const missing = missingTemplateFiles(join(root, "templates"), join(res, "templates"));
   report(missing.length === 0, `templates from templates/ (every language folder) are present${missing.length ? `, missing: ${missing.join(", ")}` : ""}`);
 

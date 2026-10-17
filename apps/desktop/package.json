@@ -1,5 +1,6 @@
 {
   "name": "@model-council/desktop",
+  "license": "MIT",
   "productName": "Osen",
   "version": "0.9.0",
   "private": true,

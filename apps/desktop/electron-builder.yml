@@ -14,6 +14,9 @@ extraResources:
     to: templates
   - from: ../../packages/core/scenarios
     to: scenarios
+  # MIT requires the licence text in every copy of the program
+  - from: ../../LICENSE
+    to: LICENSE
 asar: true
 # The child process that extracts PDF text is started by a path on disk; it cannot be read from the asar
 asarUnpack:

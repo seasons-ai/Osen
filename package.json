@@ -1,5 +1,6 @@
 {
   "name": "model-council",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "workspaces": [
