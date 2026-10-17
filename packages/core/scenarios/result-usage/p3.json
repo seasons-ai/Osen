@@ -1,0 +1,37 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Участник 3: предлагаю вариант 1 формата отчёта.",
+        "solution": "Письмо на полстраницы с цифрами, вариант 1.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Участник 3: предлагаю вариант 2 формата отчёта.",
+        "solution": "Письмо на полстраницы с цифрами, вариант 2.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Участник 3: предлагаю вариант 3 формата отчёта.",
+        "solution": "Письмо на полстраницы с цифрами, вариант 3.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200
+    }
+  ]
+}

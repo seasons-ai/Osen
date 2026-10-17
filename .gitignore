@@ -1,0 +1,36 @@
+# Secrets
+.env
+*.pem
+*.key
+*.p12
+
+# Dependencies and build
+node_modules/
+dist/
+out/
+release/
+
+# App and stand data
+.council-data*/
+.ready-proof.json
+
+# Agents and editors
+.agents/
+.claude/
+.codex/
+.vscode/
+AGENTS.md
+CLAUDE.md
+
+# Specs and docs (except the README and what the code reads)
+openspec/
+docs/*
+!docs/deploy.md
+design/mockup-osen/SPEC.md
+/*.md
+!/README.md
+!/CHANGELOG.md
+
+# Junk
+*.bak*
+.DS_Store

@@ -1,0 +1,10 @@
+{
+  "steps": [
+    {
+      "response": { "stance": "object", "reasoning": "ВОЗРАЖЕНИЕ-P3-9d41: имя занято другим сервисом.", "solution": null, "answers": [], "questions": [] }
+    },
+    {
+      "response": { "stance": "agree", "reasoning": "Принимаю.", "solution": null, "answers": [], "questions": [] }
+    }
+  ]
+}

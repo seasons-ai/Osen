@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Пушок — хорошее имя.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Подтверждаю согласие.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

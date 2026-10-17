@@ -1,0 +1,11 @@
+{
+  "steps": [
+    {
+      "delayMs": 200,
+      "response": { "stance": "amend", "reasoning": "Довод p1: предлагаю версию.", "solution": "Назвать кота Мурзик.", "answers": [], "questions": [] }
+    },
+    {
+      "response": { "stance": "agree", "reasoning": "Версия мне подходит.", "solution": null, "answers": [], "questions": [] }
+    }
+  ]
+}

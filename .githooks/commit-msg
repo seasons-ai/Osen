@@ -1,0 +1,3 @@
+#!/bin/sh
+# Commit message format is Conventional Commits; the rule lives in scripts/release.ts (checkMessage).
+exec node scripts/release.ts check-msg "$1"

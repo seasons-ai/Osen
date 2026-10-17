@@ -1,0 +1,31 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Имя слишком обычное.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Всё ещё сомневаюсь.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Согласен с Мурзиком.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

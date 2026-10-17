@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Osen — Шаблон обсуждения</title>
+  <link rel="stylesheet" href="../mockup-osen/brand/tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="../mockup-osen/brand/components-osen.css">
+  <link rel="stylesheet" href="screens/setup.css">
+  <link rel="stylesheet" href="screens/template-editor.css">
+</head>
+<body data-screen="template-editor" data-nav="new" data-variants="form:Редактор;errors:Ошибки полей">
+  <div class="app">
+    <nav class="rail" data-rail></nav>
+    <div class="main">
+      <header class="topbar">
+        <h1 class="topbar__title">Шаблон обсуждения</h1>
+        <div class="topbar__actions"><a class="btn btn--ghost btn--sm" href="index.html#actions"><svg class="icon icon--sm"><use href="#i-chevron-left"></use></svg> К шаблонам</a></div>
+      </header>
+      <div class="mock-bar" data-mock-bar></div>
+      <main class="content">
+        <div class="setup">
+          <div class="setup__main">
+            <label class="field" data-variant="form"><span class="field__label">Название</span><input class="input" value="Ретроспектива спринта"></label>
+            <label class="field" data-variant="errors"><span class="field__label">Название</span><input class="input" value="" placeholder="Например, «Ретроспектива спринта»"><span class="setup__error" data-tone="danger"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> Название обязательно</span></label>
+            <label class="field" data-variant="form"><span class="field__label">Категория</span><select class="select"><option>Продукт и стратегия</option><option>Архитектура и код</option><option>Выбор и решения</option><option>Разбор проблем</option><option>Тексты и письма</option><option selected>Мои шаблоны</option><option>Новая категория…</option></select></label>
+            <div class="stack tpl-category" data-variant="errors"><label class="field"><span class="field__label">Категория</span><select class="select"><option>Продукт и стратегия</option><option>Архитектура и код</option><option>Выбор и решения</option><option>Разбор проблем</option><option>Тексты и письма</option><option>Мои шаблоны</option><option selected>Новая категория…</option></select></label><label class="field"><span class="field__label">Название новой категории</span><input class="input" value="Команда"></label></div>
+            <label class="field"><span class="field__label">Описание</span><input class="input" value="Когда команда разбирает прошедший спринт и выбирает, что изменить."><span class="field__hint">Одна строка на карточке шаблона</span></label>
+            <label class="field"><span class="field__label">Пример темы</span><textarea class="textarea">Спринт закончился, из восьми задач закрыты пять. Две застряли на ревью, одну отложили из-за срочной правки на проде. Хотим понять, что изменить в следующем спринте.</textarea><span class="field__hint">Подставляется в поле темы при выборе шаблона</span></label>
+            <label class="field" data-variant="form"><span class="field__label">Рамка обсуждения</span><textarea class="textarea tpl-frame">Вы участвуете в ретроспективе завершённого спринта. Опирайтесь на факты из описания темы: что планировали, что сделали, где потеряли время.
+Задача обсуждения — выбрать не больше трёх изменений, которые команда реально проведёт в следующем спринте. Для каждого изменения назовите ответственного и способ проверить, что оно сработало.
+Не обсуждайте людей, обсуждайте процессы. Возражайте, если предложение нельзя проверить.</textarea><span class="field__hint">Общая инструкция всем участникам</span></label>
+            <label class="field" data-variant="errors"><span class="field__label">Рамка обсуждения</span><textarea class="textarea tpl-frame" placeholder="Что должны сделать участники и каким должно быть решение"></textarea><span class="setup__error" data-tone="danger"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> Рамка обязательна</span></label>
+            <section class="stack" data-variant="form">
+              <div class="setup__head"><h2 class="section-title">Роли</h2><span class="muted">по порядку участников; список может быть пустым</span></div>
+              <div class="setup__list">
+                <div class="tpl-role-item"><div class="tpl-role"><span class="avatar" data-p="1">1</span><input class="input" aria-label="Роль 1" value="Ведущий ретроспективы" placeholder="Название роли"><button type="button" class="btn btn--ghost btn--sm" aria-label="Выше" disabled><svg class="icon icon--sm"><use href="#i-arrow-up"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Ниже"><svg class="icon icon--sm"><use href="#i-arrow-down"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Удалить роль"><svg class="icon icon--sm"><use href="#i-trash"></use></svg></button></div></div>
+                <div class="tpl-role-item"><div class="tpl-role"><span class="avatar" data-p="2">2</span><input class="input" aria-label="Роль 2" value="Скептик" placeholder="Название роли"><button type="button" class="btn btn--ghost btn--sm" aria-label="Выше"><svg class="icon icon--sm"><use href="#i-arrow-up"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Ниже"><svg class="icon icon--sm"><use href="#i-arrow-down"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Удалить роль"><svg class="icon icon--sm"><use href="#i-trash"></use></svg></button></div></div>
+                <div class="tpl-role-item"><div class="tpl-role"><span class="avatar" data-p="3">3</span><input class="input" aria-label="Роль 3" value="Практик" placeholder="Название роли"><button type="button" class="btn btn--ghost btn--sm" aria-label="Выше"><svg class="icon icon--sm"><use href="#i-arrow-up"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Ниже" disabled><svg class="icon icon--sm"><use href="#i-arrow-down"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Удалить роль"><svg class="icon icon--sm"><use href="#i-trash"></use></svg></button></div></div>
+                <div class="setup__add"><button type="button" class="btn btn--ghost"><svg class="icon icon--sm"><use href="#i-plus"></use></svg> Добавить роль</button></div>
+              </div>
+            </section>
+            <section class="stack" data-variant="errors">
+              <div class="setup__head"><h2 class="section-title">Роли</h2><span class="muted">по порядку участников; список может быть пустым</span></div>
+              <div class="setup__list">
+                <div class="tpl-role-item"><div class="tpl-role"><span class="avatar" data-p="1">1</span><input class="input" aria-label="Роль 1" value="Ведущий ретроспективы" placeholder="Название роли"><button type="button" class="btn btn--ghost btn--sm" aria-label="Выше" disabled><svg class="icon icon--sm"><use href="#i-arrow-up"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Ниже"><svg class="icon icon--sm"><use href="#i-arrow-down"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Удалить роль"><svg class="icon icon--sm"><use href="#i-trash"></use></svg></button></div></div>
+                <div class="tpl-role-wrap"><div class="tpl-role"><span class="avatar" data-p="2">2</span><input class="input" aria-label="Роль 2" value="" placeholder="Название роли"><button type="button" class="btn btn--ghost btn--sm" aria-label="Выше"><svg class="icon icon--sm"><use href="#i-arrow-up"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Ниже"><svg class="icon icon--sm"><use href="#i-arrow-down"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Удалить роль"><svg class="icon icon--sm"><use href="#i-trash"></use></svg></button></div><span class="setup__error" data-tone="danger"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> Роль не может быть пустой — заполните или удалите строку</span></div>
+                <div class="tpl-role-item"><div class="tpl-role"><span class="avatar" data-p="3">3</span><input class="input" aria-label="Роль 3" value="Практик" placeholder="Название роли"><button type="button" class="btn btn--ghost btn--sm" aria-label="Выше"><svg class="icon icon--sm"><use href="#i-arrow-up"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Ниже" disabled><svg class="icon icon--sm"><use href="#i-arrow-down"></use></svg></button><button type="button" class="btn btn--ghost btn--sm" aria-label="Удалить роль"><svg class="icon icon--sm"><use href="#i-trash"></use></svg></button></div></div>
+                <div class="setup__add"><button type="button" class="btn btn--ghost"><svg class="icon icon--sm"><use href="#i-plus"></use></svg> Добавить роль</button></div>
+              </div>
+            </section>
+            <section class="stack" data-variant="form">
+              <h2 class="section-title">Лимиты</h2>
+              <div class="tpl-limits"><label class="field"><span class="field__label">Лимит кругов</span><input class="input" value="3"></label><label class="field"><span class="field__label">Таймаут хода, с</span><input class="input" value=""></label><label class="field"><span class="field__label">Размер контекста, символов</span><input class="input" value=""></label></div>
+              <span class="field__hint">Пустое поле — значение по умолчанию из настроек</span>
+            </section>
+            <section class="stack" data-variant="errors">
+              <h2 class="section-title">Лимиты</h2>
+              <div class="tpl-limits"><label class="field"><span class="field__label">Лимит кругов</span><input class="input" value="0"><span class="setup__error" data-tone="danger"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> Целое число не меньше 1</span></label><label class="field"><span class="field__label">Таймаут хода, с</span><input class="input" value="1.5"><span class="setup__error" data-tone="danger"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> Целое число не меньше 1</span></label><label class="field"><span class="field__label">Размер контекста, символов</span><input class="input" value=""></label></div>
+              <span class="field__hint">Пустое поле — значение по умолчанию из настроек</span>
+            </section>
+          </div>
+          <aside class="setup__side">
+            <div class="card stack">
+              <h2 class="card__title">Сохранение</h2>
+              <div class="field"><span class="field__label">Идентификатор</span>
+                <span data-variant="form"><span class="mono">retrospektiva-sprinta</span></span>
+                <span data-variant="errors"><span class="muted">появится после ввода названия</span></span>
+                <span class="field__hint">Задаётся из названия при создании и не меняется</span></div>
+              <div class="field"><span class="field__label">Происхождение</span><span><span class="chip"><svg class="icon icon--sm"><use href="#i-doc"></use></svg> пользовательский</span></span></div>
+              <a class="btn btn--primary" href="index.html#actions" data-variant="form"><svg class="icon icon--sm"><use href="#i-check"></use></svg> Сохранить</a>
+              <button type="button" class="btn btn--primary" disabled data-variant="errors"><svg class="icon icon--sm"><use href="#i-check"></use></svg> Сохранить</button>
+              <span class="field__hint" data-variant="errors">Исправьте поля с ошибками</span>
+              <a class="btn" href="index.html#actions">Отмена</a>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="shell.js"></script>
+</body>
+</html>

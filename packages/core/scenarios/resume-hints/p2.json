@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Одной страницы мало.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Сначала нужен ответ владельца о формате.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

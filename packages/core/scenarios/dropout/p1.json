@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю имя Пушок.",
+        "solution": "Назвать кота Пушок.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Пушок подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

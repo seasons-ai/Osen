@@ -1,0 +1,27 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю имя Рыжик.",
+        "solution": "Назвать кота Рыжик.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Рыжик подходит, ответил на вопрос.",
+        "solution": null,
+        "answers": [
+          {
+            "questionId": "q1",
+            "text": "Кот рыжий, поэтому имя Рыжик."
+          }
+        ],
+        "questions": []
+      }
+    }
+  ]
+}

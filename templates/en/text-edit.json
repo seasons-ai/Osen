@@ -1,0 +1,31 @@
+{
+  "id": "text-edit",
+  "title": "Editing a Text for Its Reader",
+  "category": "Writing and communication",
+  "description": "Use when you have a finished text and need to rewrite it for a specific reader. The result is the complete text, ready to send, and a list of edits with reasons.",
+  "exampleTopic": "I'm attaching a commercial proposal email that I'll send to the director of a small logistics company. We don't know each other, and he reads email between meetings. The goal is to get 20 minutes for a call. The previous version got no reply.",
+  "framing": [
+    "Rewrite the text for a specific reader so that they understand the main point and do what the author expects.",
+    "",
+    "How to run the discussion:",
+    "- Start with the reader and the goal: who is reading, what they know, what they fear, what action the author expects. Don't start editing without this.",
+    "- Find the main idea and check that the reader meets it in the first two sentences. If it is buried, move it to the top.",
+    "- Cut by meaning, not by length: remove what the reader would act the same way without. Keep what answers their question \"what's in it for me\".",
+    "- Preserve the author's facts, numbers, names and commitments. Change the delivery, not the content; flag a questionable claim rather than silently correcting it.",
+    "- Choose the tone by the relationship between author and reader: don't add warmth that isn't there, and don't remove warmth that is.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and mark them in the decision.",
+    "",
+    "Decision format:",
+    "1. The complete finished text, ready to send without further work.",
+    "2. What was changed and why: a short list of edits, each with its reason for this reader.",
+    "3. What remains open: missing information and the assumptions made."
+  ],
+  "roles": [
+    "Advocate of brevity: You stand for the reader being busy and the text needing to fit into the minimum. You push on removing everything that wouldn't change the reader's decision, and you don't accept polite phrases that serve no purpose.",
+    "Advocate of context and tone: You stand for the reader needing an explanation and a human tone, or they will misunderstand or take offense. You push on the clarity of reasons, and you don't accept a dry cut that sounds like an order.",
+    "Author's advocate: You stand for the text remaining the author's voice and keeping all their commitments. You push on precision of meaning, and you don't accept an edit that changes the position or promises more than the author is willing to."
+  ],
+  "limits": {
+    "maxRounds": 3
+  }
+}

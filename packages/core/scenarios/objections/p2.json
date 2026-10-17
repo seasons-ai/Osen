@@ -1,0 +1,11 @@
+{
+  "steps": [
+    {
+      "response": { "stance": "object", "reasoning": "ВОЗРАЖЕНИЕ-P2-4b7c: имя слишком общее.", "solution": null, "answers": [], "questions": [] }
+    },
+    {
+      "expectPrompt": "- p3 «Гамма»: возражает (ход 3): ВОЗРАЖЕНИЕ-P3-9d41",
+      "response": { "stance": "agree", "reasoning": "Снимаю возражение.", "solution": null, "answers": [], "questions": [] }
+    }
+  ]
+}

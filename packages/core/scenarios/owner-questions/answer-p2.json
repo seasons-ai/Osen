@@ -1,0 +1,24 @@
+{
+  "steps": [
+    {
+      "delayMs": 8000,
+      "response": {
+        "stance": "agree",
+        "reasoning": "Одностраничный отчёт подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "expectPrompt": "# Вопросы к владельцу",
+      "response": {
+        "stance": "agree",
+        "reasoning": "Ответ владельца учтён, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

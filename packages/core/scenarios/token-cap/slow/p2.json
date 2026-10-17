@@ -1,0 +1,100 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Возражаю (возражение 1): имя Мурзик слишком банальное.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Возражаю (возражение 2): имя Мурзик слишком банальное.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Возражаю (возражение 3): имя Мурзик слишком банальное.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Возражаю (возражение 4): имя Мурзик слишком банальное.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Возражаю (возражение 5): имя Мурзик слишком банальное.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Возражаю (возражение 6): имя Мурзик слишком банальное.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Возражаю (возражение 7): имя Мурзик слишком банальное.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Возражаю (возражение 8): имя Мурзик слишком банальное.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    }
+  ]
+}

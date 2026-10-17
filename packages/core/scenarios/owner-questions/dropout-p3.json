@@ -1,0 +1,31 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Одна страница подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Одна страница подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Одна страница подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

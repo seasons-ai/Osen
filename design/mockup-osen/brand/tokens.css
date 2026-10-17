@@ -1,0 +1,89 @@
+/*
+ * Osen — tokens of the autumn style.
+ * Replacement for design/mockup/tokens.css: the variable names are the same ones components.css reads,
+ * so the file can be included instead of the old one without editing the components.
+ * New variables (--leaf, --rain, --bg-inset, etc.) are added at the end of each block.
+ * Color rule: warm (--leaf) is what is happening now; cool (--rain) is what has settled.
+ */
+:root {
+  color-scheme: dark;
+
+  /* background and lines */
+  --bg-0: #17130F;        /* фон окна, верхняя панель */
+  --bg-1: #14110D;        /* рейка слева */
+  --bg-2: #211B16;        /* карточки, поля ввода, панели */
+  --bg-3: #2A221B;        /* наведение, выбранная строка, тег */
+  --bg-inset: #1B1612;    /* вложенный блок: вопрос в ходе, текст ошибки */
+  --line: #2E261F;        /* разделители, рамки карточек */
+  --line-strong: #3A3028; /* рамки кнопок, полей, чипов */
+
+  /* text */
+  --text: #EDE4D8;        /* основной */
+  --text-dim: #B3A797;    /* второстепенный, описания карточек */
+  --text-faint: #8E8273;  /* подписи, мета, плейсхолдеры (4,5:1 на --bg-2) */
+  --text-decor: #5C5146;  /* только декоративные метки: ○, разделители «·»; не для текста */
+  --text-on-accent: #17130F;
+
+  /* accent and semantics */
+  --leaf: #EE9A62;        /* живое: идёт, думает, активный пункт, основная кнопка */
+  --leaf-hover: #F2AC7B;
+  --rain: #9EBFD3;        /* устоявшееся: согласен, согласие, принятая версия */
+  --accent: var(--leaf);
+  --ok: #A7CC96;          /* проверка прошла: провайдер доступен, ключ задан */
+  --warn: #E8C66E;        /* согласия нет, выбыл, потолок близко */
+  --danger: #EC8A7A;      /* возражает, сбой, недоступен, «Остановить» */
+  --info: var(--rain);
+  --link-hover: #F4B88E;
+
+  /* participants: neutral, told apart by number, not by color.
+     Only states get color (thinking — leaf, agrees — rain, objects — danger). */
+  --p1: var(--text-dim); --p2: var(--text-dim); --p3: var(--text-dim); --p4: var(--text-dim);
+  --p5: var(--text-dim); --p6: var(--text-dim); --p7: var(--text-dim); --p8: var(--text-dim);
+
+  /* glow is off: shadows from components.css turn transparent */
+  --glow-sm: 0 0 0;
+  --glow-md: 0 0 0;
+  --glow-lg: 0 0 0;
+  --glow-alpha: 0%;
+  --tint-alpha: 0%;       /* чипы и бейджи без заливки, только обводка и текст */
+
+  /* spacing — the scale is unchanged */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-7: 48px;
+
+  /* border radii — smaller than before */
+  --r-sm: 3px;            /* теги моделей, мелкие плашки */
+  --r-md: 4px;            /* кнопки, поля, степпер, алерт */
+  --r-lg: 6px;            /* карточки, участники, списки, статистика */
+  --r-pill: 999px;        /* чипы состояний, фильтры */
+
+  /* fonts — include locally, see SPEC.md, the fonts section */
+  --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --fs-xs: 11px;          /* подписи рейки, заголовки колонок капсом */
+  --fs-sm: 12px;          /* чипы, моно-мета, подсказки под полями */
+  --fs-ui: 13px;          /* кнопки, второстепенный текст, подписи полей */
+  --fs-md: 14px;          /* основной текст */
+  --fs-lg: 15px;          /* заголовки карточек и секций */
+  --fs-xl: 17px;          /* заголовок экрана в верхней панели, статус итога */
+  --fs-2xl: 20px;         /* числа в статистике */
+  --lh-tight: 1.25; --lh-body: 1.5;
+  --fw-regular: 400; --fw-medium: 500; --fw-bold: 600;
+
+  /* frame and motion */
+  --rail-w: 84px;
+  --topbar-h: 56px;
+  --content-max: 1200px;
+  --border-w: 1px;
+  --dur-fast: 120ms; --dur-pulse: 1600ms;
+
+  /* other */
+  --bar-w: 2px;           /* полоса активной вкладки и левый край строки «идёт» */
+  --focus-w: 2px;
+  --dot-size: 5px;
+  --avatar-size: 26px;
+  --avatar-size-sm: 22px;
+  --avatar-size-lg: 44px;
+  --brand-size: 32px;     /* знак в рейке */
+  --fs-brand: 18px;
+  --control-h: 36px;      /* высота кнопок и однострочных полей */
+}

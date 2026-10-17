@@ -1,0 +1,32 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю короткую планёрку стоя.",
+        "solution": "Версия 1: планёрка стоя по понедельникам, до 10 минут, без протокола.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Возражаю против версии 3: без протокола решения теряются, а письменный формат отнимает больше времени, чем он экономит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Продолжение: согласен с версией 3 при условии записи решений.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 1500
+    }
+  ]
+}

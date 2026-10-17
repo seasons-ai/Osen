@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Osen — Новое обсуждение</title>
+  <link rel="stylesheet" href="../mockup-osen/brand/tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="../mockup-osen/brand/components-osen.css">
+  <link rel="stylesheet" href="screens/index.css">
+</head>
+<body data-screen="index" data-nav="new" data-variants="gallery:Галерея;load-error:Часть шаблонов не загрузилась;actions:Свои и изменённые шаблоны;confirm-delete:Подтверждение удаления;confirm-reset:Подтверждение сброса">
+  <div class="app">
+    <nav class="rail" data-rail></nav>
+    <div class="main">
+      <header class="topbar">
+        <h1 class="topbar__title">Новое обсуждение</h1>
+        <span class="mono index-topbar-meta" data-variant="gallery load-error">15 шаблонов · 5 категорий</span>
+        <span class="mono index-topbar-meta" data-variant="actions confirm-delete confirm-reset">17 шаблонов · 6 категорий</span>
+      </header>
+      <div class="mock-bar" data-mock-bar></div>
+      <main class="content content--index">
+        <div class="stack index-page">
+        <p class="muted">Выберите шаблон обсуждения или задайте свою тему. Шаблон задаёт рамку обсуждения и роли участников.</p>
+        <div class="alert" data-tone="warn" data-variant="load-error">
+          <svg class="icon"><use href="#i-alert"></use></svg>
+          <div>
+            <div class="alert__title">2 шаблона не загрузились</div>
+            <div class="alert__text"><span class="mono">my-pricing.json</span> — нет обязательного поля «framing»; <span class="mono">retro.json</span> — файл не является корректным JSON. Остальные шаблоны доступны.</div>
+          </div>
+        </div>
+        <div class="grid-cards">
+          <a class="card card--interactive card--dashed" href="setup.html#custom">
+            <h2 class="card__title index-custom"><span class="index-glyph" aria-hidden="true">✎</span> Своя тема</h2>
+            <p class="card__text">Любой вопрос без шаблона. Обсуждение пойдёт по нейтральной рамке.</p>
+          </a>
+          <a class="card card--interactive card--dashed" href="template-editor.html#form">
+            <h2 class="card__title index-custom"><span class="index-glyph" aria-hidden="true">+</span> Новый шаблон</h2>
+            <p class="card__text">Свой шаблон: рамка обсуждения, роли и лимиты.</p>
+          </a>
+        </div>
+        <section class="stack index-section" data-variant="actions confirm-delete confirm-reset">
+          <h2 class="section-title index-heading">Мои шаблоны<span class="mono index-count">2</span></h2>
+          <div class="grid-cards">
+            <article class="card index-card" data-variant="actions confirm-reset">
+              <a class="index-card__main" href="setup.html#template">
+                <h3 class="card__title">Ретроспектива спринта</h3>
+                <p class="index-origin"><span class="chip">пользовательский</span></p>
+                <p class="card__text index-clamp">Когда команда разбирает прошедший спринт и выбирает, что изменить.</p>
+                <p class="card__meta index-meta">3 роли · до 3 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+                <a class="btn btn--ghost" href="#confirm-delete">Удалить</a>
+              </div>
+            </article>
+            <article class="card index-card index-card--confirm" data-variant="confirm-delete">
+              <a class="index-card__main" href="setup.html#template">
+                <h3 class="card__title">Ретроспектива спринта</h3>
+                <p class="index-origin"><span class="chip">пользовательский</span></p>
+                <p class="card__text index-clamp">Когда команда разбирает прошедший спринт и выбирает, что изменить.</p>
+                <p class="card__meta index-meta">3 роли · до 3 кругов</p>
+              </a>
+              <div class="alert" data-tone="danger"><svg class="icon"><use href="#i-alert"></use></svg><div><div class="alert__title">Удалить шаблон «Ретроспектива спринта»?</div><div class="alert__text">Идентификатор <span class="mono">retrospektiva-sprinta</span>. Файл шаблона будет удалён из папки данных. Прошлые сессии не изменятся.</div></div><div class="alert__actions"><a class="btn btn--danger btn--sm" href="#actions">Удалить</a><a class="btn btn--sm" href="#actions">Отмена</a></div></div>
+            </article>
+            <article class="card index-card" data-variant="actions confirm-delete confirm-reset">
+              <a class="index-card__main" href="setup.html#template">
+                <h3 class="card__title">Письмо клиенту о задержке</h3>
+                <p class="index-origin"><span class="chip">пользовательский</span></p>
+                <p class="card__text index-clamp">Когда нужно сообщить клиенту о сорванном сроке и сохранить доверие.</p>
+                <p class="card__meta index-meta">2 роли · до 3 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+                <a class="btn btn--ghost" href="#confirm-delete">Удалить</a>
+              </div>
+            </article>
+          </div>
+        </section>
+        <section class="stack index-section">
+          <h2 class="section-title index-heading">Продукт и стратегия<span class="mono index-count">3</span></h2>
+          <div class="grid-cards">
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Что делать первым</h3>
+              <p class="card__text index-clamp">Когда задач больше, чем сил, и надо решить порядок.</p>
+              <p class="card__meta index-meta">3 роли · до 4 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+            <article class="card index-card" data-variant="gallery load-error">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Цена и тарифы</h3>
+              <p class="card__text index-clamp">Когда надо назначить цену или собрать тарифную сетку.</p>
+              <p class="card__meta index-meta">3 роли · до 4 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+            <article class="card index-card" data-variant="actions confirm-delete">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Цена и тарифы</h3>
+                <p class="index-origin"><span class="chip">изменён</span></p>
+              <p class="card__text index-clamp">Когда надо назначить цену или собрать тарифную сетку.</p>
+              <p class="card__meta index-meta">3 роли · до 4 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+                <a class="btn btn--ghost" href="#confirm-delete">Удалить</a>
+                <a class="btn btn--ghost" href="#confirm-reset">Сбросить к встроенному</a>
+              </div>
+            </article>
+            <article class="card index-card index-card--confirm" data-variant="confirm-reset">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Цена и тарифы</h3>
+                <p class="index-origin"><span class="chip">изменён</span></p>
+              <p class="card__text index-clamp">Когда надо назначить цену или собрать тарифную сетку.</p>
+              <p class="card__meta index-meta">3 роли · до 4 кругов</p>
+              </a>
+              <div class="alert" data-tone="warn"><svg class="icon"><use href="#i-alert"></use></svg><div><div class="alert__title">Сбросить «Цена и тарифы» к встроенному?</div><div class="alert__text">Ваша правка шаблона будет удалена, вернётся встроенный вариант. Прошлые сессии не изменятся.</div></div><div class="alert__actions"><a class="btn btn--primary btn--sm" href="#actions">Сбросить</a><a class="btn btn--sm" href="#actions">Отмена</a></div></div>
+            </article>
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Проверка идеи продукта</h3>
+              <p class="card__text index-clamp">Когда есть идея продукта и надо понять, строить её, менять или бросать.</p>
+              <p class="card__meta index-meta">3 роли · до 4 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+          </div>
+        </section>
+        <section class="stack index-section">
+          <h2 class="section-title index-heading">Архитектура и код<span class="mono index-count">4</span></h2>
+          <div class="grid-cards">
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Дизайн API и контракта</h3>
+              <p class="card__text index-clamp">Берите, когда нужно спроектировать интерфейс между системами или командами до того, как его начнут использовать.</p>
+              <p class="card__meta index-meta">3 роли · до 4 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Архитектурное решение</h3>
+              <p class="card__text index-clamp">Берите, когда нужно выбрать между несколькими техническими вариантами и закрепить выбор.</p>
+              <p class="card__meta index-meta">3 роли · до 4 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Ревью изменения в коде</h3>
+              <p class="card__text index-clamp">Берите, когда есть конкретный diff или описание правки и нужно решить, можно ли её принимать.</p>
+              <p class="card__meta index-meta">3 роли · до 4 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Переписать или чинить</h3>
+              <p class="card__text index-clamp">Берите, когда старый код мешает работать и непонятно, переписывать его целиком или улучшать по частям.</p>
+              <p class="card__meta index-meta">3 роли · до 5 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+          </div>
+        </section>
+        <section class="stack index-section">
+          <h2 class="section-title index-heading">Выбор и решения<span class="mono index-count">3</span></h2>
+          <div class="grid-cards">
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Сделать самим или взять готовое</h3>
+              <p class="card__text index-clamp">Когда надо решить, разрабатывать самим или взять готовое.</p>
+              <p class="card__meta index-meta">3 роли · до 5 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Выбор из нескольких вариантов</h3>
+              <p class="card__text index-clamp">Когда есть несколько вариантов и надо выбрать один так, чтобы выбор выдержал возражения.</p>
+              <p class="card__meta index-meta">3 роли · до 4 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Решение с высокой ценой ошибки</h3>
+              <p class="card__text index-clamp">Когда ошибка в решении дорого или необратимо стоит.</p>
+              <p class="card__meta index-meta">3 роли · до 6 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+          </div>
+        </section>
+        <section class="stack index-section">
+          <h2 class="section-title index-heading">Разбор проблем<span class="mono index-count">3</span></h2>
+          <div class="grid-cards">
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Разбор инцидента</h3>
+              <p class="card__text index-clamp">Берите после сбоя, чтобы понять, что произошло и как не допустить повторения.</p>
+              <p class="card__meta index-meta">3 роли · до 5 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Поиск причины проблемы</h3>
+              <p class="card__text index-clamp">Берите, когда что-то стабильно или периодически не работает, а причина неясна.</p>
+              <p class="card__meta index-meta">3 роли · до 5 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Проект буксует</h3>
+              <p class="card__text index-clamp">Берите, когда проект тянется дольше плана и непонятно, что делать: продолжать, сузить, перестроить или остановить.</p>
+              <p class="card__meta index-meta">3 роли · до 5 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+          </div>
+        </section>
+        <section class="stack index-section">
+          <h2 class="section-title index-heading">Тексты и коммуникации<span class="mono index-count">2</span></h2>
+          <div class="grid-cards">
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Трудное письмо или разговор</h3>
+              <p class="card__text index-clamp">Когда надо сказать неприятное: отказать, указать на ошибку, поднять спорный вопрос.</p>
+              <p class="card__meta index-meta">3 роли · до 4 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+            <article class="card index-card">
+              <a class="index-card__main" href="setup.html#template">
+              <h3 class="card__title">Правка текста под адресата</h3>
+              <p class="card__text index-clamp">Когда есть готовый текст и его надо переписать под конкретного читателя.</p>
+              <p class="card__meta index-meta">3 роли · до 3 кругов</p>
+              </a>
+              <div class="index-card__actions">
+                <a class="btn btn--ghost" href="template-editor.html#form">Изменить</a>
+                <a class="btn btn--ghost" href="template-editor.html#form">Дублировать</a>
+              </div>
+            </article>
+          </div>
+        </section>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="shell.js"></script>
+</body>
+</html>

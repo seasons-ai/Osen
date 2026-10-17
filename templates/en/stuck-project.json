@@ -1,0 +1,31 @@
+{
+  "id": "stuck-project",
+  "title": "Stalled Project",
+  "category": "Problem analysis",
+  "description": "Use when a project is dragging on past the plan and it's unclear what to do: continue, narrow, rebuild or stop. The result is a decision with the next steps and the condition by which it is checked.",
+  "exampleTopic": "A mobile app for booking appointments with service providers is in its fifth month instead of its third. About 60 percent of what was planned is done, two developers have been hired, and 70 percent of the budget is spent. Pilot users keep asking for one thing and then another, and the feature list has grown from 12 to 31. There is no revenue yet, and the owner is exhausted and ready to accept any decision.",
+  "framing": [
+    "This is a review of a project that isn't moving according to plan: the goal is to decide what to do next and choose the nearest steps that can be verified.",
+    "",
+    "How to run the discussion:",
+    "- Start with the question of what result the project is supposed to achieve and for whom. If there is no single answer to that, that is already a finding.",
+    "- Compare the plan with reality by what is done, what remains and what has been spent. Don't accept \"almost done\" without a list of what remains.",
+    "- Find exactly what is slowing it down: scope, unclear requirements, lack of people, dependence on others, decisions nobody makes. These are different diseases with different cures.",
+    "- Take into account what has already been spent, but don't use it as an argument to continue. The decision is made on what needs to be invested next and what will come of it.",
+    "- Propose options in both directions: narrow, rebuild, stop, continue as is. Consider stopping seriously.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions.",
+    "",
+    "Decision format:",
+    "1. Status: where the project stands relative to the goal, the deadline and the budget.",
+    "2. Cause of the stall: the main drag and the evidence.",
+    "3. Chosen option: what we do, what we remove, what we don't do, and why not the others.",
+    "4. Next steps: what, who and when, for the next two to four weeks.",
+    "5. Check: by which result and by which date it becomes clear that the choice works."
+  ],
+  "roles": [
+    "Advocate of narrowing and stopping: You stand for sharply cutting the project back or closing it. You push on the point that sunk cost is not an argument and that a growing feature list is a symptom, and you don't accept continuing without a clear goal and deadline.",
+    "Advocate of continuing: You stand for finishing the project because the result isn't far off. You push on what has already been done and the cost of losing momentum, and you don't accept stopping until it is checked that the remainder can't be completed.",
+    "Voice of the user and the market: You stand for the decision being driven by demand, not by the team's exhaustion. You push on testing with real users and real money, and you don't accept a choice without data on who needs the project."
+  ],
+  "limits": { "maxRounds": 5 }
+}

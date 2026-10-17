@@ -1,0 +1,37 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод: Отчёт на две страницы с приложением, формат уточним у владельца.",
+        "solution": "Отчёт на две страницы с приложением.",
+        "answers": [],
+        "questions": [
+          {
+            "to": "owner",
+            "text": "Отчёт нужен таблицей или текстом?"
+          }
+        ]
+      }
+    },
+    {
+      "expectPrompt": "таблицей",
+      "response": {
+        "stance": "object",
+        "reasoning": "Возражаю: одной страницы мало, нужно приложение с расчётами.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия подходит, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

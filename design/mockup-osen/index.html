@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Osen — новое обсуждение</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="brand/tokens.css">
+<style>
+:root{color-scheme:normal}
+body{margin:0;background:var(--bg-0)}
+a{color:var(--leaf)}a:hover{color:var(--link-hover)}
+.mono{font-family:var(--font-mono)}
+.btn{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 14px;box-sizing:border-box;border-radius:var(--r-md);border:1px solid var(--line-strong);background:transparent;color:var(--text);font:inherit;font-size:var(--fs-ui);cursor:pointer;text-decoration:none}
+.btn:hover{background:var(--bg-3);color:var(--text)}
+.btn--primary{background:var(--leaf);border-color:var(--leaf);color:var(--text-on-accent);font-weight:500}
+.btn--primary:hover{background:var(--leaf-hover);color:var(--text-on-accent)}
+.btn--ghost{border-color:transparent;color:var(--text-dim);padding:0 var(--sp-2)}
+.rail-item{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);width:68px;padding:9px 0;border-radius:var(--r-lg);color:var(--text-faint);font-size:var(--fs-xs);text-decoration:none}
+.rail-item:hover{background:var(--bg-2);color:var(--text)}
+.card-link{text-decoration:none;color:var(--text)}
+.card-link:hover{color:var(--text)}
+.tcard:hover{border-color:var(--text-decor)}
+@media (max-width:720px){.shell{flex-direction:column}.rail{flex-direction:row !important;width:auto !important;border-right:none !important;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div class="shell" style="display: flex; min-height: 800px; background: var(--bg-0); color: var(--text); font-family: var(--font-ui); font-size: var(--fs-md); line-height: 1.5">
+
+  <nav class="rail" aria-label="Разделы" style="flex: none; width: 84px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); padding: var(--sp-4) 0; background: var(--bg-1); border-right: 1px solid var(--line)">
+    <div style="margin-bottom: 14px">
+      <svg viewBox="-52 -52 104 104" width="32" height="32" role="img" aria-label="Osen"><g fill="var(--leaf)"><path d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(-40) scale(0.86)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(40) scale(0.86)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(-82) scale(0.64)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(82) scale(0.64)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path></g><g stroke="var(--rain)" stroke-width="4" stroke-linecap="round"><line y1="4" y2="30"></line></g><circle r="6" fill="var(--rain)"></circle></svg>
+    </div>
+    <a href="index.html" class="rail-item" aria-current="page" style="color: var(--leaf); background: var(--bg-2)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      Новое
+    </a>
+    <a href="history.html" class="rail-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"></path><path d="M3.5 4v4h4"></path><path d="M12 8v4l3 2"></path></svg>
+      История
+    </a>
+    <a href="settings.html" class="rail-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
+      Настройки
+    </a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <header style="display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; padding: 14px var(--sp-6); border-bottom: 1px solid var(--line)">
+      <h1 style="margin: 0; font-size: var(--fs-xl); font-weight: 600">Новое обсуждение</h1>
+      <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">7 шаблонов · 2 категории</span>
+    </header>
+
+    <div style="padding: 28px var(--sp-6) 40px; display: flex; flex-direction: column; gap: 28px; max-width: 1180px; box-sizing: border-box; width: 100%">
+      <p style="margin: 0; color: var(--text-dim)">Выберите шаблон обсуждения или задайте свою тему. Шаблон задаёт рамку обсуждения и роли участников.</p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px">
+        <a href="setup.html" class="card-link tcard" style="display: flex; flex-direction: column; gap: 6px; padding: var(--sp-4) 18px; border: 1px dashed var(--text-decor); border-radius: var(--r-lg)">
+          <span style="display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-lg); font-weight: 600"><span style="color: var(--leaf)">✎</span> Своя тема</span>
+          <span style="color: var(--text-dim)">Любой вопрос без шаблона. Обсуждение пойдёт по нейтральной рамке.</span>
+        </a>
+        <a href="index.html" class="card-link tcard" style="display: flex; flex-direction: column; gap: 6px; padding: var(--sp-4) 18px; border: 1px dashed var(--text-decor); border-radius: var(--r-lg)">
+          <span style="display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-lg); font-weight: 600"><span style="color: var(--leaf)">+</span> Новый шаблон</span>
+          <span style="color: var(--text-dim)">Свой шаблон: рамка обсуждения, роли и лимиты.</span>
+        </a>
+      </div>
+
+      <section style="display: flex; flex-direction: column; gap: 14px">
+        <h2 style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-size: var(--fs-lg); font-weight: 600">Продукт и стратегия <span class="mono" style="font-size: var(--fs-sm); font-weight: 400; color: var(--text-faint)">3</span></h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px">
+          
+            <div class="tcard" style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) 18px 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+              <a href="setup.html" class="card-link" style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: var(--fs-lg); font-weight: 600">Что делать первым</span>
+                <span style="color: var(--text-dim)">Когда задач больше, чем сил, и надо решить порядок.</span>
+                <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">3 роли · до 4 кругов</span>
+              </a>
+              <div style="display: flex; gap: var(--sp-1); margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line)">
+                <button type="button" class="btn btn--ghost">Изменить</button>
+                <button type="button" class="btn btn--ghost">Дублировать</button>
+              </div>
+            </div>
+          
+            <div class="tcard" style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) 18px 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+              <a href="setup.html" class="card-link" style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: var(--fs-lg); font-weight: 600">Цена и тарифы</span>
+                <span style="color: var(--text-dim)">Когда надо назначить цену или собрать тарифную сетку.</span>
+                <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">3 роли · до 4 кругов</span>
+              </a>
+              <div style="display: flex; gap: var(--sp-1); margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line)">
+                <button type="button" class="btn btn--ghost">Изменить</button>
+                <button type="button" class="btn btn--ghost">Дублировать</button>
+              </div>
+            </div>
+          
+            <div class="tcard" style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) 18px 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+              <a href="setup.html" class="card-link" style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: var(--fs-lg); font-weight: 600">Проверка идеи продукта</span>
+                <span style="color: var(--text-dim)">Когда есть идея продукта и надо понять, строить её, менять или бросать.</span>
+                <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">3 роли · до 4 кругов</span>
+              </a>
+              <div style="display: flex; gap: var(--sp-1); margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line)">
+                <button type="button" class="btn btn--ghost">Изменить</button>
+                <button type="button" class="btn btn--ghost">Дублировать</button>
+              </div>
+            </div>
+          
+        </div>
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 14px">
+        <h2 style="margin: 0; display: flex; align-items: baseline; gap: 10px; font-size: var(--fs-lg); font-weight: 600">Архитектура и код <span class="mono" style="font-size: var(--fs-sm); font-weight: 400; color: var(--text-faint)">4</span></h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px">
+          
+            <div class="tcard" style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) 18px 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+              <a href="setup.html" class="card-link" style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: var(--fs-lg); font-weight: 600">Дизайн API и контракта</span>
+                <span style="color: var(--text-dim)">Когда нужно спроектировать интерфейс между системами или командами.</span>
+                <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">3 роли · до 4 кругов</span>
+              </a>
+              <div style="display: flex; gap: var(--sp-1); margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line)">
+                <button type="button" class="btn btn--ghost">Изменить</button>
+                <button type="button" class="btn btn--ghost">Дублировать</button>
+              </div>
+            </div>
+          
+            <div class="tcard" style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) 18px 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+              <a href="setup.html" class="card-link" style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: var(--fs-lg); font-weight: 600">Архитектурное решение</span>
+                <span style="color: var(--text-dim)">Когда нужно выбрать между техническими вариантами и закрепить выбор.</span>
+                <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">3 роли · до 4 кругов</span>
+              </a>
+              <div style="display: flex; gap: var(--sp-1); margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line)">
+                <button type="button" class="btn btn--ghost">Изменить</button>
+                <button type="button" class="btn btn--ghost">Дублировать</button>
+              </div>
+            </div>
+          
+            <div class="tcard" style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) 18px 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+              <a href="setup.html" class="card-link" style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: var(--fs-lg); font-weight: 600">Ревью изменения в коде</span>
+                <span style="color: var(--text-dim)">Когда есть diff или описание правки и надо решить, принимать ли её.</span>
+                <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">3 роли · до 4 кругов</span>
+              </a>
+              <div style="display: flex; gap: var(--sp-1); margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line)">
+                <button type="button" class="btn btn--ghost">Изменить</button>
+                <button type="button" class="btn btn--ghost">Дублировать</button>
+              </div>
+            </div>
+          
+            <div class="tcard" style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4) 18px 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+              <a href="setup.html" class="card-link" style="display: flex; flex-direction: column; gap: 6px">
+                <span style="font-size: var(--fs-lg); font-weight: 600">Переписать или чинить</span>
+                <span style="color: var(--text-dim)">Когда старый код мешает работать и непонятно, переписывать его целиком или чинить по месту.</span>
+                <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">3 роли · до 5 кругов</span>
+              </a>
+              <div style="display: flex; gap: var(--sp-1); margin-top: auto; padding-top: 6px; border-top: 1px solid var(--line)">
+                <button type="button" class="btn btn--ghost">Изменить</button>
+                <button type="button" class="btn btn--ghost">Дублировать</button>
+              </div>
+            </div>
+          
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

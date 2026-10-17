@@ -1,0 +1,31 @@
+{
+  "id": "code-review",
+  "title": "Code Change Review",
+  "category": "Architecture and code",
+  "description": "Use when there is a specific diff or description of a change and you need to decide whether it can be accepted. The result is a verdict and a prioritized list of fixes.",
+  "exampleTopic": "A retry on timeout was added to the payment module: up to three attempts with a one-second pause, without an idempotency key. The change is 60 lines, there are no tests for the timeout, and the module handles about 2,000 payments a day. The author says no duplicates have been seen in the past month and asks for it to be merged today.",
+  "framing": [
+    "This is a review of a code change: decide whether to accept it and compile a list of what has to be fixed before acceptance.",
+    "",
+    "How to run the discussion:",
+    "- First understand what the change is supposed to do and why. If the topic doesn't make that clear, state your understanding as an assumption and review against it.",
+    "- Look for defects in descending order of cost: data loss or corruption, security, broken compatibility, and only then readability and style.",
+    "- Back every comment with a specific input or scenario in which the code misbehaves. A comment without a scenario is an opinion.",
+    "- Check the edges: empty and repeated values, a failure in the middle of an operation, concurrent calls, other callers of the changed function.",
+    "- Treat the tests as part of the change: what they prove and which scenario is left unchecked.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions. Don't make up code you haven't seen.",
+    "",
+    "Decision format:",
+    "1. Verdict: accept, accept after fixes, or reject, with one sentence on why.",
+    "2. Blocking comments: what exactly is wrong, in which scenario it shows up, how to fix it.",
+    "3. Desirable fixes: what can be done separately after acceptance.",
+    "4. Missing checks: which tests or manual scenarios are needed before the release.",
+    "5. What is left as is and why."
+  ],
+  "roles": [
+    "Strict quality guard: You stand for not accepting the code until its safety is proven in bad scenarios. You push on races, duplicates and data loss, and you don't accept \"it hasn't broken in production yet\".",
+    "Author who needs the release: You stand for accepting the change with minimal fixes. You push on the cost of delay and on separating the ideal from the necessary, and you don't accept comments without a concrete failure scenario.",
+    "Future maintainer: You stand for code that a person without context will read a year from now. You push on clarity, tests and the absence of hidden assumptions, and you don't accept cleverness that can't be explained in one sentence."
+  ],
+  "limits": { "maxRounds": 4 }
+}

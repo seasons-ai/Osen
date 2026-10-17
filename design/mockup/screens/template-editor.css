@@ -1,0 +1,10 @@
+.tpl-frame{min-height:calc(var(--sp-6) * 5)}
+.tpl-category{gap:var(--sp-3)}
+/* roles in the bordered list .setup__list, like the participants of "Session setup": rows separated by the --line line */
+.tpl-role-item,.tpl-role-wrap{padding:10px 14px;border-bottom:var(--border-w) solid var(--line)}
+.tpl-role{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto auto;align-items:center;gap:var(--sp-2)}
+.tpl-role-wrap{display:flex;flex-direction:column;gap:var(--sp-1)}
+.tpl-role-wrap > .setup__error{padding-left:calc(var(--avatar-size) + var(--sp-2))}
+.tpl-limits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-3);align-items:start}
+/* Window narrower than 1100: the limit label may wrap to a second line — row labels have equal height, fields on one line. */
+@media (max-width:1099px){.tpl-limits .field__label{min-height:2lh}}

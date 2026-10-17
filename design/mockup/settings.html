@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Osen — Настройки</title>
+  <link rel="stylesheet" href="../mockup-osen/brand/tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="../mockup-osen/brand/components-osen.css">
+  <link rel="stylesheet" href="screens/settings.css">
+</head>
+<body data-screen="settings" data-nav="settings" data-variants="ok:Провайдеры в порядке;error:Ошибка провайдера;confirm:Подтверждение проверки;language-env:Язык задан окружением;language-error:Язык не сохранён">
+  <div class="app">
+    <nav class="rail" data-rail></nav>
+    <div class="main">
+      <header class="topbar">
+        <h1 class="topbar__title">Настройки</h1>
+        <div class="topbar__actions"></div>
+      </header>
+      <div class="mock-bar" data-mock-bar></div>
+      <main class="content">
+        <div class="settings-banner" data-variant="language-error"><div class="alert" data-tone="danger" role="alert"><svg class="icon"><use href="#i-alert"></use></svg><div><div class="alert__title">Язык не сохранён: нет доступа на запись preferences.json</div></div></div></div>
+        <section class="card settings-lang" data-variant="ok error confirm language-error" aria-labelledby="settings-lang-title">
+          <h2 class="card__title" id="settings-lang-title">Язык</h2>
+          <div class="settings-lang__group" role="radiogroup" aria-label="Язык интерфейса">
+            <span class="settings-lang__opt" role="radio" aria-checked="false" tabindex="0"><span class="settings-lang__name">English</span></span>
+            <span class="settings-lang__opt" role="radio" aria-checked="true" tabindex="0"><span class="settings-lang__name">Русский</span><span class="settings-lang__now"><svg class="icon icon--sm"><use href="#i-check"></use></svg> действующий</span></span>
+          </div>
+          <p class="muted settings-lang__hint">Применяется сразу, без перезапуска. Действует также на команду council и MCP-сервер при их следующем запуске.</p>
+        </section>
+        <section class="card settings-lang" data-variant="language-env" aria-labelledby="settings-lang-title-env">
+          <h2 class="card__title" id="settings-lang-title-env">Язык</h2>
+          <div class="settings-lang__group" role="radiogroup" aria-label="Язык интерфейса">
+            <span class="settings-lang__opt" role="radio" aria-checked="true" aria-disabled="true"><span class="settings-lang__name">English</span><span class="settings-lang__now"><svg class="icon icon--sm"><use href="#i-check"></use></svg> действующий</span></span>
+            <span class="settings-lang__opt" role="radio" aria-checked="false" aria-disabled="true"><span class="settings-lang__name">Русский</span></span>
+          </div>
+          <p class="muted settings-lang__hint settings-lang__env"><svg class="icon icon--sm"><use href="#i-info"></use></svg> Задан переменной окружения COUNCIL_LANG — выбор недоступен</p>
+        </section>
+        <div data-tabs>
+          <div class="tabs settings-tabs" role="tablist">
+            <button type="button" class="tab" role="tab" data-tab="providers" aria-selected="true">Провайдеры</button>
+            <button type="button" class="tab" role="tab" data-tab="defaults" aria-selected="false">По умолчанию</button>
+          </div>
+          <section data-panel="providers">
+            <div class="settings-head">
+              <h2 class="section-title">Провайдеры</h2>
+              <button type="button" class="btn btn--sm"><svg class="icon icon--sm"><use href="#i-refresh"></use></svg> Проверить заново</button>
+              <button type="button" class="btn btn--sm"><svg class="icon icon--sm"><use href="#i-plus"></use></svg> Добавить HTTP-провайдер</button>
+            </div>
+            <div class="settings-banner" data-variant="error"><div class="alert" data-tone="danger"><svg class="icon"><use href="#i-alert"></use></svg><div><div class="alert__title">2 провайдера недоступны</div><div class="alert__text">Codex — исчерпан лимит подписки; OpenRouter — ключ не задан. Сессии с этими участниками не запустятся.</div></div></div></div>
+            <div class="settings-grid">
+<article class="card settings-card" data-variant="ok error language-env language-error"><div class="settings-card__head"><h3 class="settings-card__name">Claude Code</h3><span class="chip mono">CLI</span><span class="badge" data-tone="ok"><svg class="icon icon--sm"><use href="#i-check"></use></svg> доступен</span></div><dl class="kv settings-info"><dt>Версия</dt><dd><span class="mono">2.1.288</span></dd><dt>Команда</dt><dd><span class="mono">/opt/homebrew/bin/claude</span></dd><dt>Расход</dt><dd><span class="chip">расходует подписку</span></dd></dl><div class="settings-models"><span class="tag">sonnet</span><span class="tag">haiku</span><span class="tag">opus</span></div><div class="settings-actions"><button type="button" class="btn btn--sm"><svg class="icon icon--sm"><use href="#i-play"></use></svg> Проверить</button></div></article>
+<article class="card settings-card" data-variant="confirm"><div class="settings-card__head"><h3 class="settings-card__name">Claude Code</h3><span class="chip mono">CLI</span><span class="badge" data-tone="ok"><svg class="icon icon--sm"><use href="#i-check"></use></svg> доступен</span></div><dl class="kv settings-info"><dt>Версия</dt><dd><span class="mono">2.1.288</span></dd><dt>Команда</dt><dd><span class="mono">/opt/homebrew/bin/claude</span></dd><dt>Расход</dt><dd><span class="chip">расходует подписку</span></dd></dl><div class="settings-models"><span class="tag">sonnet</span><span class="tag">haiku</span><span class="tag">opus</span></div><div class="alert" data-tone="info"><svg class="icon"><use href="#i-info"></use></svg><div><div class="alert__title">Проверочный вызов расходует подписку</div><div class="alert__text">Будет сделан один вызов модели <span class="tag">haiku</span> — самой дешёвой у этого провайдера. Вызов ещё не начат.</div></div><div class="alert__actions"><button type="button" class="btn btn--primary btn--sm">Выполнить вызов</button><button type="button" class="btn btn--sm">Отмена</button></div></div></article>
+<article class="card settings-card" data-variant="ok confirm language-env language-error"><div class="settings-card__head"><h3 class="settings-card__name">Codex</h3><span class="chip mono">CLI</span><span class="badge" data-tone="ok"><svg class="icon icon--sm"><use href="#i-check"></use></svg> доступен</span></div><dl class="kv settings-info"><dt>Версия</dt><dd><span class="mono">0.159.2</span></dd><dt>Команда</dt><dd><span class="mono">/opt/homebrew/bin/codex</span></dd><dt>Расход</dt><dd><span class="chip">расходует подписку</span></dd></dl><div class="settings-models"><span class="tag">gpt-5.6-luna</span><span class="tag">gpt-5.6</span></div><div class="settings-actions"><button type="button" class="btn btn--sm"><svg class="icon icon--sm"><use href="#i-play"></use></svg> Проверить</button></div></article>
+<article class="card settings-card" data-variant="error"><div class="settings-card__head"><h3 class="settings-card__name">Codex</h3><span class="chip mono">CLI</span><span class="badge" data-tone="danger"><svg class="icon icon--sm"><use href="#i-x"></use></svg> недоступен</span></div><div class="alert" data-tone="danger"><svg class="icon"><use href="#i-alert"></use></svg><div><div class="alert__title">Исчерпан лимит подписки</div><div class="alert__text">Codex ответил отказом: лимит подписки исчерпан. Сброс — сегодня в 14:27. До сброса участники на Codex выбывают с первого хода.</div></div></div><div class="settings-actions"><button type="button" class="btn btn--sm"><svg class="icon icon--sm"><use href="#i-refresh"></use></svg> Проверить заново</button></div></article>
+<article class="card settings-card" data-variant="ok confirm language-env language-error"><div class="settings-card__head"><h3 class="settings-card__name">OpenRouter</h3><span class="chip mono">HTTP</span><span class="badge" data-tone="ok"><svg class="icon icon--sm"><use href="#i-check"></use></svg> доступен</span></div><dl class="kv settings-info"><dt>Адрес</dt><dd><span class="mono">https://openrouter.ai/api/v1</span></dd><dt>Ключ</dt><dd><span class="mono">OPENROUTER_API_KEY</span><span class="badge" data-tone="ok"><svg class="icon icon--sm"><use href="#i-check"></use></svg> ключ задан</span></dd></dl><div class="settings-models"><span class="tag">meta-llama/llama-3.3-70b-instruct:free</span><span class="tag">google/gemma-3-27b-it:free</span><span class="tag">mistralai/mistral-small-3.2:free</span></div><div class="settings-models"><span class="settings-models__source">перечень получен сегодня в 11:30</span><button type="button" class="btn btn--ghost btn--sm"><svg class="icon icon--sm"><use href="#i-refresh"></use></svg> Обновить модели</button></div><div class="settings-actions"><button type="button" class="btn btn--sm"><svg class="icon icon--sm"><use href="#i-play"></use></svg> Проверить</button><button type="button" class="btn btn--ghost btn--sm"><svg class="icon icon--sm"><use href="#i-edit"></use></svg> Изменить</button><button type="button" class="btn btn--ghost btn--sm"><svg class="icon icon--sm"><use href="#i-trash"></use></svg> Удалить</button></div></article>
+<article class="card settings-card" data-variant="error"><div class="settings-card__head"><h3 class="settings-card__name">OpenRouter</h3><span class="chip mono">HTTP</span><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> ключ не задан</span></div><dl class="kv settings-info"><dt>Адрес</dt><dd><span class="mono">https://openrouter.ai/api/v1</span></dd><dt>Ключ</dt><dd><span class="mono">OPENROUTER_API_KEY</span><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> ключ не задан</span></dd></dl><div class="settings-models"><span class="settings-models__source">перечень моделей недоступен без ключа</span></div><div class="alert" data-tone="warn"><svg class="icon"><use href="#i-key"></use></svg><div><div class="alert__title">Ключ не задан</div><div class="alert__text">Впишите значение переменной <span class="mono">OPENROUTER_API_KEY</span> в файл <span class="mono">~/Library/Application Support/model-council/.env</span> и нажмите «Проверить заново». В приложении ключи не вводятся.</div></div></div><div class="settings-actions"><button type="button" class="btn btn--sm"><svg class="icon icon--sm"><use href="#i-refresh"></use></svg> Проверить заново</button><button type="button" class="btn btn--ghost btn--sm"><svg class="icon icon--sm"><use href="#i-edit"></use></svg> Изменить</button><button type="button" class="btn btn--ghost btn--sm"><svg class="icon icon--sm"><use href="#i-trash"></use></svg> Удалить</button></div></article>
+<article class="card settings-card" data-variant="ok error confirm language-env language-error"><div class="settings-card__head"><h3 class="settings-card__name">Локальный</h3><span class="chip mono">HTTP</span><span class="badge" data-tone="ok"><svg class="icon icon--sm"><use href="#i-check"></use></svg> доступен</span></div><dl class="kv settings-info"><dt>Адрес</dt><dd><span class="mono">http://localhost:11434/v1</span></dd><dt>Ключ</dt><dd><span class="muted">не требуется</span></dd></dl><div class="settings-models"><span class="tag">qwen3:14b</span><span class="tag">phi4:14b</span></div><div class="settings-actions"><button type="button" class="btn btn--sm"><svg class="icon icon--sm"><use href="#i-play"></use></svg> Проверить</button><button type="button" class="btn btn--ghost btn--sm"><svg class="icon icon--sm"><use href="#i-edit"></use></svg> Изменить</button><button type="button" class="btn btn--ghost btn--sm"><svg class="icon icon--sm"><use href="#i-trash"></use></svg> Удалить</button></div></article>
+            </div>
+          </section>
+          <section data-panel="defaults" hidden>
+            <div class="settings-head">
+              <h2 class="section-title">Значения по умолчанию</h2>
+              <span class="muted">Подставляются в настройку новой сессии</span>
+            </div>
+            <div class="card">
+              <h3 class="card__title">Лимиты</h3>
+              <div class="settings-limits">
+                <div class="field"><span class="field__label">Лимит кругов</span><div class="stepper" data-min="1" data-max="20"><button type="button" data-step="-1" aria-label="Меньше">−</button><span class="stepper__value">5</span><button type="button" data-step="1" aria-label="Больше">+</button></div><span class="field__hint">Сколько кругов обсуждения максимум</span></div>
+                <label class="field"><span class="field__label">Таймаут хода, с</span><input class="input" value="300" inputmode="numeric"><span class="field__hint">Через сколько секунд ход считается сорванным</span></label>
+                <label class="field"><span class="field__label">Объём контекста, знаков</span><input class="input" value="24000" inputmode="numeric"><span class="field__hint">Сколько знаков истории получает участник</span></label>
+                <label class="field"><span class="field__label">Объём материалов, знаков</span><input class="input" value="60000" inputmode="numeric"><span class="field__hint">Сколько знаков приложенных файлов можно передать участникам одной сессии</span></label>
+                <label class="field"><span class="field__label">Потолок токенов на сессию</span><input class="input" inputmode="numeric" placeholder="без потолка" value=""><span class="field__hint">Пусто — без потолка; сумма входных и выходных токенов всех вызовов моделей, включая неудачные попытки</span></label>
+                <div class="field"><span class="field__label">Участников не больше</span><div class="stepper" data-min="2" data-max="8"><button type="button" data-step="-1" aria-label="Меньше">−</button><span class="stepper__value">8</span><button type="button" data-step="1" aria-label="Больше">+</button></div><span class="field__hint">Верхняя граница состава сессии</span></div>
+              </div>
+            </div>
+            <div class="card settings-section">
+              <h3 class="card__title">Участники по умолчанию</h3>
+              <div class="settings-people">
+                <div class="participant" data-p="1"><div class="avatar" data-p="1">1</div><div><div class="participant__name">Claude Code (sonnet)</div><div class="participant__meta">claude · <span class="tag">sonnet</span></div></div><button type="button" class="btn btn--ghost btn--sm" aria-label="Убрать"><svg class="icon icon--sm"><use href="#i-trash"></use></svg></button></div>
+                <div class="participant" data-p="2"><div class="avatar" data-p="2">2</div><div><div class="participant__name">Codex (gpt-5.6-luna)</div><div class="participant__meta">codex · <span class="tag">gpt-5.6-luna</span></div></div><button type="button" class="btn btn--ghost btn--sm" aria-label="Убрать"><svg class="icon icon--sm"><use href="#i-trash"></use></svg></button></div>
+                <div class="participant" data-p="3"><div class="avatar" data-p="3">3</div><div><div class="participant__name">OpenRouter (llama-3.3-70b)</div><div class="participant__meta">openrouter · <span class="tag">meta-llama/llama-3.3-70b-instruct:free</span></div></div><button type="button" class="btn btn--ghost btn--sm" aria-label="Убрать"><svg class="icon icon--sm"><use href="#i-trash"></use></svg></button></div>
+              </div>
+              <div class="row"><button type="button" class="btn btn--sm"><svg class="icon icon--sm"><use href="#i-plus"></use></svg> Добавить</button><span class="muted">не меньше двух</span></div>
+            </div>
+            <div class="settings-foot">
+              <button type="button" class="btn btn--primary">Сохранить</button>
+              <span class="muted">Файл настроек: <span class="mono">~/Library/Application Support/model-council/config.json</span></span>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="shell.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "steps": [
+    {
+      "delayMs": 8000,
+      "response": {
+        "stance": "agree",
+        "reasoning": "Мурка подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "expectPrompt": "# Реплики владельца",
+      "response": {
+        "stance": "agree",
+        "reasoning": "С уточнением владельца согласен: Мурка — пять букв.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

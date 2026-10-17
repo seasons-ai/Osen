@@ -1,0 +1,41 @@
+import { defineMessages } from "../i18n/catalog.ts";
+
+// Messages of discussion templates. No Node imports: schema.ts gets into the renderer.
+export const templateMessages = defineMessages({
+  en: {
+    missingField: "required field is missing",
+    idAuto: "the identifier is assigned automatically",
+    cannotRead: (err: string) => `could not read — ${err}`,
+    notJson: (err: string) => `not JSON — ${err}`,
+    duplicateId: (id: string, file: string) => `duplicate identifier «${id}»: already loaded from ${file}`,
+    neutralEmpty: "file is empty — the built-in neutral framing is used",
+    neutralMissing: (path: string) => `Neutral framing not found: ${path}`,
+    unknownTemplate: (id: string) => `Template «${id}» not found.`,
+    dirReadFailed: (dir: string, err: string) => `${dir}: could not read the folder — ${err}`,
+    badId: "Invalid template identifier.",
+    invalid: "The template failed validation.",
+    exists: (target: string) => `${target}: a file with this name already exists.`,
+    writeFailed: (target: string, err: string) => `${target}: could not write — ${err}`,
+    ambiguous: (id: string, files: string) => `The identifier «${id}» is used by several files: ${files}.`,
+    builtinNoDelete: "A built-in template cannot be deleted.",
+    deleteFailed: (file: string, err: string) => `${file}: could not delete — ${err}`,
+  },
+  ru: {
+    missingField: "обязательное поле отсутствует",
+    idAuto: "идентификатор задаётся автоматически",
+    cannotRead: (err: string) => `не удалось прочитать — ${err}`,
+    notJson: (err: string) => `не JSON — ${err}`,
+    duplicateId: (id: string, file: string) => `дубль идентификатора «${id}»: уже загружен из ${file}`,
+    neutralEmpty: "файл пуст — используется встроенная нейтральная рамка",
+    neutralMissing: (path: string) => `Нейтральная рамка не найдена: ${path}`,
+    unknownTemplate: (id: string) => `Шаблон «${id}» не найден.`,
+    dirReadFailed: (dir: string, err: string) => `${dir}: не удалось прочитать папку — ${err}`,
+    badId: "Недопустимый идентификатор шаблона.",
+    invalid: "Шаблон не прошёл проверку.",
+    exists: (target: string) => `${target}: файл с таким именем уже есть.`,
+    writeFailed: (target: string, err: string) => `${target}: не удалось записать — ${err}`,
+    ambiguous: (id: string, files: string) => `Идентификатор «${id}» занят несколькими файлами: ${files}.`,
+    builtinNoDelete: "Встроенный шаблон нельзя удалить.",
+    deleteFailed: (file: string, err: string) => `${file}: не удалось удалить — ${err}`,
+  },
+});

@@ -1,0 +1,26 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю имя: Мурка. Перед выбором нужны два уточнения от владельца.",
+        "solution": "Назвать кота Мурка.",
+        "answers": [],
+        "questions": [
+          { "to": "owner", "text": "Имя должно быть не длиннее пяти букв?" },
+          { "to": "owner", "text": "Кот рыжий или серый?" }
+        ]
+      }
+    },
+    {
+      "delayMs": 15000,
+      "response": {
+        "stance": "agree",
+        "reasoning": "Мурка укладывается в пять букв, как просит владелец.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Osen — знак и палитра</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="brand/tokens.css">
+<style>
+:root{color-scheme:normal}
+body{margin:0}
+a{color:var(--leaf)}a:hover{color:var(--link-hover)}
+</style>
+</head>
+<body>
+<div style="width: 1280px; height: 900px; box-sizing: border-box; padding: 64px 72px; background: var(--bg-0); color: var(--text); font-family: var(--font-ui); display: flex; flex-direction: column; gap: var(--sp-7)">
+
+  <div style="display: flex; gap: 64px; align-items: flex-start">
+    <div style="display: flex; align-items: center; gap: 28px; flex: none">
+      <svg viewBox="-52 -52 104 104" width="132" height="132" role="img" aria-label="Знак Osen — кленовый лист">
+        <g fill="var(--leaf)">
+          <path d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path>
+          <path transform="rotate(-40) scale(0.86)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path>
+          <path transform="rotate(40) scale(0.86)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path>
+          <path transform="rotate(-82) scale(0.64)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path>
+          <path transform="rotate(82) scale(0.64)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path>
+        </g>
+        <g stroke="var(--rain)" stroke-width="2.4" stroke-linecap="round">
+          <line y1="-6" y2="-30"></line>
+          <line transform="rotate(-40)" y1="-6" y2="-25"></line>
+          <line transform="rotate(40)" y1="-6" y2="-25"></line>
+          <line transform="rotate(-82)" y1="-6" y2="-18"></line>
+          <line transform="rotate(82)" y1="-6" y2="-18"></line>
+          <line y1="4" y2="30"></line>
+        </g>
+        <circle r="4.6" fill="var(--rain)"></circle>
+      </svg>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <div style="font-size: 64px; font-weight: 500; letter-spacing: 3px; line-height: 1">osen</div>
+        <div style="font-family: var(--font-mono); font-size: var(--fs-lg); color: var(--text-faint)">autumn, and what is gathered</div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 14px; padding-top: 10px; max-width: 520px">
+      <div style="font-size: var(--fs-ui); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint)">Одно правило</div>
+      <div style="font-size: 22px; line-height: 1.4; font-weight: 500">
+        <span style="color: var(--leaf)">Тёплый лист</span> — то, что модель делает прямо сейчас.
+        <span style="color: var(--rain)">Холодный дождь</span> — то, что уже устоялось и проверено.
+      </div>
+      <div style="font-size: var(--fs-lg); line-height: 1.55; color: var(--text-dim)">Правило то же, что у Vesna: petal → leaf, ice → rain. Идёт обсуждение, думает участник, выбран пункт рейки — лист. Согласился участник, достигнуто согласие, принята версия — дождь. Знак собран так же, как цветок Vesna: тёплое тело, холодные прожилки и сердцевина.</div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; align-items: baseline; gap: 14px">
+      <div style="font-size: var(--fs-ui); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint)">Тема osen — тёмная, по умолчанию</div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 10px">
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--bg-0)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">bg</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#17130F</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--bg-2)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">panel</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#211B16</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--line)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">rule</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#2E261F</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--text)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">text</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#EDE4D8</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--text-faint)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">muted</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#8E8273</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--text-decor)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">faint</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#5C5146</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--leaf)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">leaf</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#EE9A62</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--rain)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">rain</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#9EBFD3</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--ok)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">ok</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#A7CC96</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--warn)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">warn</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#E8C66E</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--danger)"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">error</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#EC8A7A</div>
+        </div>
+      
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px">
+    <div style="font-size: var(--fs-ui); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint)">Тема tuman — светлая, аналог washi</div>
+    <div style="display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 10px">
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #F8F3EC"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">bg</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#F8F3EC</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #EFE7DC"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">panel</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#EFE7DC</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #E2D6C7"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">rule</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#E2D6C7</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #352B23"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">text</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#352B23</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #6F6256"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">muted</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#6F6256</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #C5B6A5"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">faint</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#C5B6A5</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #B4532A"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">leaf</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#B4532A</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #33698A"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">rain</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#33698A</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #3F7247"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">ok</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#3F7247</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #8A5F12"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">warn</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#8A5F12</div>
+        </div>
+      
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #A93A32"></div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">error</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#A93A32</div>
+        </div>
+      
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px; font-family: var(--font-mono); font-size: var(--fs-lg)">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div style="font-family: var(--font-ui); font-size: var(--fs-ui); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint)">Глифы рамки</div>
+      <div style="display: flex; gap: 26px; flex-wrap: wrap">
+        <span><span style="color: var(--leaf)">❦</span> <span style="color: var(--text-faint)">mark</span></span>
+        <span><span style="color: var(--leaf)">›</span> <span style="color: var(--text-faint)">prompt</span></span>
+        <span><span style="color: var(--text-decor)">─</span> <span style="color: var(--text-faint)">rule</span></span>
+        <span><span style="color: var(--text-decor)">·</span> <span style="color: var(--text-faint)">bullet</span></span>
+        <span><span style="color: var(--text-decor)">│</span> <span style="color: var(--text-faint)">gutter</span></span>
+        <span><span style="color: var(--text)">⧉</span> <span style="color: var(--text-faint)">copy</span></span>
+        <span><span style="color: var(--leaf)">⠋⠙⠹⠸</span> <span style="color: var(--text-faint)">spinner</span></span>
+      </div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <div style="font-family: var(--font-ui); font-size: var(--fs-ui); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint)">Состояния сессии и участников</div>
+      <div style="display: flex; gap: 10px 14px; flex-wrap: wrap; font-family: var(--font-ui); font-size: var(--fs-ui)">
+        <span style="padding: 1px 9px; border-radius: var(--r-pill); border: 1px solid var(--leaf); color: var(--leaf)">● идёт</span>
+        <span style="padding: 1px 9px; border-radius: var(--r-pill); border: 1px solid var(--leaf); color: var(--leaf)">⠹ думает</span>
+        <span style="padding: 1px 9px; border-radius: var(--r-pill); border: 1px solid var(--rain); color: var(--rain)">✓ согласен</span>
+        <span style="padding: 1px 9px; border-radius: var(--r-pill); border: 1px solid var(--rain); color: var(--rain)">✓ согласие достигнуто</span>
+        <span style="padding: 1px 9px; border-radius: var(--r-pill); border: 1px solid var(--danger); color: var(--danger)">× возражает</span>
+        <span style="padding: 1px 9px; border-radius: var(--r-pill); border: 1px solid var(--warn); color: var(--warn)">! согласия нет</span>
+        <span style="padding: 1px 9px; border-radius: var(--r-pill); border: 1px solid var(--warn); color: var(--warn)">○ выбыл</span>
+        <span style="padding: 1px 9px; border-radius: var(--r-pill); border: 1px solid var(--ok); color: var(--ok)">✓ доступен</span>
+        <span style="padding: 1px 9px; border-radius: var(--r-pill); border: 1px solid var(--text-decor); color: var(--text-faint)">■ остановлена</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

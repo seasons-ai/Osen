@@ -1,0 +1,89 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю первую версию отчёта и уточняю формат у владельца.",
+        "solution": "Отчёт раз в неделю, формат уточняется.",
+        "answers": [],
+        "questions": [
+          {
+            "to": "owner",
+            "text": "В каком формате нужен отчёт: таблица или текст?"
+          }
+        ]
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Первый: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Первый: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Первый: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Первый: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Первый: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Первый: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Первый: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    }
+  ]
+}

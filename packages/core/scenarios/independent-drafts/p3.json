@@ -1,0 +1,55 @@
+{
+ "steps": [
+  {
+   "response": {
+    "stance": "amend",
+    "reasoning": "Довод МЕТКА-E-P3",
+    "solution": "Решение МЕТКА-E-P3",
+    "answers": [],
+    "questions": [],
+    "files": []
+   },
+   "delayMs": 2500
+  },
+  {
+   "response": {
+    "stance": "agree",
+    "reasoning": "Согласен",
+    "solution": null,
+    "answers": [],
+    "questions": [],
+    "files": []
+   }
+  },
+  {
+   "response": {
+    "stance": "agree",
+    "reasoning": "Согласен",
+    "solution": null,
+    "answers": [],
+    "questions": [],
+    "files": []
+   }
+  },
+  {
+   "response": {
+    "stance": "agree",
+    "reasoning": "Согласен",
+    "solution": null,
+    "answers": [],
+    "questions": [],
+    "files": []
+   }
+  },
+  {
+   "response": {
+    "stance": "agree",
+    "reasoning": "Согласен",
+    "solution": null,
+    "answers": [],
+    "questions": [],
+    "files": []
+   }
+  }
+ ]
+}

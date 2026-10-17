@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Osen — обсуждение идёт</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="brand/tokens.css">
+<style>
+:root{color-scheme:normal}
+body{margin:0;background:var(--bg-0)}
+a{color:var(--leaf)}a:hover{color:var(--link-hover)}
+.mono{font-family:var(--font-mono)}
+.btn{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 14px;box-sizing:border-box;border-radius:var(--r-md);border:1px solid var(--line-strong);background:transparent;color:var(--text);font:inherit;font-size:var(--fs-ui);cursor:pointer;text-decoration:none}
+.btn:hover{background:var(--bg-3);color:var(--text)}
+.btn--primary{background:var(--leaf);border-color:var(--leaf);color:var(--text-on-accent);font-weight:500}
+.btn--primary:hover{background:var(--leaf-hover);color:var(--text-on-accent)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:0 var(--sp-2);border-radius:var(--r-pill);border:1px solid var(--line-strong);font-size:var(--fs-sm);line-height:20px;white-space:nowrap;color:var(--text-dim)}
+.av{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;box-sizing:border-box;border-radius:50%;border:1px solid var(--text-decor);font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--text);flex:none}
+.rail-item{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);width:68px;padding:9px 0;border-radius:var(--r-lg);color:var(--text-faint);font-size:var(--fs-xs);text-decoration:none}
+.rail-item:hover{background:var(--bg-2);color:var(--text)}
+.col-title{margin:0;font-size:var(--fs-xs);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint)}
+@media (max-width:720px){.shell{flex-direction:column}.rail{flex-direction:row !important;width:auto !important;border-right:none !important;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div class="shell" style="display: flex; min-height: 800px; background: var(--bg-0); color: var(--text); font-family: var(--font-ui); font-size: var(--fs-md); line-height: 1.5">
+
+  <nav class="rail" aria-label="Разделы" style="flex: none; width: 84px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); padding: var(--sp-4) 0; background: var(--bg-1); border-right: 1px solid var(--line)">
+    <div style="margin-bottom: 14px">
+      <svg viewBox="-52 -52 104 104" width="32" height="32" role="img" aria-label="Osen"><g fill="var(--leaf)"><path d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(-40) scale(0.86)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(40) scale(0.86)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(-82) scale(0.64)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(82) scale(0.64)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path></g><g stroke="var(--rain)" stroke-width="4" stroke-linecap="round"><line y1="4" y2="30"></line></g><circle r="6" fill="var(--rain)"></circle></svg>
+    </div>
+    <a href="index.html" class="rail-item" aria-current="page" style="color: var(--leaf); background: var(--bg-2)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      Новое
+    </a>
+    <a href="history.html" class="rail-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"></path><path d="M3.5 4v4h4"></path><path d="M12 8v4l3 2"></path></svg>
+      История
+    </a>
+    <a href="settings.html" class="rail-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
+      Настройки
+    </a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <header style="display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; padding: var(--sp-3) 28px; border-bottom: 1px solid var(--line)">
+      <div style="display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap">
+        <h1 style="margin: 0; font-size: var(--fs-xl); font-weight: 600">Цена и тарифы</h1>
+        <span class="chip" style="border-color: var(--leaf); color: var(--leaf)">● идёт</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap">
+        <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">круг 3 из 4 · 9 ходов · 31.2k tok</span>
+        <a href="result.html" class="btn">К итогу</a>
+        <a href="result.html" class="btn" style="border-color: var(--danger); color: var(--danger)">■ Остановить</a>
+      </div>
+    </header>
+
+    <div style="flex: 1 1 auto; min-height: 0; display: flex; flex-wrap: wrap">
+
+      <aside aria-label="Участники" style="flex: 1 1 250px; max-width: 290px; box-sizing: border-box; border-right: 1px solid var(--line); display: flex; flex-direction: column">
+        <div style="padding: 14px 18px 10px"><h2 class="col-title">Участники</h2></div>
+        <div style="flex: 1 1 auto; padding: 0 var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2)">
+          <div style="display: flex; gap: 10px; padding: 10px var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+            <span class="av">1</span>
+            <div style="min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1)">
+              <span style="font-weight: 500">Claude Code <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">sonnet</span></span>
+              <span style="font-size: var(--fs-ui); color: var(--text-dim)">Защитник высокой цены</span>
+              <span><span class="chip" style="border-color: var(--rain); color: var(--rain)">✓ согласен</span></span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; padding: 10px var(--sp-3); border: 1px solid var(--leaf); border-radius: var(--r-lg); background: var(--bg-2)">
+            <span class="av" style="border-color: var(--leaf); color: var(--leaf)">2</span>
+            <div style="min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1)">
+              <span style="font-weight: 500">Codex <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">gpt-5.6-luna</span></span>
+              <span style="font-size: var(--fs-ui); color: var(--text-dim)">Сторонник низкого входа</span>
+              <span><span class="chip" style="border-color: var(--leaf); color: var(--leaf)">⠹ думает</span></span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; padding: 10px var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+            <span class="av">3</span>
+            <div style="min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1)">
+              <span style="font-weight: 500">OpenRouter <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">llama-3.3-70b</span></span>
+              <span style="font-size: var(--fs-ui); color: var(--text-dim)">Финансист</span>
+              <span><span class="chip" style="border-color: var(--danger); color: var(--danger)">× возражает</span></span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; padding: 10px var(--sp-3); border: 1px dashed var(--line-strong); border-radius: var(--r-lg)">
+            <span class="av" style="border-style: dashed; color: var(--text-faint)">4</span>
+            <div style="min-width: 0; display: flex; flex-direction: column; gap: var(--sp-1)">
+              <span style="font-weight: 500; color: var(--text-faint); text-decoration: line-through">Локальный <span class="mono" style="font-size: var(--fs-sm)">qwen3</span></span>
+              <span><span class="chip" style="border-color: var(--warn); color: var(--warn)">○ выбыл</span></span>
+              <span style="font-size: var(--fs-ui); color: var(--text-faint)">таймаут ответа, повтор не помог</span>
+            </div>
+          </div>
+        </div>
+        <div style="padding: 14px 18px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--sp-2); margin-top: 14px">
+          <div style="display: flex; justify-content: space-between; font-size: var(--fs-ui)"><span style="color: var(--text-dim)">согласны</span><span class="mono" style="color: var(--rain)">2 из 3</span></div>
+          <div style="height: 4px; border-radius: 2px; background: var(--line)" role="img" aria-label="Согласны 2 из 3"><div style="width: 66%; height: 4px; border-radius: 2px; background: var(--rain)"></div></div>
+          <div style="font-size: var(--fs-ui); color: var(--text-dim)">открытых вопросов: <span class="mono">1</span></div>
+          <div style="font-size: var(--fs-ui); color: var(--text-dim)">материалы: <span class="mono">3</span></div>
+        </div>
+      </aside>
+
+      <section aria-label="Лента ходов" style="flex: 999 1 420px; min-width: 0; display: flex; flex-direction: column">
+        <div style="padding: 14px var(--sp-5) 10px"><h2 class="col-title">Лента ходов</h2></div>
+        <div style="flex: 1 1 auto; padding: 0 var(--sp-5) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3)">
+          <div class="mono" style="display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-sm); color: var(--text-faint)"><span style="flex: 1; height: 1px; background: var(--line)"></span>круг 3<span style="flex: 1; height: 1px; background: var(--line)"></span></div>
+
+          <article style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+            <div style="display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap">
+              <span class="av">1</span>
+              <span style="font-weight: 500">Claude Code</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">ход 7</span>
+              <span class="chip">✎ правит</span>
+              <span class="chip mono">версия 3</span>
+            </div>
+            <p style="margin: 0">Принимаю два тарифа. «Отдел» за 2 490 ₽ закрывает себестоимость с запасом, а «Старт» за 990 ₽ снимает порог входа, о котором говорил Codex.</p>
+            <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">прочитал: proj/docs/pricing.md</span>
+          </article>
+
+          <article style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+            <div style="display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap">
+              <span class="av">3</span>
+              <span style="font-weight: 500">OpenRouter</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">ход 8</span>
+              <span class="chip" style="border-color: var(--danger); color: var(--danger)">× возражает</span>
+            </div>
+            <p style="margin: 0">Маржа на «Отделе» держится только до 40 часов записи. Без лимита часов тариф уходит в минус уже на крупных отделах.</p>
+            <div style="display: flex; flex-direction: column; gap: var(--sp-1); padding: 10px var(--sp-3); border-left: 2px solid var(--line-strong); background: var(--bg-inset)">
+              <div style="display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; font-size: var(--fs-ui); color: var(--text-dim)">
+                <span class="mono">вопрос q1 →</span><span class="av" style="width: 22px; height: 22px; font-size: var(--fs-xs)">2</span> Codex
+                <span class="chip" style="border-color: var(--rain); color: var(--rain)">✓ отвечен</span>
+              </div>
+              <span>Какова себестоимость на клиента при 40 часах записей в месяц?</span>
+            </div>
+          </article>
+
+          <article style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) 14px; border: 1px solid var(--leaf); border-radius: var(--r-lg)">
+            <div style="display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap">
+              <span class="av" style="border-color: var(--leaf); color: var(--leaf)">2</span>
+              <span style="font-weight: 500">Codex</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">ход 9</span>
+              <span class="chip" style="border-color: var(--leaf); color: var(--leaf)">⠹ думает · 14 с</span>
+            </div>
+            <p style="margin: 0; color: var(--text-dim)">Добавляю лимит 60 часов на «Отдел» и цену часа сверх лимита<span style="color: var(--leaf)">▍</span></p>
+          </article>
+        </div>
+
+        <form style="padding: 14px var(--sp-5) 18px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--sp-2)">
+          <label for="owner-reply" style="font-size: var(--fs-ui); font-weight: 500">Реплика владельца</label>
+          <textarea id="owner-reply" rows="2" placeholder="Уточнение, поправка курса или ответ участникам" style="box-sizing: border-box; width: 100%; resize: none; padding: var(--sp-2) 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--bg-2); color: var(--text); font: inherit; font-size: var(--fs-md)"></textarea>
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); flex-wrap: wrap">
+            <span style="font-size: var(--fs-ui); color: var(--text-faint)">После реплики все участники подтверждают согласие заново</span>
+            <button type="button" class="btn btn--primary">Отправить</button>
+          </div>
+        </form>
+      </section>
+
+      <aside aria-label="Решение" style="flex: 1 1 300px; max-width: 360px; box-sizing: border-box; border-left: 1px solid var(--line); display: flex; flex-direction: column">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: var(--sp-2) 18px 0">
+          <h2 class="col-title">Решение</h2>
+          <div role="tablist" aria-label="Версии" style="display: flex">
+            <button type="button" role="tab" aria-selected="false" class="mono" style="min-height: 36px; padding: 0 10px; border: none; border-bottom: 2px solid transparent; background: none; color: var(--text-faint); font-size: var(--fs-ui); cursor: pointer">v1</button>
+            <button type="button" role="tab" aria-selected="false" class="mono" style="min-height: 36px; padding: 0 10px; border: none; border-bottom: 2px solid transparent; background: none; color: var(--text-faint); font-size: var(--fs-ui); cursor: pointer">v2</button>
+            <button type="button" role="tab" aria-selected="true" class="mono" style="min-height: 36px; padding: 0 10px; border: none; border-bottom: 2px solid var(--text); background: none; color: var(--text); font-size: var(--fs-ui); cursor: pointer">v3</button>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: var(--sp-2) 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: var(--fs-ui)">
+          <label style="display: flex; align-items: center; gap: 6px; color: var(--text-dim)"><input type="checkbox" style="accent-color: var(--leaf)"> Показать изменения</label>
+          <button type="button" class="btn" style="min-height: 30px; padding: 0 10px; font-size: var(--fs-sm); white-space: nowrap">⧉ Скопировать</button>
+        </div>
+        <div style="padding: 14px 18px; display: flex; flex-direction: column; gap: 10px">
+          <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">версия 3 · текущая</span>
+          <div style="display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-ui)"><span style="color: var(--text-faint); width: 82px">автор</span><span class="av" style="width: 22px; height: 22px; font-size: var(--fs-xs)">2</span> Codex</div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-ui)"><span style="color: var(--text-faint); width: 82px">согласны</span><span class="av" style="width: 22px; height: 22px; font-size: var(--fs-xs); border-color: var(--rain); color: var(--rain)">2</span><span class="av" style="width: 22px; height: 22px; font-size: var(--fs-xs); border-color: var(--rain); color: var(--rain)">1</span><span style="color: var(--rain)">✓</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-ui)"><span style="color: var(--text-faint); width: 82px">возражает</span><span class="av" style="width: 22px; height: 22px; font-size: var(--fs-xs); border-color: var(--danger); color: var(--danger)">3</span><span style="color: var(--danger)">×</span></div>
+          <ol style="margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: var(--sp-2)">
+            <li>Платит отдел, помесячно: «Старт» — 990 ₽ до 15 часов записи, «Отдел» — 2 490 ₽ до 60 часов. Час сверх лимита — 60 ₽.</li>
+            <li>«Старт» — расшифровка и поиск. «Отдел» — плюс сводка встречи и выгрузка в CRM.</li>
+            <li>Себестоимость часа — 46 ₽ с поддержкой. «Отдел» при 40 часах: затраты 1 840 ₽, маржа 650 ₽ (26 %).</li>
+            <li>Пилот для десяти отделов: первый месяц за 1 ₽ при предоплате второго.</li>
+          </ol>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "id": "incident-postmortem",
+  "title": "Incident Postmortem",
+  "category": "Problem analysis",
+  "description": "Use after an outage to understand what happened and how to prevent a recurrence. The result is a timeline, the cause, and actions with owners and deadlines.",
+  "exampleTopic": "Yesterday from 14:10 to 15:40 the order checkout service returned errors, affecting about 600 orders. The cause was judged to be a full database disk after the nightly report export. Disk monitoring existed, but the alert went to a channel nobody reads. The rollback didn't help right away: the wrong component was fixed first.",
+  "framing": [
+    "This is an incident postmortem: the goal is to reconstruct what happened, find the causes and choose actions that actually reduce the risk of recurrence.",
+    "",
+    "How to run the discussion:",
+    "- First reconstruct the timeline from facts with timestamps: what happened, when it was noticed, what was done. Don't draw conclusions before the timeline.",
+    "- Separate the symptom from the cause and keep asking \"why\" until the answer is something that can be changed.",
+    "- Look not for a single cause but for a chain: what triggered the failure, what prevented noticing it sooner, what slowed the fix.",
+    "- Don't look for someone to blame. If a person made a mistake, ask what in the process allowed that mistake to reach production.",
+    "- Judge actions by whether they will affect the cause. A rule like \"be more careful\" doesn't count as an action.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and note what needs to be confirmed in the logs.",
+    "",
+    "Decision format:",
+    "1. Timeline: events with timestamps, from the start of the failure to recovery.",
+    "2. Cause: immediate and underlying, with evidence.",
+    "3. Why it wasn't caught sooner: what prevented noticing and fixing it quickly.",
+    "4. Scale of impact: who was affected and how much.",
+    "5. Actions: what to do, who is responsible, by when, and how to verify the result."
+  ],
+  "roles": [
+    "Fact investigator: You stand for drawing conclusions only from confirmed data. You push on event times and logs, and you don't accept attractive explanations until it is checked that they fit all the symptoms.",
+    "Defender of process and people: You stand for the cause of the failure lying in the process and the tools, not in a person. You push on what allowed the mistake to reach production, and you don't accept actions like \"be more careful\" or punishment.",
+    "Pragmatist on a limited budget: You stand for a small number of actions that can be done within a month. You push on the ratio of cost to the likelihood of recurrence, and you don't accept long lists from which nothing will get done."
+  ],
+  "limits": { "maxRounds": 5 }
+}

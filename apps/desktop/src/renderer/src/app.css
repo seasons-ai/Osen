@@ -1,0 +1,19 @@
+#root { height: 100%; }
+:where(button.rail__item) { background: none; border: 0; font-family: inherit; cursor: pointer; }
+.alerts { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4) 0; }
+.alert__close { background: none; border: 0; color: var(--text-dim); cursor: pointer; padding: 0; flex: none; }
+.alert__close:hover { color: var(--text); }
+/* a long topic shrinks with an ellipsis, the top bar actions neither shrink nor wrap */
+.topbar > :first-child { min-width: 0; }
+.topbar .badge { flex: none; }
+.topbar__actions { flex: none; white-space: nowrap; }
+/* narrow window (minimum 900): the result status stays in the block under the bar; discussion columns shrink via flex (session.css) */
+@media (max-width: 1000px) {
+  .topbar__title.row .badge { display: none; }
+}
+
+.rail__version { font-size: var(--fs-xs); font-family: var(--font-mono); color: var(--text-faint); text-align: center; padding: var(--sp-2); }
+
+/* Session setup is hidden in "Settings" but mounted: the wrapper creates no box, .main stays a column */
+.main__setup{display:contents}
+.main__setup[hidden]{display:none}

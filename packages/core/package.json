@@ -1,0 +1,24 @@
+{
+  "name": "@model-council/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./protocol": "./src/protocol/index.ts",
+    "./i18n": "./src/i18n/index.ts",
+    "./templates": "./src/templates/schema.ts"
+  },
+  "bin": {
+    "council": "./src/council.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "ignore": "7.0.12",
+    "parse5": "8.0.1",
+    "pdfjs-dist": "6.4.299",
+    "zod": "^4.6.5"
+  }
+}

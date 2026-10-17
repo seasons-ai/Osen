@@ -1,0 +1,31 @@
+{
+  "id": "api-design",
+  "title": "API and Contract Design",
+  "category": "Architecture and code",
+  "description": "Use when you need to design an interface between systems or teams before anyone starts depending on it. The result is a contract description with rules for errors and changes.",
+  "exampleTopic": "We need to design a report delivery API for three internal teams and one external partner. A report takes from 2 seconds to 5 minutes to build and can be up to 80 megabytes. Consumers are written in different languages, and the partner updates its client once a quarter. There is no versioning yet, and the first release is in six weeks.",
+  "framing": [
+    "This is interface design between systems: the goal is to agree on a contract that survives the first consumers and future changes.",
+    "",
+    "How to run the discussion:",
+    "- Start with the consumers: who calls it, how often, what their clients look like and how quickly they update. A contract for a partner who updates once a quarter is shaped differently from one for in-house teams.",
+    "- Check every request against its failure paths: what comes back on a timeout, a retry, partial success, wrong permissions, a large payload.",
+    "- For every field and operation, ask whether it can be changed later without breaking clients. Decide now whatever cannot.",
+    "- Separate what the contract promises from what the implementation happens to do today. Don't freeze the second as a promise.",
+    "- Check a complete usage example, from the first call to error handling, rather than individual methods.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and call them assumptions.",
+    "",
+    "Decision format:",
+    "1. Consumers and scenarios: who calls the interface and for what.",
+    "2. Operations and data: what can be requested, which fields, in which formats.",
+    "3. Errors and retries: which failures are possible, what the client receives, what is safe to retry.",
+    "4. Change rules: how to add fields, how to announce deprecation, how to release versions.",
+    "5. What is deliberately not promised."
+  ],
+  "roles": [
+    "Consumer advocate: You stand for simplicity and predictability for whoever calls the interface. You push for clear errors and a minimum number of calls, and you don't accept internal logic pushed outward for the server's convenience.",
+    "Implementation owner: You stand for an interface that can honestly be maintained and evolved internally. You push on load and the cost of promises, and you don't accept a capability that can never be taken back.",
+    "Compatibility guardian: You stand for a contract that never breaks existing clients. You push on versioning and deprecation rules, and you don't accept \"we can change the fields later\"."
+  ],
+  "limits": { "maxRounds": 4 }
+}

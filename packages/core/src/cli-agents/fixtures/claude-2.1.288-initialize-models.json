@@ -1,0 +1,26 @@
+{
+  "type": "control_response",
+  "response": {
+    "subtype": "success",
+    "request_id": "fixture",
+    "response": {
+      "models": [
+        {
+          "value": "default"
+        },
+        {
+          "value": "opus"
+        },
+        {
+          "value": "claude-fable-5-1[1m]"
+        },
+        {
+          "value": "sonnet"
+        },
+        {
+          "value": "haiku"
+        }
+      ]
+    }
+  }
+}

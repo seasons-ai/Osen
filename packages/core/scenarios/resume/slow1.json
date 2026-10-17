@@ -1,0 +1,13 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю имя Тигра.",
+        "solution": "Назвать кота Тигра.",
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Osen — История</title>
+  <link rel="stylesheet" href="../mockup-osen/brand/tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="../mockup-osen/brand/components-osen.css">
+  <link rel="stylesheet" href="screens/history.css">
+</head>
+<body data-screen="history" data-nav="history" data-variants="list:Список сессий;search-filter:Поиск и фильтр;pinned:Закреплённые;no-results:Ничего не найдено;usage-range:Расход: диапазон с пропусками;usage-month:Расход: месяц;usage-empty:Расход: за период пусто;usage-range-error:Расход: начало позже конца;usage-loading:Расход: считается;usage-error:Расход: сводка не получена;usage-estimate:Расход: оценка по тарифу;usage-tariffs-broken:Расход: тарифы не разобраны;empty:Пустая история;newer-version:Нужна новая версия;corrupted:Журнал повреждён">
+  <div class="app">
+    <nav class="rail" data-rail></nav>
+    <div class="main">
+      <header class="topbar">
+        <h1 class="topbar__title">История</h1>
+        <div class="topbar__actions">
+          <a class="btn btn--primary btn--sm" href="index.html"><svg class="icon icon--sm"><use href="#i-plus"></use></svg>Новое обсуждение</a>
+        </div>
+      </header>
+      <div class="mock-bar" data-mock-bar></div>
+      <main class="content">
+        <div data-variant="list">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="true" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="false" class="pill">Диапазон</button></div><span class="mono usage__scope">09.10.2026 · вся история за период · время московское</span></div>
+          <div class="usage__scroll"><table class="usage__table"><thead><tr><th scope="col">Провайдер</th><th scope="col">Входные токены</th><th scope="col">Выходные токены</th><th scope="col">Сообщено провайдером, USD</th><th scope="col">Записей</th></tr></thead><tbody>
+          <tr><th scope="row" class="mono">claude</th><td class="mono">12 400</td><td class="mono">3 100</td><td class="mono">0,421 $</td><td class="mono">7</td></tr>
+          <tr><th scope="row" class="mono">codex</th><td class="mono">8 250</td><td class="mono">2 040</td><td class="mono">0,2985 $</td><td class="mono">5</td></tr>
+          <tr class="usage__row--total"><th scope="row">Всего</th><td class="mono">20 650</td><td class="mono">5 140</td><td class="mono">0,7195 $</td><td class="mono">12</td></tr></tbody></table></div>
+          <p class="muted usage__tariffs-off">Оценка по тарифу неизвестна: тарифы не заданы (файл tariffs.json в папке данных).</p>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary"><span class="mono">8</span> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span></p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="true" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="list">
+          <div class="list__row history-row history-row--live">
+            <div><span class="badge" data-tone="accent"><span class="dots"><i></i></span>идёт</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="session.html">Запускаем сервис расшифровки совещаний для небольших компаний. Расшифровка часа записи обходится нам примерно в 40 рублей</a><div class="history-topic__tpl muted">Цена и тарифы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar avatar--off">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">сегодня, 11:42</div><div class="history-size mono">круг 3 из 4 · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted">Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>согласия нет</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#no-consensus">Какую из трёх CRM взять для отдела из восьми человек</a><div class="history-topic__tpl muted">Выбор из нескольких вариантов</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 18:03</div><div class="history-size mono">4 круга · 12 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="muted"><svg class="icon icon--sm"><use href="#i-stop"></use></svg>остановлена</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#stopped">Письмо клиенту о переносе срока сдачи на три недели</a><div class="history-topic__tpl muted">Трудное письмо или разговор</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 14:27</div><div class="history-size mono">2 круга · 4 хода</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-coins"></use></svg> остановлена · потолок токенов</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#cap-stopped">Стоит ли переносить отчётность в новую систему до конца квартала</a><div class="history-topic__tpl muted">Продукт и стратегия</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 10:05</div><div class="history-size mono">3 круга · 8 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="muted"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>прервана</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#stopped">Почему ночной экспорт отчётов падает раз в неделю</a><div class="history-topic__tpl muted">Поиск причины проблемы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-terminal"></use></svg>терминал</span></div>
+            <div><div class="history-when mono">6 окт., 22:50</div><div class="history-size mono">1 круг · 3 хода</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="danger"><svg class="icon icon--sm"><use href="#i-x"></use></svg>сбой</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#stopped">Как назвать рыжего кота?</a><div class="history-topic__tpl muted">Своя тема</div></div>
+            <div class="history-people"><span class="avatar avatar--off">1</span><span class="avatar avatar--off">2</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-terminal"></use></svg>терминал</span></div>
+            <div><div class="history-when mono">6 окт., 16:11</div><div class="history-size mono">1 круг · 0 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Делать свой планировщик задач или взять готовый сервис</a><div class="history-topic__tpl muted">Сделать самим или взять готовое</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">5 окт., 12:30</div><div class="history-size mono">2 круга · 8 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="search-filter">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="true" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="false" class="pill">Диапазон</button></div><span class="mono usage__scope">09.10.2026 · вся история за период · время московское</span></div>
+          <div class="usage__scroll"><table class="usage__table"><thead><tr><th scope="col">Провайдер</th><th scope="col">Входные токены</th><th scope="col">Выходные токены</th><th scope="col">Сообщено провайдером, USD</th><th scope="col">Записей</th></tr></thead><tbody>
+          <tr><th scope="row" class="mono">claude</th><td class="mono">12 400</td><td class="mono">3 100</td><td class="mono">0,421 $</td><td class="mono">7</td></tr>
+          <tr><th scope="row" class="mono">codex</th><td class="mono">8 250</td><td class="mono">2 040</td><td class="mono">0,2985 $</td><td class="mono">5</td></tr>
+          <tr class="usage__row--total"><th scope="row">Всего</th><td class="mono">20 650</td><td class="mono">5 140</td><td class="mono">0,7195 $</td><td class="mono">12</td></tr></tbody></table></div>
+          <p class="muted usage__tariffs-off">Оценка по тарифу неизвестна: тарифы не заданы (файл tariffs.json в папке данных).</p>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary">найдена <span class="mono">1</span> из <span class="mono">7</span> сессий</p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону" value="импорт"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="false" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="true" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="list">
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted">Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="pinned">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="true" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="false" class="pill">Диапазон</button></div><span class="mono usage__scope">09.10.2026 · вся история за период · время московское</span></div>
+          <div class="usage__scroll"><table class="usage__table"><thead><tr><th scope="col">Провайдер</th><th scope="col">Входные токены</th><th scope="col">Выходные токены</th><th scope="col">Сообщено провайдером, USD</th><th scope="col">Записей</th></tr></thead><tbody>
+          <tr><th scope="row" class="mono">claude</th><td class="mono">12 400</td><td class="mono">3 100</td><td class="mono">0,421 $</td><td class="mono">7</td></tr>
+          <tr><th scope="row" class="mono">codex</th><td class="mono">8 250</td><td class="mono">2 040</td><td class="mono">0,2985 $</td><td class="mono">5</td></tr>
+          <tr class="usage__row--total"><th scope="row">Всего</th><td class="mono">20 650</td><td class="mono">5 140</td><td class="mono">0,7195 $</td><td class="mono">12</td></tr></tbody></table></div>
+          <p class="muted usage__tariffs-off">Оценка по тарифу неизвестна: тарифы не заданы (файл tariffs.json в папке данных).</p>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary"><span class="mono">7</span> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span></p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="true" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <h2 class="history-group">Закреплённые</h2>
+          <div class="list">
+          <div class="list__row history-row history-row--pinned">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted"><span class="history-pinned"><svg class="icon icon--sm"><use href="#i-pin"></use></svg>Закреплена</span>Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="true" aria-label="Открепить" title="Открепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row history-row--pinned">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Делать свой планировщик задач или взять готовый сервис</a><div class="history-topic__tpl muted"><span class="history-pinned"><svg class="icon icon--sm"><use href="#i-pin"></use></svg>Закреплена</span>Сделать самим или взять готовое</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">5 окт., 12:30</div><div class="history-size mono">2 круга · 8 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="true" aria-label="Открепить" title="Открепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+          <h2 class="history-group">Остальные</h2>
+          <div class="list">
+          <div class="list__row history-row history-row--live">
+            <div><span class="badge" data-tone="accent"><span class="dots"><i></i></span>идёт</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="session.html">Запускаем сервис расшифровки совещаний для небольших компаний. Расшифровка часа записи обходится нам примерно в 40 рублей</a><div class="history-topic__tpl muted">Цена и тарифы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar avatar--off">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">сегодня, 11:42</div><div class="history-size mono">круг 3 из 4 · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>согласия нет</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#no-consensus">Какую из трёх CRM взять для отдела из восьми человек</a><div class="history-topic__tpl muted">Выбор из нескольких вариантов</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 18:03</div><div class="history-size mono">4 круга · 12 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="muted"><svg class="icon icon--sm"><use href="#i-stop"></use></svg>остановлена</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#stopped">Письмо клиенту о переносе срока сдачи на три недели</a><div class="history-topic__tpl muted">Трудное письмо или разговор</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 14:27</div><div class="history-size mono">2 круга · 4 хода</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="muted"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>прервана</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#stopped">Почему ночной экспорт отчётов падает раз в неделю</a><div class="history-topic__tpl muted">Поиск причины проблемы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-terminal"></use></svg>терминал</span></div>
+            <div><div class="history-when mono">6 окт., 22:50</div><div class="history-size mono">1 круг · 3 хода</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="danger"><svg class="icon icon--sm"><use href="#i-x"></use></svg>сбой</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#stopped">Как назвать рыжего кота?</a><div class="history-topic__tpl muted">Своя тема</div></div>
+            <div class="history-people"><span class="avatar avatar--off">1</span><span class="avatar avatar--off">2</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-terminal"></use></svg>терминал</span></div>
+            <div><div class="history-when mono">6 окт., 16:11</div><div class="history-size mono">1 круг · 0 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="newer-version corrupted">
+          <p class="muted history-summary"><span class="mono">1</span> сессия</p>
+          <div class="list">
+          <div class="list__row history-row" data-variant="newer-version">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>нужна новая версия</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#newer-version">Почему ночной экспорт отчётов падает раз в неделю</a><div class="history-topic__tpl muted">Поиск причины проблемы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-terminal"></use></svg>терминал</span></div>
+            <div><div class="history-when mono">6 окт., 22:50</div><div class="history-size mono">1 круг · 3 хода</div><div class="history-size mono">прочитано до события №42</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row" data-variant="corrupted">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>журнал повреждён</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#corrupted">Почему ночной экспорт отчётов падает раз в неделю</a><div class="history-topic__tpl muted">Поиск причины проблемы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-terminal"></use></svg>терминал</span></div>
+            <div><div class="history-when mono">6 окт., 22:50</div><div class="history-size mono">1 круг · 3 хода</div><div class="history-size mono">прочитано до события №17</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="no-results">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="true" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="false" class="pill">Диапазон</button></div><span class="mono usage__scope">09.10.2026 · вся история за период · время московское</span></div>
+          <div class="usage__scroll"><table class="usage__table"><thead><tr><th scope="col">Провайдер</th><th scope="col">Входные токены</th><th scope="col">Выходные токены</th><th scope="col">Сообщено провайдером, USD</th><th scope="col">Записей</th></tr></thead><tbody>
+          <tr><th scope="row" class="mono">claude</th><td class="mono">12 400</td><td class="mono">3 100</td><td class="mono">0,421 $</td><td class="mono">7</td></tr>
+          <tr><th scope="row" class="mono">codex</th><td class="mono">8 250</td><td class="mono">2 040</td><td class="mono">0,2985 $</td><td class="mono">5</td></tr>
+          <tr class="usage__row--total"><th scope="row">Всего</th><td class="mono">20 650</td><td class="mono">5 140</td><td class="mono">0,7195 $</td><td class="mono">12</td></tr></tbody></table></div>
+          <p class="muted usage__tariffs-off">Оценка по тарифу неизвестна: тарифы не заданы (файл tariffs.json в папке данных).</p>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary">найдено <span class="mono">0</span> из <span class="mono">7</span> сессий</p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону" value="импорт"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="false" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="true" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="empty">
+            <svg class="icon icon--xl"><use href="#i-search"></use></svg>
+            <h2>Ничего не найдено</h2>
+            <p>По запросу «импорт» среди сессий со статусом «нет согласия» ничего нет. Измените запрос или сбросьте отбор.</p>
+            <button type="button" class="btn">Сбросить</button>
+          </div>
+        </div>
+        <div data-variant="usage-range">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="false" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="true" class="pill">Диапазон</button></div><div class="usage__range"><input type="date" class="input usage__date" aria-label="Начало периода" value="2026-10-08"><span class="muted">—</span><input type="date" class="input usage__date" aria-label="Конец периода" value="2026-10-09"></div><span class="mono usage__scope">08.10.2026–09.10.2026 · вся история за период · время московское</span></div>
+          <div class="usage__scroll"><table class="usage__table"><thead><tr><th scope="col">Провайдер</th><th scope="col">Входные токены</th><th scope="col">Выходные токены</th><th scope="col">Сообщено провайдером, USD</th><th scope="col">Записей</th></tr></thead><tbody>
+          <tr><th scope="row" class="mono">claude</th><td class="mono">12 400</td><td class="mono">3 100</td><td class="mono">0,421 $</td><td class="mono">7</td></tr>
+          <tr><th scope="row" class="mono">local-llm</th><td class="mono">5 600 <span class="usage__partial">неполно: нет у 1 из 4</span></td><td class="mono usage__unknown">неизвестно</td><td class="mono usage__unknown">неизвестно</td><td class="mono">4</td></tr>
+          <tr><th scope="row" class="mono">scripted</th><td class="mono">1 200</td><td class="mono">640</td><td class="mono">0 $</td><td class="mono">3</td></tr>
+          <tr><th scope="row" class="mono">tiny-llm</th><td class="mono">300</td><td class="mono">100</td><td class="mono">&lt; 0,0001 $</td><td class="mono">2</td></tr>
+          <tr class="usage__row--mixed"><th scope="row">провайдер не определён<div class="muted usage__why">в одной записи вызовы разных провайдеров или участник вне состава сессии</div></th><td class="mono">28</td><td class="mono">28</td><td class="mono usage__unknown">неизвестно</td><td class="mono">1</td></tr>
+          <tr class="usage__row--total"><th scope="row">Всего</th><td class="mono">19 528</td><td class="mono">3 868</td><td class="mono">0,421 $</td><td class="mono">17</td></tr></tbody></table></div>
+          <p class="muted usage__tariffs-off">Оценка по тарифу неизвестна: тарифы не заданы (файл tariffs.json в папке данных).</p>
+          <ul class="usage__warnings"><li><svg class="icon icon--sm"><use href="#i-alert"></use></svg>2 вызова без исхода: их расход не записан</li><li><svg class="icon icon--sm"><use href="#i-alert"></use></svg>1 журнал не прочитан и не учтён (вся история)</li><li><svg class="icon icon--sm"><use href="#i-alert"></use></svg>1 журнал прочитан не до конца: учтено читаемое начало (вся история)</li><li><svg class="icon icon--sm"><use href="#i-alert"></use></svg>Распределение по провайдерам неполное: 1 запись без определённого провайдера</li></ul>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary"><span class="mono">8</span> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span></p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="true" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="list">
+          <div class="list__row history-row history-row--live">
+            <div><span class="badge" data-tone="accent"><span class="dots"><i></i></span>идёт</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="session.html">Запускаем сервис расшифровки совещаний для небольших компаний. Расшифровка часа записи обходится нам примерно в 40 рублей</a><div class="history-topic__tpl muted">Цена и тарифы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar avatar--off">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">сегодня, 11:42</div><div class="history-size mono">круг 3 из 4 · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted">Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>согласия нет</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#no-consensus">Какую из трёх CRM взять для отдела из восьми человек</a><div class="history-topic__tpl muted">Выбор из нескольких вариантов</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 18:03</div><div class="history-size mono">4 круга · 12 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="usage-month">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="false" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="true" class="pill">Месяц</button><button type="button" role="radio" aria-checked="false" class="pill">Диапазон</button></div><span class="mono usage__scope">октябрь 2026 · вся история за период · время московское</span></div>
+          <div class="usage__scroll"><table class="usage__table"><thead><tr><th scope="col">Провайдер</th><th scope="col">Входные токены</th><th scope="col">Выходные токены</th><th scope="col">Сообщено провайдером, USD</th><th scope="col">Записей</th></tr></thead><tbody>
+          <tr><th scope="row" class="mono">claude</th><td class="mono">182 400</td><td class="mono">41 300</td><td class="mono">6,125 $</td><td class="mono">96</td></tr>
+          <tr><th scope="row" class="mono">codex</th><td class="mono">140 900</td><td class="mono">33 800</td><td class="mono">4,317 $</td><td class="mono">71</td></tr>
+          <tr class="usage__row--total"><th scope="row">Всего</th><td class="mono">323 300</td><td class="mono">75 100</td><td class="mono">10,442 $</td><td class="mono">167</td></tr></tbody></table></div>
+          <p class="muted usage__tariffs-off">Оценка по тарифу неизвестна: тарифы не заданы (файл tariffs.json в папке данных).</p>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary"><span class="mono">8</span> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span></p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="true" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="list">
+          <div class="list__row history-row history-row--live">
+            <div><span class="badge" data-tone="accent"><span class="dots"><i></i></span>идёт</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="session.html">Запускаем сервис расшифровки совещаний для небольших компаний. Расшифровка часа записи обходится нам примерно в 40 рублей</a><div class="history-topic__tpl muted">Цена и тарифы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar avatar--off">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">сегодня, 11:42</div><div class="history-size mono">круг 3 из 4 · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted">Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>согласия нет</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#no-consensus">Какую из трёх CRM взять для отдела из восьми человек</a><div class="history-topic__tpl muted">Выбор из нескольких вариантов</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 18:03</div><div class="history-size mono">4 круга · 12 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="usage-empty">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="true" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="false" class="pill">Диапазон</button></div><span class="mono usage__scope">09.10.2026 · вся история за период · время московское</span></div>
+          <p class="muted usage__empty">За период расход не записан.</p>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary"><span class="mono">8</span> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span></p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="true" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="list">
+          <div class="list__row history-row history-row--live">
+            <div><span class="badge" data-tone="accent"><span class="dots"><i></i></span>идёт</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="session.html">Запускаем сервис расшифровки совещаний для небольших компаний. Расшифровка часа записи обходится нам примерно в 40 рублей</a><div class="history-topic__tpl muted">Цена и тарифы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar avatar--off">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">сегодня, 11:42</div><div class="history-size mono">круг 3 из 4 · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted">Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>согласия нет</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#no-consensus">Какую из трёх CRM взять для отдела из восьми человек</a><div class="history-topic__tpl muted">Выбор из нескольких вариантов</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 18:03</div><div class="history-size mono">4 круга · 12 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="usage-range-error">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="false" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="true" class="pill">Диапазон</button></div><div class="usage__range"><input type="date" class="input usage__date" aria-label="Начало периода" value="2026-10-09"><span class="muted">—</span><input type="date" class="input usage__date" aria-label="Конец периода" value="2026-10-08"></div></div>
+          <p class="usage__error" role="alert">Начало периода позже конца.</p>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary"><span class="mono">8</span> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span></p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="true" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="list">
+          <div class="list__row history-row history-row--live">
+            <div><span class="badge" data-tone="accent"><span class="dots"><i></i></span>идёт</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="session.html">Запускаем сервис расшифровки совещаний для небольших компаний. Расшифровка часа записи обходится нам примерно в 40 рублей</a><div class="history-topic__tpl muted">Цена и тарифы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar avatar--off">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">сегодня, 11:42</div><div class="history-size mono">круг 3 из 4 · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted">Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>согласия нет</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#no-consensus">Какую из трёх CRM взять для отдела из восьми человек</a><div class="history-topic__tpl muted">Выбор из нескольких вариантов</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 18:03</div><div class="history-size mono">4 круга · 12 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="usage-loading">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="true" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="false" class="pill">Диапазон</button></div><span class="mono usage__scope">09.10.2026 · вся история за период · время московское</span></div>
+          <p class="muted usage__empty">Считаю…</p>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary"><span class="mono">8</span> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span></p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="true" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="list">
+          <div class="list__row history-row history-row--live">
+            <div><span class="badge" data-tone="accent"><span class="dots"><i></i></span>идёт</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="session.html">Запускаем сервис расшифровки совещаний для небольших компаний. Расшифровка часа записи обходится нам примерно в 40 рублей</a><div class="history-topic__tpl muted">Цена и тарифы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar avatar--off">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">сегодня, 11:42</div><div class="history-size mono">круг 3 из 4 · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted">Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>согласия нет</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#no-consensus">Какую из трёх CRM взять для отдела из восьми человек</a><div class="history-topic__tpl muted">Выбор из нескольких вариантов</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 18:03</div><div class="history-size mono">4 круга · 12 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="usage-error">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="true" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="false" class="pill">Диапазон</button></div><span class="mono usage__scope">09.10.2026 · вся история за период · время московское</span></div>
+          <p class="usage__error" role="alert">Сводку не удалось получить: не удалось прочитать папку сессий.</p>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary"><span class="mono">8</span> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span></p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="true" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="list">
+          <div class="list__row history-row history-row--live">
+            <div><span class="badge" data-tone="accent"><span class="dots"><i></i></span>идёт</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="session.html">Запускаем сервис расшифровки совещаний для небольших компаний. Расшифровка часа записи обходится нам примерно в 40 рублей</a><div class="history-topic__tpl muted">Цена и тарифы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar avatar--off">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">сегодня, 11:42</div><div class="history-size mono">круг 3 из 4 · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted">Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>согласия нет</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#no-consensus">Какую из трёх CRM взять для отдела из восьми человек</a><div class="history-topic__tpl muted">Выбор из нескольких вариантов</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 18:03</div><div class="history-size mono">4 круга · 12 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="usage-estimate">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="false" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="true" class="pill">Диапазон</button></div><div class="usage__range"><input type="date" class="input usage__date" aria-label="Начало периода" value="2026-10-08"><span class="muted">—</span><input type="date" class="input usage__date" aria-label="Конец периода" value="2026-10-09"></div><span class="mono usage__scope">08.10.2026–09.10.2026 · вся история за период · время московское</span></div>
+          <div class="usage__scroll"><table class="usage__table"><thead><tr><th scope="col">Провайдер</th><th scope="col">Входные токены</th><th scope="col">Выходные токены</th><th scope="col">Сообщено провайдером, USD</th><th scope="col">Оценка по тарифу</th><th scope="col">Записей</th></tr></thead><tbody>
+          <tr><th scope="row" class="mono">claude</th><td class="mono">12 400</td><td class="mono">3 100</td><td class="mono">0,421 $</td><td class="mono usage__unknown">неизвестно</td><td class="mono">7</td></tr>
+          <tr><th scope="row" class="mono">eu-llm</th><td class="mono">200 000</td><td class="mono">100 000</td><td class="mono usage__unknown">неизвестно</td><td class="mono"><span class="usage__money">0,5 EUR</span></td><td class="mono">1</td></tr>
+          <tr><th scope="row" class="mono">local-llm</th><td class="mono">1 005 900</td><td class="mono">500 100 <span class="usage__partial">неполно: нет у 1 из 3</span></td><td class="mono">3 $ <span class="usage__partial">неполно: нет у 2 из 3</span></td><td class="mono"><span class="usage__money">4 USD</span> <span class="usage__partial">оценено 1 из 3</span></td><td class="mono">3</td></tr>
+          <tr class="usage__row--total"><th scope="row">Всего</th><td class="mono">1 218 300</td><td class="mono">603 200 <span class="usage__partial">неполно: нет у 1 из 11</span></td><td class="mono">3,421 $ <span class="usage__partial">неполно: нет у 3 из 11</span></td><td class="mono"><span class="usage__money">0,5 EUR</span> <span class="usage__money">4 USD</span> <span class="usage__partial">оценено 2 из 11</span></td><td class="mono">11</td></tr></tbody></table></div>
+          <div class="usage__tariffs"><h3 class="usage__subtitle">Тарифы оценки</h3><ul class="usage__tariff-list"><li><span class="mono">eu-llm · mistral-small</span> — вход 1,5 EUR, выход 2 EUR за 1 млн токенов · источник: <span class="usage__source">Прайс-лист поставщика, PDF от 01.10.2026</span> · цена на 01.10.2026</li><li><span class="mono">local-llm · qwen3-coder</span> — вход 2 USD, выход 4 USD за 1 млн токенов · источник: <span class="usage__source">https://example.test/pricing</span> · цена на 09.10.2026</li></ul><p class="muted usage__estimate-note">Оценка по тарифу — расчёт по текущим ценам из tariffs.json без учёта кеша и скидок. Это не счёт и не подтверждение прошлых списаний.</p></div>
+          <ul class="usage__warnings"><li><svg class="icon icon--sm"><use href="#i-alert"></use></svg>9 записей без оценки по тарифу: модель «default», фактическая неизвестна — 7; нет тарифа для модели — 1; нет входных или выходных токенов — 1</li><li><svg class="icon icon--sm"><use href="#i-alert"></use></svg>Тарифы: tariffs.json: запись 3 не применяется — inputPerMillion: конечное число не меньше 0</li></ul>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary"><span class="mono">8</span> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span></p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="true" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="list">
+          <div class="list__row history-row history-row--live">
+            <div><span class="badge" data-tone="accent"><span class="dots"><i></i></span>идёт</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="session.html">Запускаем сервис расшифровки совещаний для небольших компаний. Расшифровка часа записи обходится нам примерно в 40 рублей</a><div class="history-topic__tpl muted">Цена и тарифы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar avatar--off">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">сегодня, 11:42</div><div class="history-size mono">круг 3 из 4 · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted">Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>согласия нет</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#no-consensus">Какую из трёх CRM взять для отдела из восьми человек</a><div class="history-topic__tpl muted">Выбор из нескольких вариантов</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 18:03</div><div class="history-size mono">4 круга · 12 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div data-variant="usage-tariffs-broken">
+          <section class="usage" aria-label="Расход за период">
+          <div class="usage__head"><h2 class="usage__title">Расход</h2><div class="history-filter usage__period" role="radiogroup" aria-label="Период"><button type="button" role="radio" aria-checked="true" class="pill">Сегодня</button><button type="button" role="radio" aria-checked="false" class="pill">Месяц</button><button type="button" role="radio" aria-checked="false" class="pill">Диапазон</button></div><span class="mono usage__scope">09.10.2026 · вся история за период · время московское</span></div>
+          <div class="usage__scroll"><table class="usage__table"><thead><tr><th scope="col">Провайдер</th><th scope="col">Входные токены</th><th scope="col">Выходные токены</th><th scope="col">Сообщено провайдером, USD</th><th scope="col">Оценка по тарифу</th><th scope="col">Записей</th></tr></thead><tbody>
+          <tr><th scope="row" class="mono">claude</th><td class="mono">12 400</td><td class="mono">3 100</td><td class="mono">0,421 $</td><td class="mono usage__unknown">неизвестно</td><td class="mono">7</td></tr>
+          <tr><th scope="row" class="mono">codex</th><td class="mono">8 250</td><td class="mono">2 040</td><td class="mono">0,2985 $</td><td class="mono usage__unknown">неизвестно</td><td class="mono">5</td></tr>
+          <tr class="usage__row--total"><th scope="row">Всего</th><td class="mono">20 650</td><td class="mono">5 140</td><td class="mono">0,7195 $</td><td class="mono usage__unknown">неизвестно</td><td class="mono">12</td></tr></tbody></table></div>
+          <div class="usage__tariffs"><p class="muted usage__estimate-note">Оценка по тарифу — расчёт по текущим ценам из tariffs.json без учёта кеша и скидок. Это не счёт и не подтверждение прошлых списаний.</p></div>
+          <ul class="usage__warnings"><li><svg class="icon icon--sm"><use href="#i-alert"></use></svg>Тарифы: tariffs.json: не JSON</li></ul>
+          <p class="muted usage__note">Только расход, который сообщили провайдеры и который записан в журналах. Это не счёт провайдера: прерванные вызовы и попытки без данных могут увеличивать фактический расход. Расход хода или черновика с повторами целиком относится ко времени его завершения.</p>
+          </section>
+          <p class="muted history-summary"><span class="mono">8</span> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span></p>
+          <div class="history-tools">
+            <div class="history-search-wrap"><input type="search" class="input history-search" placeholder="Поиск по теме и шаблону" aria-label="Поиск по теме и шаблону"></div>
+            <div class="history-filter" role="radiogroup" aria-label="Статус"><button type="button" role="radio" aria-checked="true" class="pill">все</button><button type="button" role="radio" aria-checked="false" class="pill">идёт</button><button type="button" role="radio" aria-checked="false" class="pill">согласие</button><button type="button" role="radio" aria-checked="false" class="pill">нет согласия</button><button type="button" role="radio" aria-checked="false" class="pill">остановлена</button><button type="button" role="radio" aria-checked="false" class="pill">сбой</button><button type="button" role="radio" aria-checked="false" class="pill">прервана</button></div>
+          </div>
+          <div class="list">
+          <div class="list__row history-row history-row--live">
+            <div><span class="badge" data-tone="accent"><span class="dots"><i></i></span>идёт</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="session.html">Запускаем сервис расшифровки совещаний для небольших компаний. Расшифровка часа записи обходится нам примерно в 40 рублей</a><div class="history-topic__tpl muted">Цена и тарифы</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span><span class="avatar avatar--off">4</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">сегодня, 11:42</div><div class="history-size mono">круг 3 из 4 · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg>согласие достигнуто</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#consensus">Переписать модуль импорта заказов или чинить по месту?</a><div class="history-topic__tpl muted">Переписать или чинить</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-cloud"></use></svg>MCP</span></div>
+            <div><div class="history-when mono">сегодня, 09:15</div><div class="history-size mono">3 круга · 9 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          <div class="list__row history-row">
+            <div><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-alert"></use></svg>согласия нет</span></div>
+            <div class="history-topic"><a class="history-topic__title history-open" href="result.html#no-consensus">Какую из трёх CRM взять для отдела из восьми человек</a><div class="history-topic__tpl muted">Выбор из нескольких вариантов</div></div>
+            <div class="history-people"><span class="avatar">1</span><span class="avatar">2</span><span class="avatar">3</span></div>
+            <div><span class="chip"><svg class="icon icon--sm"><use href="#i-spark"></use></svg>приложение</span></div>
+            <div><div class="history-when mono">вчера, 18:03</div><div class="history-size mono">4 круга · 12 ходов</div></div>
+            <button type="button" class="history-pin" aria-pressed="false" aria-label="Закрепить" title="Закрепить"><svg class="icon"><use href="#i-pin"></use></svg></button>
+            <svg class="icon muted"><use href="#i-chevron-right"></use></svg>
+          </div>
+          </div>
+        </div>
+        <div class="empty" data-variant="empty">
+          <svg class="icon icon--xl"><use href="#i-history"></use></svg>
+          <h2>Обсуждений пока нет</h2>
+          <p>Здесь появятся все обсуждения — запущенные в приложении, из терминала и через MCP. Начните первое: выберите шаблон или задайте свою тему.</p>
+          <a class="btn btn--primary" href="index.html"><svg class="icon"><use href="#i-plus"></use></svg>Новое обсуждение</a>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="shell.js"></script>
+</body>
+</html>

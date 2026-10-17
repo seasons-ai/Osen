@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "expectPrompt": "Ответ владельца:",
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия подходит, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

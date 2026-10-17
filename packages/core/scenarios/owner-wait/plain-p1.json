@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод: Отчёт на одну страницу.",
+        "solution": "Отчёт на одну страницу.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод: Отчёт на одну страницу с итоговой таблицей.",
+        "solution": "Отчёт на одну страницу с итоговой таблицей.",
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод: Отчёт на одну страницу.",
+        "solution": "Отчёт на одну страницу.",
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

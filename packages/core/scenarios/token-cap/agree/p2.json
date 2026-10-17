@@ -1,0 +1,48 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия с Мурзиком мне подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 400,
+      "outputTokens": 300
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия с Мурзиком мне подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 400,
+      "outputTokens": 300
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия с Мурзиком мне подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 400,
+      "outputTokens": 300
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия с Мурзиком мне подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 400,
+      "outputTokens": 300
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод: Отчёт на одну страницу.",
+        "solution": "Отчёт на одну страницу.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "expectPrompt": "уложимся в неделю",
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод: Владелец назвал срок: отчёт на одну страницу, срок неделя.",
+        "solution": "Отчёт на одну страницу таблицей, срок неделя.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия подходит, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

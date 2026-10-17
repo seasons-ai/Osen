@@ -1,0 +1,15 @@
+{
+  "steps": [
+    {
+      "raw": "{\"files\":[\"notes.txt\"]}",
+      "inputTokens": 600,
+      "outputTokens": 400
+    },
+    {
+      "timeout": true
+    },
+    {
+      "timeout": true
+    }
+  ]
+}

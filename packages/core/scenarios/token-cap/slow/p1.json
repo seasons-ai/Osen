@@ -1,0 +1,100 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю вариант 1 с именем Мурзик.",
+        "solution": "Назвать кота Мурзик, вариант 1.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю вариант 2 с именем Мурзик.",
+        "solution": "Назвать кота Мурзик, вариант 2.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю вариант 3 с именем Мурзик.",
+        "solution": "Назвать кота Мурзик, вариант 3.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю вариант 4 с именем Мурзик.",
+        "solution": "Назвать кота Мурзик, вариант 4.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю вариант 5 с именем Мурзик.",
+        "solution": "Назвать кота Мурзик, вариант 5.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю вариант 6 с именем Мурзик.",
+        "solution": "Назвать кота Мурзик, вариант 6.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю вариант 7 с именем Мурзик.",
+        "solution": "Назвать кота Мурзик, вариант 7.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю вариант 8 с именем Мурзик.",
+        "solution": "Назвать кота Мурзик, вариант 8.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 300,
+      "outputTokens": 200,
+      "delayMs": 3000
+    }
+  ]
+}

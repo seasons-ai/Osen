@@ -1,0 +1,33 @@
+{
+  "id": "build-or-buy",
+  "title": "Build or Buy",
+  "category": "Choices and decisions",
+  "description": "Use when you need to decide between building something yourself and adopting a ready-made solution. The result is a comparison of total cost over the ownership period, dependency risks, and a choice with conditions for revisiting it.",
+  "exampleTopic": "We need a request-tracking system for a department of 12 people. Off-the-shelf services cost $10–20 per person per month but can't handle our approval workflow. One developer could build our own in two to three months. The same person would maintain it after launch, and there are no other programmers on staff.",
+  "framing": [
+    "Decide whether to build the solution yourselves or adopt a ready-made one, and deliver a choice backed by a calculation over the whole ownership period.",
+    "",
+    "How to run the discussion:",
+    "- Start by asking whether this solution gives an advantage that others don't have. If not, the default is a ready-made option, and the discussion should cover what stops you from taking it.",
+    "- Count the total cost over two to three years: development, maintenance, licenses, integration, people's time. Don't base the calculation on the first month's price.",
+    "- Check the ready-made options against the requirements: which are met out of the box, which with customization, which not at all.",
+    "- Assess the dependency: what happens if the vendor raises the price, shuts down or never adds a feature, and how you would get out.",
+    "- Ask who will maintain the in-house solution a year from now and what happens if that person leaves.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and mark them in the decision.",
+    "",
+    "Decision format:",
+    "1. Requirements: what is mandatory, what is desirable.",
+    "2. Cost over the ownership period: the in-house path and each ready-made option.",
+    "3. Dependency and exit risks for each path.",
+    "4. The choice and the first step.",
+    "5. Conditions for revisiting: when to switch from one path to the other."
+  ],
+  "roles": [
+    "Build advocate: You stand for building the solution yourselves. You push on control, flexibility and independence from a vendor, and you don't accept that ready-made is cheaper until customizations and workarounds are included in the calculation.",
+    "Buy advocate: You stand for purchasing or adopting a ready-made solution. You push on speed, proven quality and someone else's support, and you don't accept building until it is shown that a specific requirement can't be met without it.",
+    "Operations guardian: You look at the solution's life a year and two years out: who fixes it, updates it and answers for an outage. You push on the hidden costs of both paths, and you don't accept a choice without a named owner of support."
+  ],
+  "limits": {
+    "maxRounds": 5
+  }
+}

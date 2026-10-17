@@ -1,0 +1,33 @@
+{
+  "id": "hard-message",
+  "title": "Difficult Message or Conversation",
+  "category": "Writing and communication",
+  "description": "Use when you have to say something unpleasant: decline, point out a mistake, raise a contested issue. The result is a ready text or key phrases, the order of the conversation, and answers to objections.",
+  "exampleTopic": "We need to tell a freelance designer we've worked with for two years that we are ending the collaboration at the end of the month: the budget has been cut, and we weren't satisfied with the quality of the last two projects. He is used to regular orders and will most likely be upset. We want to stay on decent terms.",
+  "framing": [
+    "Prepare a difficult message or conversation so that the recipient hears the point and the relationship that matters to the author is preserved.",
+    "",
+    "How to run the discussion:",
+    "- Start with the author's goal: what they want in the end, what is acceptable as a minimum and what they are not willing to sacrifice. Don't write a line without this.",
+    "- Analyze the recipient: what they know, what they fear, how they will react to the first sentence. Imagine the worst reaction and check whether the text survives it.",
+    "- Separate facts from judgments: state what happened and what is needed, without accusations or guesses about the recipient's motives.",
+    "- State the request or decision directly and once. Don't bury the main point in apologies, and don't soften it to the point of losing the meaning.",
+    "- For a conversation, prepare answers to the three most likely objections.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and mark them in the decision.",
+    "",
+    "Decision format:",
+    "1. The ready text of the message or the key phrases of the conversation.",
+    "2. Order: how to begin and how to end.",
+    "3. Answers to likely objections.",
+    "4. What not to say: phrases that would make things worse.",
+    "5. Fallback plan if the recipient answers sharply or stays silent."
+  ],
+  "roles": [
+    "Advocate of directness: You stand for saying it directly and without softening, because evasiveness is worse than the truth. You push on the clarity of the request, and you don't accept wording that reads as \"nothing needs to change\".",
+    "Advocate of the relationship: You stand for the relationship mattering more than winning the argument. You push on tone, respect and the recipient's right to save face, and you don't accept harsh formulas after which the person will shut down or leave.",
+    "Recipient's advocate: You read the text through the eyes of the person it is addressed to and look for what they will misunderstand and where they will see blame or a threat. You push on their worst reaction, and you don't accept wording that hasn't been tested against it."
+  ],
+  "limits": {
+    "maxRounds": 4
+  }
+}

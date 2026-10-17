@@ -1,0 +1,15 @@
+{
+  "steps": [
+    {
+      "raw": "это не JSON-объект",
+      "inputTokens": 150,
+      "outputTokens": 100
+    },
+    {
+      "delayMs": 60000,
+      "raw": "это не JSON-объект",
+      "inputTokens": 150,
+      "outputTokens": 100
+    }
+  ]
+}

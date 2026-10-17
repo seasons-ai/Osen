@@ -1,0 +1,115 @@
+import { defineMessages } from "@model-council/core/i18n";
+
+// App shell: rail, main windows, bridge refusals, language block. Both languages in one object.
+const reasonEn = (reason: "unreadable" | "not_json" | "no_language" | "unknown_language", code: string | null): string => {
+  switch (reason) {
+    case "unreadable": return `cannot be read${code ? ` (${code})` : ""}`;
+    case "not_json": return "is not valid JSON";
+    case "no_language": return "has no language value";
+    case "unknown_language": return "has an unknown language value";
+  }
+};
+
+export const shell = defineMessages({
+  en: {
+    appName: "Osen",
+    navNew: "New",
+    navHistory: "History",
+    navSettings: "Settings",
+    close: "Close",
+    versionTitle: "App version",
+    closeWarningTitle: "Discussion in progress",
+    closeStay: "Stay",
+    closeAbort: "Close and abort",
+    closeWarningDetail: (n: number): string =>
+      n === 1 ? "The session started in the app will be aborted if you close the window." : `Sessions started in the app (${n}) will be aborted if you close the window.`,
+    callRejected: "Call rejected",
+    unknownAction: (action: string): string => `Unknown action: ${action}`,
+    replacementsNotArray: "Replacements must be an array.",
+    replacementBadParticipant: (n: number): string => `Replacement ${n}: participantId must look like p1, p2…`,
+    replacementBadProvider: (n: number, participantId: string): string => `Replacement ${n} (${participantId}): providerId and model must be non-empty.`,
+    invalidSessionId: (id: string): string => `Invalid session identifier: ${id}`,
+    sessionNotFound: (id: string): string => `Session ${id} not found`,
+    ownerMessageEmpty: "The message must not be empty.",
+    questionIdInvalid: "The question identifier must be a non-empty string",
+    waitIdInvalid: "The wait identifier must look like w1, w2, …",
+    clipboardTextInvalid: "The text for the clipboard must be a string",
+    pinnedInvalid: "The pin flag must be a boolean",
+    materialsKindInvalid: "Invalid materials selection kind",
+    materialsPathsInvalid: "Material paths must be an array of strings",
+    materialUrlInvalid: "The link must be a string",
+    materialIdInvalid: "The material identifier must be a string",
+    refreshInvalid: "The refresh flag must be a boolean",
+    withDecisionInvalid: "The “with decision” flag must be a boolean",
+    roundsInvalid: (min: number, max: number): string => `The number of rounds must be an integer from ${min} to ${max}.`,
+    capInvalid: "The new token cap must be an integer from 1",
+    versionInvalid: "The version number must be a positive integer.",
+    noteInvalid: "The note must be a string.",
+    periodInvalid: "The period is invalid: dates like YYYY-MM-DD are required.",
+    periodReversed: "The period start is later than its end.",
+    languageHeading: "Language",
+    languageGroupLabel: "Interface language",
+    languageCurrent: "current",
+    languageHint: "Applies immediately, no restart needed. Also applies to the council command and the MCP server on their next launch.",
+    languageLockedHint: "Set by the COUNCIL_LANG environment variable — selection is unavailable",
+    languageInvalid: "Unknown language: choose English or Русский.",
+    languageLocked: "The language is set by the COUNCIL_LANG environment variable and cannot be changed here.",
+    languageWriteFailed: (code: string | null): string => `Language not saved: cannot write preferences.json${code ? ` (${code})` : ""}`,
+    languageFileNotice: (reason: "unreadable" | "not_json" | "no_language" | "unknown_language", code: string | null): string =>
+      `The language file preferences.json ${reasonEn(reason, code)}. English is in use and the file is unchanged; choose a language in Settings to fix it.`,
+  },
+  ru: {
+    appName: "Osen",
+    navNew: "Новое",
+    navHistory: "История",
+    navSettings: "Настройки",
+    close: "Закрыть",
+    versionTitle: "Версия приложения",
+    closeWarningTitle: "Идёт обсуждение",
+    closeStay: "Остаться",
+    closeAbort: "Закрыть и прервать",
+    closeWarningDetail: (n: number): string =>
+      n === 1 ? "Сессия, запущенная в приложении, будет прервана, если закрыть окно." : `Сессии, запущенные в приложении (${n}), будут прерваны, если закрыть окно.`,
+    callRejected: "Вызов отклонён",
+    unknownAction: (action: string): string => `Неизвестное действие: ${action}`,
+    replacementsNotArray: "Замены должны быть массивом.",
+    replacementBadParticipant: (n: number): string => `Замена ${n}: participantId должен быть вида p1, p2…`,
+    replacementBadProvider: (n: number, participantId: string): string => `Замена ${n} (${participantId}): нужны непустые providerId и model.`,
+    invalidSessionId: (id: string): string => `Недопустимый идентификатор сессии: ${id}`,
+    sessionNotFound: (id: string): string => `Сессия ${id} не найдена`,
+    ownerMessageEmpty: "Реплика должна быть непустой.",
+    questionIdInvalid: "Идентификатор вопроса должен быть непустой строкой",
+    waitIdInvalid: "Идентификатор ожидания должен иметь вид w1, w2, …",
+    clipboardTextInvalid: "Текст для буфера обмена должен быть строкой",
+    pinnedInvalid: "Признак закрепления должен быть булевым значением",
+    materialsKindInvalid: "Недопустимый вид выбора материалов",
+    materialsPathsInvalid: "Пути материалов должны быть массивом строк",
+    materialUrlInvalid: "Ссылка должна быть строкой",
+    materialIdInvalid: "Идентификатор материала должен быть строкой",
+    refreshInvalid: "Признак обновления должен быть булевым значением",
+    withDecisionInvalid: "Признак «с решением» должен быть булевым значением",
+    roundsInvalid: (min: number, max: number): string => `Число кругов должно быть целым от ${min} до ${max}.`,
+    capInvalid: "Новый потолок токенов должен быть целым числом от 1",
+    versionInvalid: "Номер версии должен быть целым положительным числом.",
+    noteInvalid: "Заметка должна быть строкой.",
+    periodInvalid: "Период задан неверно: нужны даты вида ГГГГ-ММ-ДД.",
+    periodReversed: "Начало периода позже конца.",
+    languageHeading: "Язык",
+    languageGroupLabel: "Язык интерфейса",
+    languageCurrent: "действующий",
+    languageHint: "Применяется сразу, без перезапуска. Действует также на команду council и MCP-сервер при их следующем запуске.",
+    languageLockedHint: "Задан переменной окружения COUNCIL_LANG — выбор недоступен",
+    languageInvalid: "Неизвестный язык: выберите English или Русский.",
+    languageLocked: "Язык задан переменной окружения COUNCIL_LANG, здесь его не изменить.",
+    languageWriteFailed: (code: string | null): string => `Язык не сохранён: нет доступа на запись preferences.json${code ? ` (${code})` : ""}`,
+    languageFileNotice: (reason: "unreadable" | "not_json" | "no_language" | "unknown_language", code: string | null): string => {
+      const why = {
+        unreadable: `не читается${code ? ` (${code})` : ""}`,
+        not_json: "не является корректным JSON",
+        no_language: "не содержит значения языка",
+        unknown_language: "содержит неизвестный язык",
+      }[reason];
+      return `Файл языка preferences.json ${why}. Действует English, файл не изменён; выберите язык в «Настройках», чтобы исправить.`;
+    },
+  },
+});

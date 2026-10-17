@@ -1,0 +1,32 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод: Отчёт на одну страницу.",
+        "solution": "Отчёт на одну страницу.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод: Отчёт одной страницей с таблицей.",
+        "solution": "Отчёт одной страницей с таблицей.",
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 2500
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия подходит, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

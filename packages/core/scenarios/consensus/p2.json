@@ -1,0 +1,13 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Лучше добавить характер: Мурзик Великий.",
+        "solution": "Назвать кота Мурзик Великий.",
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

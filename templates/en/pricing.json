@@ -1,0 +1,33 @@
+{
+  "id": "pricing",
+  "title": "Pricing and Plans",
+  "category": "Product and strategy",
+  "description": "Use when you need to set a price or build a pricing table. The result is a price, the contents of each plan, a margin calculation, and a way to test the price on the first customers.",
+  "exampleTopic": "We are launching a meeting transcription service for small companies. Transcribing an hour of recording costs us about $0.50, and support and hosting add another 15 percent or so. Similar services charge from $10 to $50 a month. Our target customers are sales teams of 5–20 people. We don't have a single paying customer yet.",
+  "framing": [
+    "Set the price and the plan contents and deliver a decision that can be tested on the first customers.",
+    "",
+    "How to run the discussion:",
+    "- Start with value: what the customer gets in money, hours or risk, and what that costs them today without the product. Derive the price from that value, not from your costs or from neighbors' prices.",
+    "- Check the price against the floor: cost per customer, fees, support. A price below the floor isn't a hypothesis, it's a loss.",
+    "- Name who pays and who chooses: they have different fears, and the price has to get past both.",
+    "- Test the plans at their boundaries: what makes a customer move to the expensive plan, and is there a reason to stay on the cheap one forever.",
+    "- \"I would pay this much\" is not evidence: evidence is a prepayment, a pilot, or a refusal at a stated price.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and mark them in the decision.",
+    "",
+    "Decision format:",
+    "1. Price and pricing unit: what is paid for and how much.",
+    "2. Plans: the contents of each and what pushes a customer up.",
+    "3. Calculation: cost per customer, margin, how many customers are needed to break even.",
+    "4. Test: on whom and how to test the price within a month, and at what reaction to change it.",
+    "5. What we don't do: discounts, a free period and other concessions, with conditions."
+  ],
+  "roles": [
+    "Advocate of a high price: You stand for a high price and a narrow circle of customers. You push on the point that a low price attracts people who don't value the product, and you don't accept discounts without an exchange for a prepayment or a commitment term.",
+    "Advocate of a low entry point: You stand for a low price and easy entry, to gain customers and data. You push on the point that an unknown product isn't bought at a high price, and you don't accept a high price without evidence that people pay it.",
+    "Finance lead: You stand for the calculation: every customer must bring a margin after all costs, including support and fees. You push on the payback period, and you don't accept any price until the cost per customer is stated."
+  ],
+  "limits": {
+    "maxRounds": 4
+  }
+}

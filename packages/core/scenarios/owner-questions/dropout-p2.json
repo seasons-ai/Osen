@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Не хватает ясности по формату, спрошу владельца.",
+        "solution": null,
+        "answers": [],
+        "questions": [
+          {
+            "to": "owner",
+            "text": "В каком формате нужен отчёт: таблица или текст?"
+          }
+        ]
+      }
+    },
+    {
+      "error": "Провайдер недоступен.",
+      "retryable": false
+    }
+  ]
+}

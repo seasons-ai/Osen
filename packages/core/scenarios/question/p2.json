@@ -1,0 +1,27 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Согласен, но уточню мотивировку.",
+        "solution": null,
+        "answers": [],
+        "questions": [
+          {
+            "to": "p1",
+            "text": "Почему именно Рыжик?"
+          }
+        ]
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Ответ получен, согласен.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,131 @@
+/* "Discussion" screen: three full-height columns, no gaps and no wrapping; participants 250–290, decision 300–360, feed — the rest */
+.session-grid{display:flex;flex-wrap:nowrap;height:100%;min-width:0}
+.session-col{display:flex;flex-direction:column;min-width:0;min-height:0;border-right:var(--border-w) solid var(--line)}
+.session-col:first-child{flex:1 1 250px;max-width:290px}
+.session-col:nth-child(2){flex:999 1 420px}
+.session-col:nth-child(n+3){flex:1 1 300px;max-width:360px;border-right:0}
+.session-col__head{flex:none;display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);padding:14px 18px 10px}
+.session-col__head--solution{padding:var(--sp-2) 18px 0}
+.session-col:nth-child(2) > .session-col__head{padding-inline:var(--sp-5)}
+.session-col__head .tabs{border-bottom:0}
+
+.session-titlebar{display:flex;align-items:center;gap:var(--sp-3);min-width:0}
+.session-counter{font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--text-faint);white-space:nowrap}
+/* top discussion bar actions wrap rather than get cut off at 900 px */
+.topbar:has(.session-titlebar){height:auto;min-height:var(--topbar-h);flex-wrap:wrap;padding-block:var(--sp-2)}
+.topbar:has(.session-titlebar) .topbar__actions{flex:0 1 auto;flex-wrap:wrap;justify-content:flex-end;white-space:normal;row-gap:var(--sp-2)}
+
+/* participants */
+.session-people{flex:1;display:flex;flex-direction:column;gap:var(--sp-2);padding:0 var(--sp-3) var(--sp-3)}
+.session-p{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:10px;padding:10px var(--sp-3)}
+.session-p .participant__name{white-space:normal;overflow:visible;line-height:var(--lh-tight)}
+.session-p .participant__name .tag{display:inline;padding:1px 7px;line-height:inherit;overflow-wrap:anywhere}
+.session-p .participant__meta{font-family:var(--font-ui);font-size:var(--fs-ui);color:var(--text-dim);white-space:normal;line-height:var(--lh-tight);margin-top:var(--sp-1)}
+.session-p__state{display:flex;flex-direction:column;align-items:flex-start;gap:var(--sp-1);margin-top:var(--sp-1)}
+.session-p__reason{font-size:var(--fs-ui);line-height:var(--lh-tight)}
+.session-meter{flex:none;display:flex;flex-direction:column;gap:var(--sp-2);padding:14px 18px;border-top:var(--border-w) solid var(--line)}
+.session-meter .meter__label{display:flex;justify-content:space-between;gap:var(--sp-2);color:var(--text-dim);font-size:var(--fs-ui)}
+.session-meter__count{color:var(--c)}
+.session-meter__line{display:flex;align-items:center;gap:var(--sp-1);color:var(--text-dim);font-size:var(--fs-ui)}
+
+/* feed */
+.session-feed{flex:1;display:flex;flex-direction:column;gap:var(--sp-3);padding:0 var(--sp-5) var(--sp-4)}
+.session-round{display:flex;align-items:center;gap:var(--sp-3);color:var(--text-faint);font-family:var(--font-mono);font-size:var(--fs-sm);text-transform:none;letter-spacing:0}
+.session-round::before,.session-round::after{content:"";flex:1;border-top:var(--border-w) solid var(--line)}
+.session-turn{display:flex;flex-direction:column;gap:var(--sp-2);padding:var(--sp-3) 14px;background:var(--bg-2);border:var(--border-w) solid var(--line);border-radius:var(--r-lg)}
+.session-turn__head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
+.session-turn__name{font-weight:var(--fw-medium);min-width:0}
+.session-turn__text{margin:0;color:var(--text);line-height:var(--lh-body)}
+.session-turn__read{font-size:var(--fs-sm)}
+.session-turn--live{border-color:var(--leaf);background:transparent;box-shadow:none}
+.session-turn--live .session-turn__text{color:var(--text-dim)}
+.session-turn--live .muted{color:var(--text-faint)}
+/* caret of the turn being typed: blinks like the "thinking" dots; under prefers-reduced-motion the shared components.css rule removes the animation */
+.session-cursor{color:var(--leaf);animation:blink var(--dur-pulse) ease-in-out infinite}
+.session-who{display:inline-flex;align-items:center;gap:var(--sp-1);color:var(--text);font-weight:var(--fw-medium)}
+
+/* question in a turn and the question quote in a reply — nested block: --bg-inset background, 2 px stripe on the left, no border or glow */
+.session-question,.session-answer{display:flex;flex-direction:column;gap:var(--sp-1);padding:10px var(--sp-3);background:var(--bg-inset);border:0;border-left:var(--bar-w) solid var(--line-strong);border-radius:0}
+.session-question__head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);color:var(--text-dim);font-size:var(--fs-ui)}
+.session-question__text,.session-answer__text{margin:0;color:var(--text)}
+.session-quote{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2);margin:0;color:var(--text-dim);font-size:var(--fs-ui)}
+
+.session-fails{display:flex;flex-direction:column;gap:var(--sp-2)}
+.session-fail{display:flex;align-items:flex-start;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);border:0;border-left:var(--bar-w) solid var(--c);border-radius:0;background:var(--bg-inset);color:var(--text-dim);font-size:var(--fs-sm)}
+.session-fail > .icon{color:var(--c);margin-top:calc(var(--sp-1) / 2)}
+.session-more{flex:none;display:flex;justify-content:center;padding:var(--sp-2) var(--sp-4);border-top:var(--border-w) solid var(--line);background:var(--bg-1)}
+
+/* decision panel */
+.session-panel{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:var(--sp-3);padding:var(--sp-4)}
+.session-panel[hidden]{display:none}
+.session-col__head--solution ~ .session-panel{gap:10px;padding:14px 18px}
+.session-meta{display:flex;flex-direction:column;gap:var(--sp-2)}
+.session-meta__version{font-family:var(--font-mono);font-size:var(--fs-sm);color:var(--text-faint)}
+.session-meta__row{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);color:var(--text);font-size:var(--fs-ui)}
+.session-meta__label{flex:none;width:82px;color:var(--text-faint)}
+.session-votes{display:inline-flex;align-items:center;gap:var(--sp-2)}
+.session-votes__mark{color:var(--c)}
+.solution-list{margin:6px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:var(--sp-2);max-width:72ch}
+.session-panel .prose p{margin:0 0 var(--sp-3)}
+.session-tail{display:flex;flex-direction:column;gap:var(--sp-3)}
+
+/* decision toolbar row: version comparison and copying */
+.solution-tools{flex:none;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sp-2) var(--sp-3);padding:var(--sp-2) 18px;border-top:var(--border-w) solid var(--line);border-bottom:var(--border-w) solid var(--line)}
+.solution-tools__toggle{flex:1 1 0;min-width:min-content;display:inline-flex;align-items:center;gap:var(--sp-2);color:var(--text-dim);font-size:var(--fs-sm);cursor:pointer}
+.solution-tools__toggle input{margin:0;accent-color:var(--leaf)}
+.solution-tools__toggle:has(input:disabled){color:var(--text-faint);cursor:not-allowed}
+.solution-tools__hint{flex:1 1 0;min-width:min-content;color:var(--text-faint);font-size:var(--fs-sm)}
+.solution-tools .btn{margin-left:auto}
+.solution-tabs .tab{min-height:36px;padding:0 10px;font-size:var(--fs-ui);font-family:var(--font-mono);color:var(--text-faint);border-bottom:var(--bar-w) solid transparent}
+.solution-tabs .tab[aria-selected="true"]{color:var(--text);border-bottom:var(--bar-w) solid var(--text)}
+
+/* version comparison: sign and typeface tell edits apart without color */
+.diff-add{color:var(--ok);text-decoration:underline}
+.diff-del{color:var(--danger);text-decoration:line-through;margin-inline:.2em}
+.diff-count{color:var(--c);font-size:var(--fs-sm)}
+.diff-note{color:var(--text-faint)}
+
+/* mockup only: show plain text or the comparison depending on the switch position */
+[data-tabs]:not([data-diff="on"]) [data-view="diff"],[data-tabs][data-diff="on"] [data-view="clean"]{display:none}
+
+/* dialog with the owner: feed entry, pending message, questions and the message field */
+.session-owner{--c:var(--text-dim)}
+.session-owner--pending{border-style:dashed}
+.session-owner--pending .session-turn__text{color:var(--text-dim)}
+.session-owner-box{flex:none;max-height:70%;overflow-y:auto;display:flex;flex-direction:column;gap:var(--sp-3);padding:14px var(--sp-5) 18px;border-top:var(--border-w) solid var(--line)}
+.session-owner-questions{flex:none;display:flex;flex-direction:column;gap:var(--sp-2);max-height:9rem;overflow-y:auto}
+.session-owner-q{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--sp-1) var(--sp-3);padding:10px var(--sp-3);background:var(--bg-inset);border:0;border-left:var(--bar-w) solid var(--c);border-radius:0}
+.session-owner-q__head{grid-column:1 / -1;display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);color:var(--text-dim);font-size:var(--fs-ui)}
+.session-owner-q__text{margin:0;min-width:0;overflow-wrap:anywhere;color:var(--text)}
+.session-composer{flex:none;display:flex;flex-direction:column;gap:var(--sp-2);min-width:0}
+.session-composer .field__label{font-weight:var(--fw-medium)}
+.session-composer .textarea{min-height:0;max-width:100%;resize:vertical}
+.session-composer__row{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:var(--sp-2)}
+.session-composer__row .field__hint{flex:1 1 12rem;min-width:0}
+.session-composer__error{display:flex;align-items:flex-start;gap:var(--sp-2);color:var(--c);font-size:var(--fs-sm)}
+.session-composer__error > .icon{margin-top:calc(var(--sp-1) / 2)}
+.session-composer__closed{display:flex;align-items:center;gap:var(--sp-2);margin:0;font-size:var(--fs-sm)}
+
+/* owner wait: nested block with a tone-colored stripe on the left, only a divider line on top */
+.session-wait{border-top:var(--border-w) solid var(--line);border-left:var(--bar-w) solid var(--c);background:var(--bg-inset)}
+
+/* discussion resume: divider in the feed (mono, like the round divider) and the message about removed message requests */
+.feed-resumed{display:flex;align-items:center;gap:var(--sp-2);color:var(--accent);font-family:var(--font-mono);font-size:var(--fs-sm);font-weight:var(--fw-regular)}
+.feed-resumed::after{content:"";flex:1;order:1;border-top:var(--border-w) solid var(--accent)}
+.feed-resumed__when{order:2;color:var(--text-faint);font-weight:var(--fw-regular)}
+/* participant replacement on resume: caption under the "Resumed" divider */
+.feed-replaced{display:flex;flex-direction:column;gap:var(--sp-1);font-size:var(--fs-sm)}
+.feed-replaced__line{display:flex;align-items:center;flex-wrap:wrap;gap:var(--sp-1)}
+.session-p__replaces{font-size:var(--fs-sm)}
+.feed-dropped{flex:none;margin:var(--sp-3) var(--sp-4) 0}
+.feed-dropped__list{margin:var(--sp-1) 0;padding-left:var(--sp-4)}
+.feed-dropped__close{flex:none;margin:calc(var(--sp-1) * -1) calc(var(--sp-2) * -1) 0 0}
+
+/* token usage relative to the ceiling: icon in the bar caption */
+.session-tokens .meter__label{display:flex;align-items:center;gap:var(--sp-1)}
+.session-tokens .meter__label .icon{flex:none;color:var(--c)}
+
+/* independent drafts: phase section and draft card */
+.session-phase{flex-wrap:wrap;white-space:nowrap}
+.session-phase .muted{flex-basis:100%;order:1;text-align:center;white-space:normal;font-family:var(--font-ui)}
+.session-draft__text{display:flex;flex-direction:column;gap:var(--sp-2)}

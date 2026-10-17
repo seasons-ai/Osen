@@ -1,0 +1,28 @@
+{
+  "steps": [
+    {
+      "delayMs": 8000,
+      "response": {
+        "stance": "agree",
+        "reasoning": "Формат — таблица, одна страница.",
+        "solution": null,
+        "answers": [
+          {
+            "questionId": "q1",
+            "text": "Лучше таблица."
+          }
+        ],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Запасной шаг: согласен.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "steps": [
+    {
+      "delayMs": 5000,
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия подходит, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия подходит, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

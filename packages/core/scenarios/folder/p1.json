@@ -1,0 +1,35 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "object",
+        "reasoning": "Нужен файл движка.",
+        "solution": null,
+        "answers": [],
+        "questions": [],
+        "files": ["sample/src/engine.ts"]
+      }
+    },
+    {
+      "expectPrompt": "# Запрошенные файлы",
+      "response": {
+        "stance": "amend",
+        "reasoning": "Прочитал файл движка: функция простая, менять нечего.",
+        "solution": "Оставить функцию как есть.",
+        "answers": [],
+        "questions": [],
+        "files": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Решение подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": [],
+        "files": []
+      }
+    }
+  ]
+}

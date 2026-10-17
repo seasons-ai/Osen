@@ -1,0 +1,68 @@
+{
+ "steps": [
+  {
+   "response": {
+    "stance": "amend",
+    "reasoning": "Довод МЕТКА-E-P2",
+    "solution": "Решение МЕТКА-E-P2",
+    "answers": [],
+    "questions": [],
+    "files": []
+   },
+   "delayMs": 30000
+  },
+  {
+   "raw": "не json"
+  },
+  {
+   "response": {
+    "stance": "amend",
+    "reasoning": "Довод МЕТКА-E-P2",
+    "solution": "Решение МЕТКА-E-P2",
+    "answers": [],
+    "questions": [],
+    "files": []
+   }
+  },
+  {
+   "response": {
+    "stance": "amend",
+    "reasoning": "Довод Версия 1 МЕТКА-E-V1",
+    "solution": "Версия 1 МЕТКА-E-V1",
+    "answers": [],
+    "questions": [],
+    "files": []
+   }
+  },
+  {
+   "response": {
+    "stance": "agree",
+    "reasoning": "Согласен",
+    "solution": null,
+    "answers": [],
+    "questions": [],
+    "files": []
+   }
+  },
+  {
+   "response": {
+    "stance": "agree",
+    "reasoning": "Согласен",
+    "solution": null,
+    "answers": [],
+    "questions": [],
+    "files": []
+   }
+  },
+  {
+   "response": {
+    "stance": "agree",
+    "reasoning": "Согласен",
+    "solution": null,
+    "answers": [],
+    "questions": [],
+    "files": []
+   }
+  }
+ ]
+}

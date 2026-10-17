@@ -1,0 +1,11 @@
+{
+  "steps": [
+    {
+      "delayMs": 200,
+      "response": { "stance": "agree", "reasoning": "Версия p1 мне подходит.", "solution": null, "answers": [], "questions": [] }
+    },
+    {
+      "response": { "stance": "agree", "reasoning": "Версия по-прежнему подходит.", "solution": null, "answers": [], "questions": [] }
+    }
+  ]
+}

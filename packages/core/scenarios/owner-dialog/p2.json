@@ -1,0 +1,84 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Второй: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Второй: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Второй: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Второй: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Второй: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Второй: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Второй: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Второй: согласен с текущей версией, учитываю сказанное владельцем.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 4000
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "id": "architecture-decision",
+  "title": "Architecture Decision",
+  "category": "Architecture and code",
+  "description": "Use when you need to choose between several technical options and lock in the choice. The result is a decision record: what was chosen, what was rejected, and under what conditions the decision gets revisited.",
+  "exampleTopic": "A team of four is building an internal request-tracking service: 300 active users, peaks of up to 40 requests per second. We need to decide whether to keep the monolith on a single framework or split attachment handling and notifications into separate services. Deploys are manual once a week, there is no monitoring, and the infrastructure budget is up to $150 a month.",
+  "framing": [
+    "This is a discussion of an architecture decision: one option has to be chosen and the choice recorded so that it can still be defended six months from now.",
+    "",
+    "How to run the discussion:",
+    "- Start with constraints, not options: load, team size, budget, deadlines, what cannot be changed. An option that violates them is out immediately.",
+    "- Compare the options against the same criteria, not by taste. Derive the criteria from the constraints and state them explicitly.",
+    "- Evaluate the cost of ownership, not just the cost of launch: who will maintain it, be on call for it, and upgrade it.",
+    "- For each option, say what you would have to do if the choice turns out to be wrong, and what the rollback costs.",
+    "- Don't accept a fashionable technology as an argument. An argument is a number, a constraint, or an outage that has already happened.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and note which of them the decision depends on most.",
+    "",
+    "Decision format:",
+    "1. Context and constraints: what is being decided and which conditions are given.",
+    "2. Options considered: each in two or three lines, with its main advantage and main drawback.",
+    "3. Choice and reasons: which option was chosen and by which criteria it won.",
+    "4. Cost of rejection: what was given up and what was lost.",
+    "5. Conditions for revisiting: at which numbers or events the decision will have to change."
+  ],
+  "roles": [
+    "Deadline pragmatist: You stand for the simplest solution that works right now. You push on deadlines and team size, and you don't accept complexity built in advance without a measurable load that requires it.",
+    "Architect for growth: You stand for a solution that will survive the product growing several times over. You push on the cost of a future migration, and you don't accept \"we'll rewrite it later\" until it is shown who will do it and when.",
+    "Operations guardian: You stand for what the on-call engineer can fix at night. You push on monitoring, rollback and the number of moving parts, and you don't accept a solution without a clear failure plan."
+  ],
+  "limits": { "maxRounds": 4 }
+}

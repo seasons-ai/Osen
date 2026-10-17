@@ -1,0 +1,33 @@
+{
+  "id": "risky-decision",
+  "title": "High-Stakes Decision",
+  "category": "Choices and decisions",
+  "description": "Use when a mistake in the decision would be costly or irreversible. The result is a verdict, the cost of being wrong, the main ways it could fail, and the conditions under which the decision can be made.",
+  "exampleTopic": "I'm thinking of putting all my savings, about $40,000, into buying a stake in a running coffee shop. According to the seller, revenue is growing, but the only document I've seen so far is a three-month statement. I wouldn't have a year's worth of living expenses left as a safety cushion. The decision has to be made within two weeks.",
+  "framing": [
+    "Examine a decision where a mistake is costly and deliver a verdict with the conditions under which it can be made.",
+    "",
+    "How to run the discussion:",
+    "- Start with the cost of being wrong: what exactly is lost, in what amounts, and whether it can be recovered. Analyze irreversible losses separately from reversible ones.",
+    "- Imagine that a year from now the decision is judged a mistake, and name the three most likely reasons.",
+    "- For each reason, check what the facts say, not confidence. Name an observation that would refute the main hope.",
+    "- Look for a way to reduce the stake: a pilot, stages, insurance, a window to cancel. Treat \"all or nothing\" as a last resort.",
+    "- Don't give the advice \"weigh the risks\": the verdict must be named.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and mark them in the decision.",
+    "",
+    "Decision format:",
+    "1. Verdict: go, go in stages, or don't go.",
+    "2. Cost of being wrong: what is lost and whether it is reversible.",
+    "3. Failure reasons: the three main ones, their likelihood and a sign by which they would be seen in advance.",
+    "4. Conditions: what to find out or do before deciding.",
+    "5. Exit point: at which signal to stop and how."
+  ],
+  "roles": [
+    "Loss guard: You stand for refusal or delay until it is proven that the worst outcome is survivable. You push on irreversibility, and you don't accept the author's confidence or other people's successes as proof.",
+    "Advocate of action: You stand for inaction also being a decision with its own cost: lost time and a closing window. You push on the cost of refusal, and you don't accept postponing without a named date and what exactly will become clear.",
+    "Safety-net designer: You are neither for \"yes\" nor for \"no\" but for reducing the stake: a pilot, stages, a fallback plan. You push on the point that any decision can be sliced up, and you don't accept \"all or nothing\"."
+  ],
+  "limits": {
+    "maxRounds": 6
+  }
+}

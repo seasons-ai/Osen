@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "osen": {
+      "command": "node",
+      "args": ["packages/mcp/src/main.ts"]
+    }
+  }
+}

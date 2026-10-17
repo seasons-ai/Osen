@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Лучше Тигран.",
+        "solution": "Назвать кота Тигран.",
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 30000
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "expectPrompt": "остался без ответа",
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия подходит, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

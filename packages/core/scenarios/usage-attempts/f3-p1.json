@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f3-p1, шаг 1.",
+        "solution": "Версия f3-p1 №1.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f3-p1, шаг 2.",
+        "solution": "Версия f3-p1 №2.",
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

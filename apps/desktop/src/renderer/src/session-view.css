@@ -1,0 +1,3 @@
+.session-view__topic { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.session-view__text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.content .card.stack { gap: var(--sp-3); }

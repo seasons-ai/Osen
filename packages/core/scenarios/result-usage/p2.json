@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "raw": "это не JSON-объект",
+      "inputTokens": 400,
+      "outputTokens": 300
+    },
+    {
+      "raw": "это не JSON-объект",
+      "inputTokens": 400,
+      "outputTokens": 300
+    }
+  ]
+}

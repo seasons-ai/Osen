@@ -1,0 +1,33 @@
+{
+  "steps": [
+    {
+      "delayMs": 4000,
+      "expectPrompt": "МЕТКА-ОТВЕТ-36b",
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод: Отчёт на одну страницу таблицей.",
+        "solution": "Отчёт на одну страницу таблицей.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия подходит, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия подходит, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Osen — настройки</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="brand/tokens.css">
+<style>
+:root{color-scheme:normal}
+body{margin:0;background:var(--bg-0)}
+a{color:var(--leaf)}a:hover{color:var(--link-hover)}
+.mono{font-family:var(--font-mono)}
+.btn{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 14px;box-sizing:border-box;border-radius:var(--r-md);border:1px solid var(--line-strong);background:transparent;color:var(--text);font:inherit;font-size:var(--fs-ui);cursor:pointer;text-decoration:none}
+.btn:hover{background:var(--bg-3);color:var(--text)}
+.btn--ghost{border-color:transparent;color:var(--text-dim);padding:0 var(--sp-2)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:0 var(--sp-2);border-radius:var(--r-pill);border:1px solid var(--line-strong);font-size:var(--fs-sm);line-height:20px;white-space:nowrap;color:var(--text-dim)}
+.tag{display:inline-flex;padding:0 7px;border-radius:var(--r-sm);background:var(--bg-3);font-family:var(--font-mono);font-size:var(--fs-sm);line-height:22px;color:var(--text-dim)}
+.kv{display:grid;grid-template-columns:76px minmax(0,1fr);gap:var(--sp-1) var(--sp-3);font-size:var(--fs-ui);align-items:center}
+.kv dt{color:var(--text-faint)}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.rail-item{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);width:68px;padding:9px 0;border-radius:var(--r-lg);color:var(--text-faint);font-size:var(--fs-xs);text-decoration:none}
+.rail-item:hover{background:var(--bg-2);color:var(--text)}
+@media (max-width:720px){.shell{flex-direction:column}.rail{flex-direction:row !important;width:auto !important;border-right:none !important;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div class="shell" style="display: flex; min-height: 800px; background: var(--bg-0); color: var(--text); font-family: var(--font-ui); font-size: var(--fs-md); line-height: 1.5">
+
+  <nav class="rail" aria-label="Разделы" style="flex: none; width: 84px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); padding: var(--sp-4) 0; background: var(--bg-1); border-right: 1px solid var(--line)">
+    <div style="margin-bottom: 14px">
+      <svg viewBox="-52 -52 104 104" width="32" height="32" role="img" aria-label="Osen"><g fill="var(--leaf)"><path d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(-40) scale(0.86)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(40) scale(0.86)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(-82) scale(0.64)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path><path transform="rotate(82) scale(0.64)" d="M0,0 C-11,-10 -10,-30 0,-44 C10,-30 11,-10 0,0 Z"></path></g><g stroke="var(--rain)" stroke-width="4" stroke-linecap="round"><line y1="4" y2="30"></line></g><circle r="6" fill="var(--rain)"></circle></svg>
+    </div>
+    <a href="index.html" class="rail-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      Новое
+    </a>
+    <a href="history.html" class="rail-item">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"></path><path d="M3.5 4v4h4"></path><path d="M12 8v4l3 2"></path></svg>
+      История
+    </a>
+    <a href="settings.html" class="rail-item" aria-current="page" style="color: var(--leaf); background: var(--bg-2)">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
+      Настройки
+    </a>
+  </nav>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <header style="display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-3) var(--sp-6); min-height: 36px; border-bottom: 1px solid var(--line)">
+      <h1 style="margin: 0; font-size: var(--fs-xl); font-weight: 600">Настройки</h1>
+    </header>
+
+    <div style="padding: var(--sp-5) var(--sp-6) 40px; display: flex; flex-direction: column; gap: 22px; box-sizing: border-box; width: 100%; max-width: 1200px">
+
+      <section style="display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+        <h2 style="margin: 0; font-size: var(--fs-lg); font-weight: 600">Язык</h2>
+        <div role="radiogroup" aria-label="Язык интерфейса" style="display: flex; gap: var(--sp-2); flex-wrap: wrap">
+          <button type="button" role="radio" aria-checked="false" class="btn">English</button>
+          <button type="button" role="radio" aria-checked="true" class="btn" style="border-color: var(--text)">Русский <span style="font-size: var(--fs-sm); color: var(--rain)">✓ действующий</span></button>
+        </div>
+        <span style="font-size: var(--fs-ui); color: var(--text-faint)">Применяется сразу, без перезапуска. Действует также на команду <span class="mono">council</span> и MCP-сервер при их следующем запуске.</span>
+      </section>
+
+      <div role="tablist" aria-label="Разделы настроек" style="display: flex; gap: var(--sp-1); border-bottom: 1px solid var(--line)">
+        <button type="button" role="tab" aria-selected="true" style="min-height: 38px; padding: 0 var(--sp-3); border: none; border-bottom: 2px solid var(--text); background: none; color: var(--text); font: inherit; font-size: var(--fs-md); cursor: pointer">Провайдеры</button>
+        <button type="button" role="tab" aria-selected="false" style="min-height: 38px; padding: 0 var(--sp-3); border: none; border-bottom: 2px solid transparent; background: none; color: var(--text-faint); font: inherit; font-size: var(--fs-md); cursor: pointer">По умолчанию</button>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); flex-wrap: wrap">
+        <h2 style="margin: 0; font-size: var(--fs-lg); font-weight: 600">Провайдеры</h2>
+        <div style="display: flex; gap: var(--sp-2); flex-wrap: wrap">
+          <button type="button" class="btn">↻ Проверить заново</button>
+          <button type="button" class="btn">+ Добавить HTTP-провайдер</button>
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px">
+
+        <section style="display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4) 18px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+          <div style="display: flex; align-items: center; gap: var(--sp-2)">
+            <h3 style="margin: 0; font-size: var(--fs-lg); font-weight: 600">Claude Code</h3><span class="chip mono">CLI</span>
+            <span class="chip" style="margin-left: auto; border-color: var(--ok); color: var(--ok)">✓ доступен</span>
+          </div>
+          <dl class="kv" style="margin: 0">
+            <dt>версия</dt><dd class="mono">2.1.288</dd>
+            <dt>команда</dt><dd class="mono">/opt/homebrew/bin/claude</dd>
+            <dt>расход</dt><dd><span class="chip">расходует подписку</span></dd>
+          </dl>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="tag">sonnet</span><span class="tag">haiku</span><span class="tag">opus</span></div>
+          <div><button type="button" class="btn">▷ Проверить</button></div>
+        </section>
+
+        <section style="display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4) 18px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+          <div style="display: flex; align-items: center; gap: var(--sp-2)">
+            <h3 style="margin: 0; font-size: var(--fs-lg); font-weight: 600">Codex</h3><span class="chip mono">CLI</span>
+            <span class="chip" style="margin-left: auto; border-color: var(--ok); color: var(--ok)">✓ доступен</span>
+          </div>
+          <dl class="kv" style="margin: 0">
+            <dt>версия</dt><dd class="mono">0.159.2</dd>
+            <dt>команда</dt><dd class="mono">/opt/homebrew/bin/codex</dd>
+            <dt>расход</dt><dd><span class="chip">расходует подписку</span></dd>
+          </dl>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="tag">gpt-5.6-luna</span><span class="tag">gpt-5.6</span></div>
+          <div><button type="button" class="btn">▷ Проверить</button></div>
+        </section>
+
+        <section style="display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4) 18px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+          <div style="display: flex; align-items: center; gap: var(--sp-2)">
+            <h3 style="margin: 0; font-size: var(--fs-lg); font-weight: 600">OpenRouter</h3><span class="chip mono">HTTP</span>
+            <span class="chip" style="margin-left: auto; border-color: var(--ok); color: var(--ok)">✓ доступен</span>
+          </div>
+          <dl class="kv" style="margin: 0">
+            <dt>адрес</dt><dd class="mono">https://openrouter.ai/api/v1</dd>
+            <dt>ключ</dt><dd><span class="mono">OPENROUTER_API_KEY</span> <span class="chip" style="border-color: var(--ok); color: var(--ok)">✓ задан</span></dd>
+          </dl>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="tag">llama-3.3-70b-instruct:free</span><span class="tag">gemma-3-27b-it:free</span><span class="tag">mistral-small-3.2:free</span></div>
+          <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">перечень получен сегодня в 11:30</span>
+          <div style="display: flex; gap: var(--sp-1); flex-wrap: wrap"><button type="button" class="btn">▷ Проверить</button><button type="button" class="btn btn--ghost">Изменить</button><button type="button" class="btn btn--ghost">Удалить</button></div>
+        </section>
+
+        <section style="display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-4) 18px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+          <div style="display: flex; align-items: center; gap: var(--sp-2)">
+            <h3 style="margin: 0; font-size: var(--fs-lg); font-weight: 600">Локальный</h3><span class="chip mono">HTTP</span>
+            <span class="chip" style="margin-left: auto; border-color: var(--danger); color: var(--danger)">× не отвечает</span>
+          </div>
+          <dl class="kv" style="margin: 0">
+            <dt>адрес</dt><dd class="mono">http://localhost:11434/v1</dd>
+            <dt>ключ</dt><dd style="color: var(--text-faint)">не требуется</dd>
+          </dl>
+          <div style="padding: var(--sp-2) 10px; border-left: 2px solid var(--danger); background: var(--bg-inset); font-size: var(--fs-ui); color: var(--text-dim)">Соединение отклонено. Запустите Ollama и проверьте ещё раз.</div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="tag">qwen3:14b</span><span class="tag">phi4:14b</span></div>
+          <div style="display: flex; gap: var(--sp-1); flex-wrap: wrap"><button type="button" class="btn">▷ Проверить</button><button type="button" class="btn btn--ghost">Изменить</button><button type="button" class="btn btn--ghost">Удалить</button></div>
+        </section>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

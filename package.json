@@ -1,0 +1,28 @@
+{
+  "name": "model-council",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run",
+    "prepare": "git config core.hooksPath .githooks || true",
+    "release": "node scripts/release.ts",
+    "predesktop": "install-electron",
+    "desktop": "npm run dev -w @model-council/desktop --",
+    "dist": "install-electron && npm run build -w @model-council/desktop && electron-builder --mac dmg --arm64 -c.electronVersion=$(node -p \"require('electron/package.json').version\") --projectDir apps/desktop && node -p \"require('path').resolve('apps/desktop/release','osen-'+require('./apps/desktop/package.json').version+'-arm64.dmg')\"",
+    "dist:check": "node apps/desktop/scripts/check-image.ts"
+  },
+  "devDependencies": {
+    "@babel/parser": "7.29.9",
+    "@types/node": "^26.6.4",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

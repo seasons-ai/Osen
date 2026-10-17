@@ -1,0 +1,27 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод: Отчёт на две страницы, формат уточним.",
+        "solution": "Отчёт на две страницы, формат уточним.",
+        "answers": [],
+        "questions": [
+          {
+            "to": "owner",
+            "text": "Нужен ли отчёт в виде таблицы или текстом?"
+          }
+        ]
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Версия подходит, возражений нет.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

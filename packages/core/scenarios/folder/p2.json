@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Решение подходит.",
+        "solution": null,
+        "answers": [],
+        "questions": [],
+        "files": []
+      }
+    }
+  ]
+}

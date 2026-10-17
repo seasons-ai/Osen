@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Согласен с Тигрой.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 20000
+    }
+  ]
+}

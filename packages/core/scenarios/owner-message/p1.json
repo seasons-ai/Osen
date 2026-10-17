@@ -1,0 +1,23 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю имя: Мурка.",
+        "solution": "Назвать кота Мурка.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "expectPrompt": "# Реплики владельца",
+      "response": {
+        "stance": "agree",
+        "reasoning": "Мурка укладывается в пять букв, как просит владелец.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

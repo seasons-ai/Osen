@@ -1,0 +1,893 @@
+import { parseArgs } from "node:util";
+import { existsSync } from "node:fs";
+import { basename, dirname, join, resolve, sep } from "node:path";
+import { createSession, SessionInputError } from "./engine.ts";
+import { cliMessages } from "./messages/cli.ts";
+import { resumeMessages } from "./messages/resume.ts";
+import { attachedFolderPrefixes, collectSessionMaterials, MaterialsError } from "./materials.ts";
+import type { MaterialSet } from "./materials.ts";
+import { collectSessionMaterialsWithUrls, collectUrlMaterials } from "./url/collect.ts";
+import type { UrlTransport } from "./url/fetch.ts";
+import { formatSource, readMaterialSources, SOURCES_FILE } from "./store/material-sources.ts";
+import type { MaterialSource } from "./store/material-sources.ts";
+import { loadPreparedMaterials, PreparedMaterialsError, savePreparedMaterials } from "./store/prepared-materials.ts";
+import { buildMaterialsPreview } from "./protocol/context.ts";
+import { getProcessLanguage } from "./i18n/process-language.ts";
+import { BUILTIN_TEMPLATES_DIR, loadTemplates, templateSessionInput, UnknownTemplateError, userTemplatesDir } from "./templates/templates.ts";
+import { createScriptedDriver, readScenario, ScriptedUnavailableError } from "./participants/scripted.ts";
+import type { ParticipantDriver } from "./participants/driver.ts";
+import { DRAFT_CONTEXT_LIMIT_REASON, INSUFFICIENT_ACTIVE_REASON_CODE, MAX_TURN_TIMEOUT_SEC, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, SYNTHESIZER_UNAVAILABLE_REASON, TOKEN_CAP_REASON } from "./protocol/schema.ts";
+import type { SessionEvent } from "./protocol/schema.ts";
+import { createCliDriver } from "./cli-agents/driver.ts";
+import { createHttpDriver } from "./http/driver.ts";
+import { DEFAULT_MODEL } from "./cli-agents/types.ts";
+import { FOLDER_LIMITS, folderStats } from "./protocol/folder.ts";
+import { finishReasonText } from "./protocol/finish-reason.ts";
+import type { FolderFile } from "./protocol/folder.ts";
+import { applyEvent } from "./protocol/fold.ts";
+import { currentVersion, draftPhase, initialState, maxCallsBound, OWNER_ID, sessionTotals, slotRoster, tokenUsage } from "./protocol/state.ts";
+import { sessionUsage } from "./protocol/usage.ts";
+import type { SessionState } from "./protocol/state.ts";
+import { DataDirError, ensureDataDir, prepareDataDir } from "./store/data-dir.ts";
+import { envFilePath } from "./store/env.ts";
+import { readEvents } from "./store/journal.ts";
+import { createLogger } from "./store/log.ts";
+import type { Logger } from "./store/log.ts";
+import { runStoredSession } from "./store/run.ts";
+import { configPath, logRegistryLoaded, readRegistry, RegistryError } from "./registry/config.ts";
+import type { Provider, Registry } from "./registry/config.ts";
+import { checkLineup } from "./registry/lineup-check.ts";
+import { LineupsError, readLineups, saveLineup } from "./registry/lineups.ts";
+import { ensureRegistry, inspectProvider, inspectProviders } from "./registry/providers.ts";
+import type { InspectDeps } from "./registry/providers.ts";
+import { DraftSnapshotError, readDraftSnapshot } from "./store/draft-snapshots.ts";
+import { listSessions, partialNote, readSession, requestStop, StopRejectedError } from "./store/sessions.ts";
+import type { JournalPartial, StoredStatus } from "./store/sessions.ts";
+import { OwnerMessageRejectedError, OwnerReleaseRejectedError, requestOwnerMessage, requestOwnerRelease } from "./store/owner-messages.ts";
+import type { ReplacementInput } from "./store/resume.ts";
+import { planResume, ResumeRejectedError, resumeDrivers, runResumedSession } from "./store/resume.ts";
+
+export const EXIT = { consensus: 0, internal: 1, usage: 2, no_consensus: 3, stopped: 4, failed: 5 } as const;
+
+export interface CliIo {
+  stdout: (text: string) => void;
+  stderr: (text: string) => void;
+  env: Record<string, string | undefined>;
+  signal?: AbortSignal;
+  chunk?: (text: string) => void; // text appearing during the turn
+  inspectDeps?: Partial<InspectDeps>; // for tests: replacement of the CLI search and inspection
+  builtinTemplatesDir?: string; // for tests and packaging: the folder of built-in templates
+  urlTransport?: UrlTransport; // for the stand and tests: replacement of DNS and of the connection
+}
+
+export const help = (): string => cliMessages().help;
+
+class UsageError extends Error {}
+
+const RUN_FLAGS = ["topic", "participant", "max-rounds", "framing", "turn-timeout", "context-chars", "template", "attach", "include", "no-ignore", "url", "preview-materials", "prepared-materials", "materials-chars", "pause-after-round", "wait-for-owner", "owner-wait-sec", "lineup", "drafts", "synthesizer"] as const;
+
+const intFlag = (name: string, value: string | undefined, max?: number): number | undefined => {
+  if (value === undefined) return undefined;
+  const n = Number(value);
+  if (!/^\d+$/.test(value.trim()) || n < 1 || !Number.isSafeInteger(n)) {
+    throw new UsageError(cliMessages().intRequired(name));
+  }
+  if (max !== undefined && n > max) throw new UsageError(cliMessages().intRange(name, 1, max));
+  return n;
+};
+
+const waitReason = (r: string, ids: string[], withIds: boolean) =>
+  r === "round_boundary" ? cliMessages().waitRoundBoundary : cliMessages().waitQuestion(withIds ? ids.join(", ") : "");
+const waitReasons = (rs: string[], ids: string[], withIds = true) => rs.map((r) => waitReason(r, ids, withIds)).join("; ");
+const waitDone = (reason: "continued" | "answered" | "expired" | "stopped") => {
+  const t = cliMessages();
+  return { continued: t.waitContinued, answered: t.waitAnswered, expired: t.waitExpired, stopped: t.waitStopped }[reason];
+};
+
+const participantName = (provider: Provider | undefined, model: string, index: number) =>
+  !provider ? resumeMessages().defaultName(index + 1) : model === DEFAULT_MODEL ? provider.label : `${provider.label} (${model})`;
+
+interface Part { name: string; providerId: string; model: string; provider?: Provider }
+
+function parseParticipant(raw: string, index: number, registry: Registry): Part {
+  const t = cliMessages();
+  const m = /^(?:([^=:]+)=)?([^:]+)(?::(.+))?$/.exec(raw);
+  if (!m) throw new UsageError(t.badEntry(raw));
+  const [, name, id, model] = m as unknown as [string, string | undefined, string, string | undefined];
+  if (id === "scripted") {
+    if (!model) throw new UsageError(t.scriptedNeedsPath(raw));
+    return { name: name?.trim() || participantName(undefined, model, index), providerId: "scripted", model };
+  }
+  const provider = registry.providers.find((p) => p.id === id);
+  if (!provider) {
+    const known = registry.providers.map((p) => p.id).join(", ") || t.noProvidersWord;
+    throw new UsageError(t.unknownProvider(id, known));
+  }
+  const http = provider.kind === "openai-http";
+  if (http && (!model || model === DEFAULT_MODEL)) throw new UsageError(t.httpNeedsModel(raw, id));
+  if (!http && model?.includes(":")) throw new UsageError(t.modelNoColons(raw));
+  const m2 = model ?? DEFAULT_MODEL;
+  return { name: name?.trim() || participantName(provider, m2, index), providerId: id, model: m2, provider };
+}
+
+interface MaterialsView { materials: MaterialSet["materials"]; workspace: FolderFile[]; skipped: MaterialSet["skipped"]; left: { name: string; reason: string }[]; sources: MaterialSource[] }
+
+// --include: a filesystem path inside the attached folder, or a name from the section "Excluded by rules" (starts with the folder name)
+export function includePaths(given: readonly string[], attach: readonly string[], cwd: string = process.cwd()): string[] {
+  const roots = [...new Set(attach.map((a) => resolve(cwd, a)))];
+  return given.map((g) => {
+    // an ambiguous name is rejected before parsing, relative to the current folder: otherwise the returned folder would depend on where the command is run from
+    const named = roots.filter((r) => g.startsWith(`${basename(r)}/`));
+    if (named.length > 1) throw new UsageError(cliMessages().includeAmbiguous(g));
+    const abs = resolve(cwd, g);
+    if (roots.some((r) => abs.startsWith(r + sep))) return abs;
+    if (named.length === 1) return join(dirname(named[0]!), g);
+    // a name with the suffix of a same-named folder: "proj (2)/out/" — by the printed name
+    for (const [r, p] of attachedFolderPrefixes(roots)) if (g.startsWith(`${p}/`)) return join(r, g.slice(p.length + 1));
+    return abs;
+  });
+}
+
+// Materials summary: texts are not printed, links only in a safe form
+function printMaterials(io: CliIo, log: Logger, set: MaterialsView, limit: number) {
+  const t = cliMessages();
+  const total = set.materials.reduce((n, m) => n + m.chars, 0);
+  log.info(`Materials: ${set.materials.length}, size ${total}, folder files ${set.workspace.length}, not in the initial set ${set.left.length}, skipped ${set.skipped.length}, links ${set.sources.length}`);
+  io.stdout(t.materials(set.materials.length, total, limit));
+  if (set.workspace.length) {
+    io.stdout(t.folderSnapshot(folderStats(set.workspace).files, folderStats(set.workspace).chars, FOLDER_LIMITS.snapshotChars));
+  }
+  if (set.left.length) {
+    io.stdout(t.leftOut(set.left.length));
+    set.left.slice(0, 20).forEach((s) => io.stdout(`  ${s.name} — ${s.reason}`));
+    if (set.left.length > 20) io.stdout(t.andMore(set.left.length - 20));
+  }
+  // a record with excludedPath is an exclusion by a .gitignore rule; the rest are ordinary skips
+  const ruled = set.skipped.filter((s) => s.excludedPath !== undefined);
+  const other = set.skipped.filter((s) => s.excludedPath === undefined);
+  if (ruled.length) {
+    io.stdout(t.excludedByRules(ruled.length));
+    ruled.forEach((s) => io.stdout(`  ${s.name} — ${s.reason}`));
+  }
+  if (other.length) {
+    io.stdout(t.skipped(other.length));
+    other.forEach((s) => io.stdout(`  ${s.name} — ${s.reason}`));
+  }
+  if (set.sources.length) {
+    io.stdout(t.linkSources(set.sources.length));
+    set.sources.forEach((s) => io.stdout(`  ${formatSource(s)}`));
+  }
+}
+
+// usage line after a turn; the cap and the accumulated tokens are taken from the state for this turn
+function spendLine(state: SessionState): string {
+  const t = cliMessages(), u = tokenUsage(state), cap = state.session?.limits.maxTotalTokens;
+  if (!sessionUsage(state.usageEvents).records.some((r) => r.usage.inputTokens !== undefined || r.usage.outputTokens !== undefined)) {
+    return t.spendNoTokens(cap);
+  }
+  const note = u.incomplete ? t.spendIncompleteNote : "";
+  return cap !== undefined ? t.spendOfCap(u.total, cap, note) : t.spendNoCap(u.total, note);
+}
+
+type DraftText = (meta: { draftId: string; chars: number; sha256: string }) => string | null;
+
+const filesReadLine = (files: { name: string; chars: number; shown: number }[]) => {
+  const t = cliMessages();
+  return t.filesRead(files.map((f) => `${f.name} — ${f.shown === f.chars ? t.fileChars(f.chars) : t.fileCharsOf(f.shown, f.chars)}`).join("; "));
+};
+
+const snapshotReader = (dataDir: string, id: string): DraftText => (meta) => {
+  try {
+    return readDraftSnapshot(dataDir, id, meta);
+  } catch (e) {
+    if (e instanceof DraftSnapshotError) return null;
+    throw e;
+  }
+};
+
+function formatEvent(e: SessionEvent, state: SessionState, sessionId?: string, spend = false, draftText?: DraftText): string[] {
+  const t = cliMessages();
+  const nameOf = (id: string) => state.session?.participants.find((p) => p.id === id)?.name ?? id;
+  switch (e.type) {
+    case "session_created":
+      return [
+        t.sessionHeader(e.session.id, e.session.participants.length, e.session.limits.maxRounds),
+        t.topic(e.session.topic),
+        ...(e.session.templateId !== null ? [t.template(e.session.templateId)] : []),
+      ];
+    case "turn_completed": {
+      const notes = (e.stance === "amend" ? t.toVersion(e.version) : "") +
+        (e.normalized ? t.normalized : "");
+      const out = ["", t.turn(e.turn, e.round, e.participantId, nameOf(e.participantId), e.stance, notes), t.reasoning(e.reasoning)];
+      if (e.filesRead?.length) out.push(filesReadLine(e.filesRead));
+      if (e.answers.length) out.push(t.answers, ...e.answers.map((a) => `  ${a.questionId}: ${a.text}`));
+      const toParticipants = e.questions.filter((q) => q.to !== OWNER_ID);
+      if (toParticipants.length) out.push(t.questions, ...toParticipants.map((q) => `  ${q.id} → ${q.to}: ${q.text}`));
+      for (const q of e.questions.filter((x) => x.to === OWNER_ID)) {
+        out.push(t.ownerQuestion(q.id, e.participantId, nameOf(e.participantId), q.text));
+        if (sessionId !== undefined) out.push(t.answerHint(sessionId, q.id));
+      }
+      if (spend) out.push(spendLine(state));
+      return out;
+    }
+    case "turn_failed":
+      return [t.turnFailed(e.turn, e.participantId, nameOf(e.participantId), e.attempt, e.kind, e.message)];
+    case "draft_completed": {
+      const out = ["", t.draft(e.participantId, nameOf(e.participantId), e.attempts, e.chars), t.rationale(e.reasoning)];
+      if (e.filesRead?.length) out.push(filesReadLine(e.filesRead));
+      out.push(t.draftTextLabel, draftText?.({ draftId: e.draftId, chars: e.chars, sha256: e.sha256 }) ?? t.draftTextUnavailable);
+      if (spend) out.push(spendLine(state));
+      return out;
+    }
+    case "draft_attempt_failed":
+      return [t.draftFailed(e.participantId, nameOf(e.participantId), e.attempt, e.kind, e.message)];
+    case "drafts_finished": {
+      const synth = state.session?.drafts?.synthesizerId ?? "";
+      return ["", t.draftsFinished(state.drafts.filter((d) => d.done).length, state.session ? slotRoster(state.session).length : 0, synth, nameOf(synth))];
+    }
+    case "participant_dropped":
+      return [t.dropped(e.participantId, nameOf(e.participantId), e.reason)];
+    case "session_resumed":
+      return [
+        t.resumed(e.maxRounds, e.maxTotalTokens === undefined ? "" : e.maxTotalTokens === null ? t.resumedCapRemoved : t.resumedCap(e.maxTotalTokens)),
+        ...(e.replacements ?? []).map((r) => t.replacementLine(r.oldParticipantId, r.participant.id, r.participant.name)),
+      ];
+    case "owner_message":
+      return ["", t.ownerMessage(e.id, e.afterTurn, e.answers ? e.answers.map((a) => a.questionId).join(", ") : ""), e.text];
+    case "owner_selected_version":
+      return ["", t.ownerSelected(e.version, statusText(e.statusAtSelection)), ...(e.note ? [t.note(e.note)] : [])];
+    case "owner_wait_started": {
+      const out = ["", t.waitStarted(e.waitId, waitReasons(e.reasons, e.questionIds), e.deadline)];
+      if (sessionId !== undefined) {
+        out.push(t.continueHint(sessionId));
+        if (e.questionIds[0] !== undefined) out.push(t.answerHint(sessionId, e.questionIds[0]));
+      }
+      return out;
+    }
+    case "owner_wait_updated":
+      return [t.waitUpdated(e.waitId, waitReasons(e.reasons, e.questionIds))];
+    case "owner_wait_finished":
+      return [t.waitFinished(e.waitId, waitDone(e.reason))];
+    case "question_closed":
+      return e.reason === "unanswered" ? [t.questionUnanswered(e.questionId)] : [];
+    default:
+      return [];
+  }
+}
+
+function formatSummary(state: SessionState, show = false): string[] {
+  const t = cliMessages();
+  const f = state.finish!;
+  const v = currentVersion(state);
+  const out = ["", t.summary(f.status)];
+  const cap = state.session?.limits.maxTotalTokens, usage = tokenUsage(state);
+  const synth = state.session?.drafts?.synthesizerId ?? "";
+  const synthName = state.session?.participants.find((p) => p.id === synth)?.name ?? synth;
+  if (f.reason === TOKEN_CAP_REASON) {
+    out.push(show ? t.reasonCoded(f.reason, t.tokenCapCode) : t.tokenCapReason(usage.total, cap));
+  } else if (f.reason === SYNTHESIZER_UNAVAILABLE_REASON) {
+    const text = t.synthUnavailable(synth, synthName);
+    out.push(show ? t.reasonCoded(f.reason, text) : t.reason(text));
+  } else if (f.reason === DRAFT_CONTEXT_LIMIT_REASON) {
+    const chars = state.drafts.reduce((n, d) => n + (d.done ? d.done.chars + d.done.reasoning.length : 0), 0);
+    const text = t.draftsTooLong(chars, state.session?.limits.contextChars);
+    out.push(show ? t.reasonCoded(f.reason, text) : t.reason(text));
+  } else {
+    const reasonText = finishReasonText(f);
+    if (reasonText) out.push(t.reason(reasonText));
+    if (f.reasonCode === INSUFFICIENT_ACTIVE_REASON_CODE) out.push(t.canReplace(state.session?.id ?? "<id>"));
+    if (cap !== undefined && usage.incomplete) out.push(t.tokensIncomplete(cap));
+  }
+  if (v) out.push(t.versionBy(v.number, v.authorId));
+  out.push(t.agreed(f.agreed.length ? f.agreed.join(", ") : t.none));
+  if (f.objectors.length) {
+    out.push(t.objectors);
+    for (const o of f.objectors) {
+      const name = state.session?.participants.find((p) => p.id === o.participantId)?.name ?? o.participantId;
+      out.push(`  ${o.participantId} «${name}»: ${o.reasoning ?? t.silent}`);
+    }
+  }
+  out.push("", ...(v ? [t.decision, v.text] : [t.noDecision]));
+  return out;
+}
+
+const statusText = (status: string) => (status === "running" ? cliMessages().running : status);
+
+/** A session of a newer version without an outcome: "running" and "interrupted" are not asserted by pid. */
+const undetermined = (status: StoredStatus, partial: JournalPartial | null) =>
+  partial?.reason === "newer_version" && (status === "running" || status === "interrupted");
+
+/** Status for output: the outcome or "state not determined", then a note about a partly read journal. */
+function statusLabel(status: StoredStatus, partial: JournalPartial | null): string {
+  const text = undetermined(status, partial) ? cliMessages().undetermined : statusText(status);
+  return partial === null ? text : `${text} · ${partialNote(partial)}`;
+}
+
+function formatStatus(id: string, status: StoredStatus, partial: JournalPartial | null, state: SessionState, now: number): string[] {
+  const t = cliMessages();
+  const out = [t.statusLine(id, statusLabel(status, partial)), ...(partial?.reason === "newer_version" ? [t.updateAdvice] : []), t.roundOf(state.round, state.session!.limits.maxRounds, state.turns.length)];
+  const info = out.length - 1;
+  if (draftPhase(state) === "drafting") {
+    out[info] = t.draftsPhase(state.drafts.filter((d) => d.done).length, slotRoster(state.session!).length, state.session!.drafts!.synthesizerId);
+  }
+  const w = state.waiting;
+  if (w === null) return [...out, t.noWait];
+  out.push(t.waitLine(w.waitId, waitReasons(w.reasons, w.questionIds, false)));
+  for (const qid of w.questionIds) {
+    const q = state.questions.find((x) => x.id === qid);
+    const name = q ? (state.session!.participants.find((p) => p.id === q.from)?.name ?? q.from) : "";
+    out.push(`  ${qid} · ${q ? `${q.from} «${name}»: ${q.text}` : t.questionNotFound}`);
+  }
+  const left = Math.ceil((Date.parse(w.deadline) - now) / 1000);
+  out.push(t.deadline(w.deadline, left));
+  if (undetermined(status, partial)) return out;
+  if (status === "running") {
+    out.push(t.continueHint(id));
+    if (w.questionIds[0] !== undefined) out.push(t.answerHint(id, w.questionIds[0]));
+  } else if (status === "interrupted") out.push(t.executorDown(id));
+  return out;
+}
+
+function formatShow(events: SessionEvent[], status: StoredStatus, partial: JournalPartial | null, draftText?: DraftText): string[] {
+  const t = cliMessages();
+  let state = initialState();
+  const out: string[] = [];
+  for (const e of events) {
+    state = applyEvent(state, e);
+    out.push(...formatEvent(e, state, undefined, false, draftText));
+  }
+  out.push(t.showStatus(statusLabel(status, partial)));
+  if (partial?.reason === "newer_version") out.push(t.updateAdvice);
+  if (state.finish !== null) out.push(...formatSummary(state, true));
+  else {
+    const v = currentVersion(state);
+    if (v) out.push(t.currentVersion(v.number, v.authorId), v.text);
+    out.push(t.agreed(state.agreed.length ? state.agreed.join(", ") : t.none));
+    const w = state.waiting;
+    if (w !== null) out.push(t.waitUntil(w.waitId, waitReasons(w.reasons, w.questionIds), w.deadline));
+    if (draftPhase(state) === "drafting") out.push(t.draftsRunning(state.drafts.filter((d) => d.done).length, slotRoster(state.session!).length));
+    const ct = state.currentTurn;
+    if (ct) out.push(t.currentTurn(ct.turn, ct.round, ct.participantId));
+  }
+  const sel = state.ownerSelection;
+  if (sel !== null) {
+    out.push("", t.ownerChoice(sel.version), t.chosenAt(sel.ts, statusText(sel.statusAtSelection)));
+    if (sel.note) out.push(t.note(sel.note));
+    out.push(t.versionText(sel.version), state.versions.find((v) => v.number === sel.version)?.text ?? "");
+  }
+  const tot = sessionTotals(state);
+  out.push(
+    t.totals(tot.turns, tot.drafts > 0 ? t.totalsDrafts(tot.drafts) : "", (tot.durationMs / 1000).toFixed(1)) +
+    (tot.inputTokens !== null || tot.outputTokens !== null ? t.totalsTokens(String(tot.inputTokens ?? "?"), String(tot.outputTokens ?? "?")) : "") +
+    (tot.costUsd !== null ? t.totalsCost(tot.costUsd.toFixed(4)) : "") +
+    (state.session?.limits.maxTotalTokens !== undefined ? t.totalsCap(state.session.limits.maxTotalTokens) : "") +
+    (tot.incomplete ? t.totalsIncomplete : ""),
+  );
+  return out;
+}
+
+export async function main(argv: string[], io: CliIo): Promise<number> {
+  // the language is set by the entry point before main is called and does not change until the call ends
+  const t = cliMessages();
+  const usageFail = (message: string) => {
+    io.stderr(`${t.error(message)}\n\n${t.help}`);
+    return EXIT.usage;
+  };
+  let logger: Logger | undefined;
+  try {
+    let values, positionals: string[];
+    try {
+      ({ values, positionals } = parseArgs({
+        args: argv,
+        strict: true,
+        allowPositionals: true,
+        options: {
+          help: { type: "boolean" },
+          topic: { type: "string" },
+          participant: { type: "string", multiple: true },
+          "max-rounds": { type: "string" },
+          framing: { type: "string" },
+          "turn-timeout": { type: "string" },
+          "context-chars": { type: "string" },
+          template: { type: "string" },
+          lineup: { type: "string" },
+          "from-session": { type: "string" },
+          attach: { type: "string", multiple: true },
+          include: { type: "string", multiple: true },
+          "no-ignore": { type: "boolean" },
+          url: { type: "string", multiple: true },
+          "preview-materials": { type: "boolean" },
+          "prepared-materials": { type: "string" },
+          "materials-chars": { type: "string" },
+          "pause-after-round": { type: "boolean" },
+          "wait-for-owner": { type: "boolean" },
+          "owner-wait-sec": { type: "string" },
+          answer: { type: "string" },
+          rounds: { type: "string" },
+          replace: { type: "string", multiple: true },
+          "max-tokens": { type: "string" },
+          "no-max-tokens": { type: "boolean" },
+          drafts: { type: "boolean" },
+          synthesizer: { type: "string" },
+        },
+      }));
+    } catch (e) {
+      return usageFail(e instanceof Error ? e.message : String(e));
+    }
+    if (values.help) {
+      io.stdout(t.help);
+      return EXIT.consensus;
+    }
+
+    const [cmd = "run", ...rest] = positionals;
+    if (values.answer !== undefined && cmd !== "say") return usageFail(t.answerOnlySay);
+    if (!["run", "providers", "list", "show", "stop", "say", "status", "continue", "resume", "home", "templates", "lineups"].includes(cmd)) return usageFail(t.unknownCommand(cmd));
+    if (cmd === "run" && positionals.length) return usageFail(t.unknownCommand(cmd));
+    if (cmd === "home" || cmd === "list" || cmd === "providers" || cmd === "templates") {
+      if (rest.length) return usageFail(t.noArgs(cmd));
+    } else if (cmd === "lineups") {
+      if (rest.length && !(rest[0] === "save" && rest.length === 2)) return usageFail(t.lineupsUsage);
+      if (rest.length && values["from-session"] === undefined) return usageFail(t.lineupsSaveNeedsSession);
+    } else if (cmd === "say") {
+      if (rest.length !== 2) return usageFail(t.sayArgs);
+    } else if (cmd !== "run" && rest.length !== 1) {
+      return usageFail(t.oneArg(cmd));
+    }
+    if (cmd === "resume") {
+      const bad = RUN_FLAGS.find((f) => values[f] !== undefined);
+      if (bad) return usageFail(t.resumeFlag(bad));
+    } else if (values.rounds !== undefined) {
+      return usageFail(t.roundsOnlyResume);
+    } else if (values.replace !== undefined) {
+      return usageFail(t.replaceOnlyResume);
+    }
+    const urlFlags = values.url !== undefined || values["preview-materials"] !== undefined || values["prepared-materials"] !== undefined || values.include !== undefined || values["no-ignore"] !== undefined;
+    if (urlFlags && cmd !== "run") return usageFail(t.urlFlagsOnlyRun);
+    if (values.include !== undefined) {
+      if (values["no-ignore"]) return usageFail(t.includeNoIgnore);
+      if (values.include.some((i) => !i.trim())) return usageFail(t.includeNeedsPath);
+      if (!values.attach?.length && values["prepared-materials"] === undefined) return usageFail(t.includeNeedsAttach);
+    }
+    if (values.url?.some((u) => !u.trim())) return usageFail(t.urlNeedsAddress);
+    const prepared = values["prepared-materials"], preview = values["preview-materials"];
+    if (prepared !== undefined) {
+      if (!prepared.trim()) return usageFail(t.preparedNeedsId);
+      if (values.attach !== undefined || values.url !== undefined) return usageFail(t.preparedWithAttach);
+      if (values.include !== undefined || values["no-ignore"]) return usageFail(t.preparedWithInclude);
+      if (values["materials-chars"] !== undefined) return usageFail(t.preparedWithChars);
+      if (preview) return usageFail(t.preparedWithPreview);
+    }
+    if (preview) {
+      if (!values.attach?.length && !values.url?.length) return usageFail(t.previewNeedsInput);
+      const other = [...RUN_FLAGS, "max-tokens", "no-max-tokens"].find((f) => !["attach", "include", "no-ignore", "url", "materials-chars", "preview-materials"].includes(f) && (values as Record<string, unknown>)[f] !== undefined);
+      if (other) return usageFail(t.previewFlag(other));
+    }
+    if (values.synthesizer !== undefined && !values.drafts) return usageFail(t.synthNeedsDrafts);
+    if ((values.drafts || values.synthesizer !== undefined) && cmd !== "run") return usageFail(t.draftsOnlyRun);
+    if (values["from-session"] !== undefined && !(cmd === "lineups" && rest.length)) return usageFail(t.fromSessionOnlySave);
+    if (values.lineup !== undefined) {
+      if (cmd !== "run" && cmd !== "resume") return usageFail(t.lineupOnlyRun);
+      if (values.participant?.length) return usageFail(t.lineupWithParticipant);
+      if (!values.lineup.trim()) return usageFail(t.lineupNeedsId);
+    }
+    const tokenFlags = values["max-tokens"] !== undefined || values["no-max-tokens"] !== undefined;
+    if (tokenFlags && cmd !== "run" && cmd !== "resume") return usageFail(t.tokenFlagsOnlyRun);
+    if (values["max-tokens"] !== undefined && values["no-max-tokens"]) return usageFail(t.tokenFlagsConflict);
+    const waitFlags = (["pause-after-round", "wait-for-owner", "owner-wait-sec"] as const).some((f) => values[f] !== undefined);
+    if (waitFlags && cmd !== "run" && cmd !== "resume") return usageFail(t.waitFlagsOnlyRun);
+    const waitSecRaw = values["owner-wait-sec"];
+    let waitSec: number | undefined;
+    if (waitSecRaw !== undefined && cmd === "run") {
+      waitSec = Number(waitSecRaw);
+      if (!/^\d+$/.test(waitSecRaw.trim()) || waitSec < 1 || waitSec > OWNER_WAIT_MAX_SEC) return usageFail(t.waitSecRange(OWNER_WAIT_MAX_SEC));
+      if (!values["pause-after-round"] && !values["wait-for-owner"]) return usageFail(t.waitSecNeedsMode);
+    }
+    let rounds: number | undefined, maxTokens: number | undefined;
+    try {
+      rounds = intFlag("--rounds", values.rounds);
+      maxTokens = intFlag("--max-tokens", values["max-tokens"]);
+    } catch (e) {
+      return usageFail(e instanceof Error ? e.message : String(e));
+    }
+    if (cmd === "home") {
+      try {
+        io.stdout(prepareDataDir(io.env));
+      } catch (e) {
+        if (!(e instanceof DataDirError)) throw e;
+        io.stderr(t.error(e.message));
+        return EXIT.internal;
+      }
+      return EXIT.consensus;
+    }
+
+    let dataDir: string;
+    try {
+      dataDir = ensureDataDir(prepareDataDir(io.env));
+    } catch (e) {
+      if (!(e instanceof DataDirError)) throw e;
+      io.stderr(t.error(e.message));
+      return EXIT.internal;
+    }
+    const log = (logger = createLogger(dataDir, "cli", io.env));
+    log.info(`Start: council ${cmd}`);
+    const argFail = (message: string, withHelp = true) => {
+      log.error("Argument error", message);
+      if (withHelp) return usageFail(message);
+      io.stderr(message);
+      return EXIT.usage;
+    };
+    const code = await (async (): Promise<number> => {
+      let registry: Registry | undefined;
+      if (cmd === "run" || cmd === "providers" || cmd === "resume") {
+        try {
+          await ensureRegistry(dataDir, { env: io.env, deps: io.inspectDeps });
+          registry = readRegistry(dataDir);
+          logRegistryLoaded(log, dataDir, registry);
+        } catch (e) {
+          if (!(e instanceof RegistryError)) throw e;
+          log.error("Registry error", e.message);
+          io.stderr(t.error(e.message));
+          return EXIT.usage;
+        }
+      }
+      if (cmd === "providers") {
+        if (!registry!.providers.length) {
+          io.stdout(t.noProviders(configPath(dataDir)));
+          return EXIT.consensus;
+        }
+        for (const { status: s } of await inspectProviders(registry!, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir) })) {
+          const isHttp = s.kind === "openai-http";
+          io.stdout([`${s.id}  ${s.kind}  ${s.available ? t.available : t.unavailable(s.reason ?? "")}`, s.version && t.version(s.version), s.path ?? s.baseUrl].filter(Boolean).join("  "));
+          if (s.warning) io.stdout(t.providerWarning(s.warning));
+          if (isHttp) io.stdout(s.keyEnv ? t.key(s.keyEnv, !!s.keySet) : t.keyNotRequired);
+          io.stdout(t.models(isHttp ? (s.models.length ? s.models.join(", ") : t.modelsManual(s.id)) : [DEFAULT_MODEL, ...s.models].join(", ")));
+          if (!s.modelsConfirmed && s.modelsReason) io.stdout(t.modelsUnconfirmed(s.modelsReason));
+        }
+        return EXIT.consensus;
+      }
+      const catalog = () => loadTemplates({ builtinDir: io.builtinTemplatesDir ?? BUILTIN_TEMPLATES_DIR, userDir: userTemplatesDir(dataDir) });
+      const sourceText = (src: string) => (src === "user" ? t.userSource : t.builtinSource);
+      if (cmd === "templates") {
+        const c = catalog();
+        if (!c.templates.length) io.stdout(t.noTemplates);
+        for (const tp of c.templates) io.stdout(`${tp.id}  ${tp.category}  ${tp.title}  ${sourceText(tp.source)}`);
+        if (c.errors.length) {
+          io.stdout(t.loadErrors);
+          for (const er of c.errors) io.stdout(`  ${er.file} (${sourceText(er.source)}): ${er.reason}`);
+        }
+        return EXIT.consensus;
+      }
+      if (cmd === "lineups") {
+        try {
+          if (!rest.length) {
+            const all = readLineups(dataDir);
+            if (!all.length) io.stdout(t.noLineups);
+            for (const l of all) {
+              io.stdout(`${l.id}  ${l.name}`);
+              l.participants.forEach((p, i) => io.stdout(`  ${i + 1}. ${p.providerId}:${p.model}${p.role !== null ? ` — ${p.role}` : ""}`));
+            }
+            return EXIT.consensus;
+          }
+          const id = values["from-session"]!;
+          const s = readSession(dataDir, id);
+          if (s === null) return argFail(t.sessionNotFoundOrDamaged(id), false);
+          const l = await saveLineup(dataDir, { name: rest[1]!, participants: slotRoster(s.state.session!).map((p) => ({ providerId: p.providerId, model: p.model, role: p.role })) });
+          io.stdout(t.lineupSaved(l.id, l.name, l.participants.length));
+          io.stdout(t.lineupRun(l.id));
+          return EXIT.consensus;
+        } catch (e) {
+          if (e instanceof LineupsError) return argFail(e.message, false);
+          throw e;
+        }
+      }
+      if (cmd === "list") {
+        const all = listSessions(dataDir);
+        if (!all.length) io.stdout(t.noSessions);
+        for (const s of all) {
+          const tp = s.topic.replace(/\s*[\r\n]+\s*/g, " ");
+          io.stdout(`${s.id}  ${s.createdAt}  ${statusLabel(s.status, s.partial)}  ${s.origin}  ${tp.length > 60 ? `${tp.slice(0, 60)}…` : tp}`);
+        }
+        if (all.some((s) => s.partial?.reason === "newer_version")) io.stdout(t.updateAdvice);
+        return EXIT.consensus;
+      }
+      if (cmd === "show") {
+        const id = rest[0]!;
+        const s = readSession(dataDir, id);
+        if (s === null) return argFail(t.sessionNotFound(id), false);
+        formatShow(readEvents(dataDir, id)?.events ?? [], s.status, s.partial, snapshotReader(dataDir, id)).forEach((l) => io.stdout(l));
+        return EXIT.consensus;
+      }
+      if (cmd === "stop") {
+        const id = rest[0]!;
+        try {
+          requestStop(dataDir, id);
+        } catch (e) {
+          if (e instanceof StopRejectedError) return argFail(e.message, false);
+          throw e;
+        }
+        io.stdout(t.stopRequested(id));
+        return EXIT.consensus;
+      }
+
+      if (cmd === "status") {
+        const id = rest[0]!;
+        const s = readSession(dataDir, id);
+        if (s === null) return argFail(t.sessionNotFound(id), false);
+        formatStatus(id, s.status, s.partial, s.state, Date.now()).forEach((l) => io.stdout(l));
+        return EXIT.consensus;
+      }
+      if (cmd === "continue") {
+        const id = rest[0]!;
+        let waitId: string;
+        try {
+          ({ waitId } = requestOwnerRelease(dataDir, id));
+        } catch (e) {
+          if (e instanceof OwnerReleaseRejectedError) return argFail(e.message, false);
+          const message = e instanceof Error ? e.message : String(e);
+          log.error("Failed to write the request", e);
+          io.stderr(t.requestWriteFailed(message));
+          return EXIT.internal;
+        }
+        io.stdout(t.continueRequested(id, waitId));
+        return EXIT.consensus;
+      }
+      if (cmd === "say") {
+        const id = rest[0]!;
+        try {
+          requestOwnerMessage(dataDir, id, rest[1]!, values.answer === undefined ? {} : { questionId: values.answer });
+        } catch (e) {
+          if (e instanceof OwnerMessageRejectedError) return argFail(e.message, false);
+          const message = e instanceof Error ? e.message : String(e);
+          log.error("Failed to write the message", e);
+          io.stderr(t.messageWriteFailed(message));
+          return EXIT.internal;
+        }
+        io.stdout(values.answer === undefined
+          ? t.messageRequested(id)
+          : t.answerRequested(values.answer, id));
+        return EXIT.consensus;
+      }
+
+      if (cmd === "resume") {
+        const id = rest[0]!;
+        let replacements: ReplacementInput[];
+        try {
+          replacements = (values.replace ?? []).map((raw) => {
+            const eq = raw.indexOf("=");
+            const pid = raw.slice(0, eq), record = raw.slice(eq + 1);
+            if (eq < 0 || !/^p[1-9]\d*$/.test(pid) || !record.trim()) throw new UsageError(t.replaceFormat(raw));
+            const part = parseParticipant(record, 0, registry!);
+            // the default name of registry providers does not depend on the number; for scripted ones the core gives it ("Participant N" by the new identifier)
+            const named = /^[^=:]+=/.test(record) || part.providerId !== "scripted";
+            return { participantId: pid, providerId: part.providerId, model: part.model, ...(named ? { name: part.name } : {}) };
+          });
+        } catch (e) {
+          if (e instanceof UsageError) return argFail(e.message);
+          throw e;
+        }
+        let run;
+        try {
+          const plan = planResume(dataDir, id, {
+            rounds, ...(maxTokens !== undefined ? { maxTotalTokens: maxTokens } : values["no-max-tokens"] ? { maxTotalTokens: null } : {}),
+            ...(replacements.length ? { replacements } : {}),
+          });
+          const driverOptions = { registry: registry!, env: io.env, dataDir, deps: io.inspectDeps };
+          const { drivers, warnings, unavailable } = await resumeDrivers(plan, driverOptions);
+          warnings.forEach((w) => io.stderr(t.warning(w)));
+          io.stdout(t.resumePlan(id, plan.addedRounds, plan.maxRounds, plan.maxCalls, plan.active.length, plan.draftCalls));
+          const src = readMaterialSources(dataDir, id);
+          if (src === null) io.stdout(t.linkSourcesUnreadable(SOURCES_FILE));
+          else if (src.length) {
+            io.stdout(t.linkSources(src.length));
+            src.forEach((s) => io.stdout(`  ${formatSource(s)}`));
+          }
+          if (plan.replacements.length) {
+            for (const r of plan.replacements) {
+              const old = plan.session.participants.find((p) => p.id === r.oldParticipantId)!, n = r.participant;
+              const why = r.wasActive ? t.replacementWhyUnavailable(String(unavailable[old.id])) : t.replacementWhyDropped(String(r.dropReason));
+              io.stdout(t.replacement(old.id, old.name, n.id, n.name, n.providerId, n.model, why));
+            }
+            io.stdout(t.agreementsReset);
+            io.stdout(t.activeLineup(plan.active.map((p) => `${p.id} «${p.name}»`).join(", ")));
+          }
+          const w = plan.state.waiting;
+          if (w !== null) {
+            io.stdout(Date.parse(w.deadline) > Date.now()
+              ? t.waitContinues(w.waitId, w.deadline, id)
+              : t.waitExpiredResume(w.waitId));
+          }
+          if (plan.tokenCap !== null || values["no-max-tokens"]) io.stdout(t.tokenCapResume(String(plan.tokenCap ?? t.noCap), plan.spentTokens));
+          let streamed = false;
+          run = await runResumedSession({
+            dataDir, plan, drivers, signal: io.signal, logger: log,
+            ...(plan.replacements.length ? { revalidate: () => resumeDrivers(plan, driverOptions) } : {}),
+            onAccepted: ({ droppedOwnerRequests: dropped }) => {
+              if (!dropped.length) return;
+              io.stdout(t.droppedRequests(dropped.length, id));
+              dropped.forEach((r) => io.stdout(`  ${r.text}`));
+            },
+            onChunk: io.chunk && ((c) => { streamed = true; io.chunk!(c.text); }),
+            onEvent: (e, s) => {
+              if (streamed) { io.chunk?.("\n"); streamed = false; }
+              formatEvent(e, s, id, true, snapshotReader(dataDir, id)).forEach((l) => io.stdout(l));
+            },
+          });
+        } catch (e) {
+          if (!(e instanceof ResumeRejectedError)) throw e;
+          log.error("Resume rejected", e.reason);
+          io.stderr(t.error(e.message));
+          return EXIT.usage;
+        }
+        formatSummary(run.state).forEach((l) => io.stdout(l));
+        return EXIT[run.state.finish!.status];
+      }
+
+      const reg = registry!;
+      const urlOptions = { ...(io.urlTransport ? { transport: io.urlTransport } : {}) };
+      const collectOptions = (materialsChars: number) => ({
+        materialsChars, materialsIgnore: reg.defaults.materialsIgnore,
+        ...(values["no-ignore"] ? { gitignore: false } : {}),
+        ...(values.include ? { include: includePaths(values.include, values.attach ?? []) } : {}),
+      });
+      if (values["preview-materials"]) {
+        try {
+          const limit = intFlag("--materials-chars", values["materials-chars"]) ?? reg.defaults.materialsChars;
+          const urls = await collectUrlMaterials(values.url ?? [], urlOptions);
+          const set = collectSessionMaterialsWithUrls(values.attach ?? [], collectOptions(limit), urls);
+          const saved = savePreparedMaterials(dataDir, { materials: set.materials, workspace: set.workspace, skipped: set.skipped, left: set.left, materialsChars: limit, stamp: "cli", sources: set.sources });
+          const view = buildMaterialsPreview({ language: getProcessLanguage(), materials: set.materials, workspace: set.workspace, skipped: set.skipped, left: set.left });
+          printMaterials(io, log, set, limit);
+          io.stdout("");
+          if (view.initial !== null) io.stdout(view.initial);
+          if (view.manifest !== null) io.stdout(view.manifest);
+          io.stdout("");
+          io.stdout(t.preparedSaved(saved.id));
+          io.stdout(t.preparedRun(saved.id));
+          log.info(`Materials preview: set ${saved.id}`);
+          return EXIT.consensus;
+        } catch (e) {
+          if (e instanceof UsageError) return argFail(e.message);
+          if (e instanceof MaterialsError) return argFail(t.materialsRejected(e.reasons.map((r) => `  ${r}`).join("\n")), false);
+          if (e instanceof PreparedMaterialsError) return argFail(t.preparedNotCreated(e.message), false);
+          throw e;
+        }
+      }
+      let session, drivers: Record<string, ParticipantDriver>, materials: MaterialSet["materials"] | undefined, workspace: FolderFile[] = [], sources: MaterialSource[] = [];
+      try {
+        if (!values.topic?.trim()) throw new UsageError(t.topicRequired);
+        if (values.template !== undefined && !values.template.trim()) throw new UsageError(t.templateNeedsId);
+        const preparedSet = prepared !== undefined ? loadPreparedMaterials(dataDir, prepared) : undefined;
+        const limits = {
+          maxRounds: intFlag("--max-rounds", values["max-rounds"]),
+          turnTimeoutSec: intFlag("--turn-timeout", values["turn-timeout"], MAX_TURN_TIMEOUT_SEC),
+          contextChars: intFlag("--context-chars", values["context-chars"]),
+          materialsChars: preparedSet ? preparedSet.materialsChars : intFlag("--materials-chars", values["materials-chars"]),
+          maxTotalTokens: maxTokens,
+        };
+        const runtimes = new Map<string, Awaited<ReturnType<typeof inspectProvider>>>();
+        let parts: Part[], lineupRoles: (string | null)[] | undefined;
+        if (values.lineup !== undefined) {
+          const id = values.lineup;
+          const lineup = readLineups(dataDir).find((l) => l.id === id);
+          if (!lineup) return argFail(t.lineupNotFound(id), false);
+          const used = reg.providers.filter((p) => lineup.participants.some((x) => x.providerId === p.id));
+          const inspected = await Promise.all(used.map((p) => inspectProvider(p, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir) })));
+          for (const f of inspected) {
+            runtimes.set(f.status.id, f);
+            if (f.status.warning) io.stderr(t.providerWarn(f.status.id, f.status.warning));
+          }
+          const check = checkLineup(lineup, {
+            registry: reg, statuses: inspected.map((f) => f.status),
+            scripted: io.env.COUNCIL_DEV === "1" ? (model) => (existsSync(model) ? null : t.scenarioNotFound(model)) : null,
+          });
+          check.participants.forEach((p, i) => {
+            if (p.modelNote) io.stderr(t.positionWarn(i + 1, p.providerId, p.model, p.modelNote));
+          });
+          if (!check.available) {
+            log.error("Lineup unavailable", check.id);
+            io.stderr([t.lineupUnavailable(check.name), ...check.participants.flatMap((p, i) => (p.available ? [] : [`  ${i + 1}. ${p.providerId}:${p.model} — ${p.reason}`]))].join("\n"));
+            return EXIT.usage;
+          }
+          parts = lineup.participants.map((p, i) => {
+            const provider = reg.providers.find((x) => x.id === p.providerId);
+            return { name: participantName(provider, p.model, i), providerId: p.providerId, model: p.model, ...(provider ? { provider } : {}) };
+          });
+          lineupRoles = lineup.participants.map((p) => p.role);
+          io.stdout(t.lineup(lineup.name, lineup.id));
+        } else {
+          const raws = values.participant ?? reg.defaults.participants.map((p) => `${p.providerId}:${p.model}`);
+          if (!raws.length) {
+            throw new UsageError(t.noParticipants(configPath(dataDir)));
+          }
+          parts = raws.map((r, i) => parseParticipant(r, i, reg));
+        }
+        if (values.attach?.some((a) => !a.trim())) throw new UsageError(t.attachNeedsPath);
+        const input = templateSessionInput({
+          catalog: catalog(), templateId: values.template, topic: values.topic, origin: "cli",
+          participants: parts.map((p) => ({ name: p.name, providerId: p.providerId, model: p.model })),
+          limits, defaults: reg.defaults, framing: values.framing, noTokenCap: values["no-max-tokens"],
+        });
+        if (lineupRoles) input.participants.forEach((p, i) => { p.role = lineupRoles[i]!; });
+        if (values.drafts) input.drafts = { ...(values.synthesizer !== undefined ? { synthesizerId: values.synthesizer } : {}) };
+        if (values["pause-after-round"] || values["wait-for-owner"]) {
+          input.ownerWait = {
+            ...(values["pause-after-round"] ? { pauseAfterRound: true } : {}),
+            ...(values["wait-for-owner"] ? { waitForOwner: true } : {}),
+            ...(waitSec !== undefined ? { timeoutSec: waitSec } : {}),
+          };
+        }
+        if (preparedSet) {
+          io.stdout(t.preparedSet(preparedSet.id));
+          printMaterials(io, log, preparedSet, preparedSet.materialsChars);
+          ({ materials, workspace, sources } = preparedSet);
+        } else if (values.attach?.length || values.url?.length) {
+          const limit = input.limits.materialsChars!;
+          const urls = await collectUrlMaterials(values.url ?? [], urlOptions);
+          const set = collectSessionMaterialsWithUrls(values.attach ?? [], collectOptions(limit), urls);
+          printMaterials(io, log, set, limit);
+          ({ materials, workspace, sources } = set);
+        }
+        session = createSession({ ...input, ...(materials ? { materials } : {}), ...(workspace.length ? { workspace } : {}) }, { maxParticipants: reg.defaults.maxParticipants });
+        drivers = {};
+        for (const [i, p] of parts.entries()) {
+          if (!p.provider) {
+            const scenario = await readScenario(p.model).catch((e: Error) => { throw new UsageError(e.message); });
+            drivers[`p${i + 1}`] = createScriptedDriver(scenario, io.env);
+            continue;
+          }
+          let found = runtimes.get(p.providerId);
+          if (!found) {
+            found = await inspectProvider(p.provider, { env: io.env, withModels: false, deps: io.inspectDeps, keyFile: envFilePath(dataDir) });
+            runtimes.set(p.providerId, found);
+            if (found.status.warning) io.stderr(t.providerWarn(p.providerId, found.status.warning));
+          }
+          if (!found.runtime && !found.http) {
+            log.error("Provider unavailable", p.providerId);
+            io.stderr(t.providerUnavailable(p.providerId, String(found.status.reason)));
+            return EXIT.usage;
+          }
+          drivers[`p${i + 1}`] = found.runtime ? createCliDriver(found.runtime) : createHttpDriver(found.http!);
+        }
+      } catch (e) {
+        if (e instanceof UsageError || e instanceof SessionInputError || e instanceof ScriptedUnavailableError) {
+          return argFail(e.message);
+        }
+        if (e instanceof LineupsError) return argFail(e.message, false);
+        if (e instanceof MaterialsError) return argFail(t.materialsRejected(e.reasons.map((r) => `  ${r}`).join("\n")), false);
+        if (e instanceof PreparedMaterialsError) return argFail(t.preparedNotAccepted(e.message), false);
+        if (e instanceof UnknownTemplateError) return argFail(t.templatesHint(e.message));
+        throw e;
+      }
+
+      const cap = session.limits.maxTotalTokens;
+      const capLine = cap !== undefined ? t.capLine(cap, maxTokens === undefined) : values["no-max-tokens"] ? t.capNone : undefined;
+      let streamed = false;
+      const { state } = await runStoredSession({
+        session, drivers, materials, ...(workspace.length ? { workspace } : {}), ...(sources.length ? { sources } : {}), signal: io.signal, dataDir, logger: log,
+        onChunk: io.chunk && ((c) => { streamed = true; io.chunk!(c.text); }),
+        onEvent: (e, s) => {
+          if (streamed) { io.chunk?.("\n"); streamed = false; }
+          formatEvent(e, s, session.id, true, snapshotReader(dataDir, session.id)).forEach((l) => io.stdout(l));
+          if (e.type === "session_created" && capLine) io.stdout(capLine);
+          if (e.type === "session_created" && session.drafts) {
+            const synth = session.drafts.synthesizerId, name = session.participants.find((p) => p.id === synth)?.name ?? synth;
+            io.stdout(t.draftsExperiment(synth, name, values.synthesizer === undefined, maxCallsBound(session.participants.length, session.limits.maxRounds, true), session.participants.length, session.limits.maxRounds));
+          }
+          if (e.type === "session_created" && session.ownerWait) {
+            const w = session.ownerWait;
+            const modes = [w.pauseAfterRound && t.waitModePause, w.waitForOwner && t.waitModeAnswer].filter(Boolean).join("; ");
+            io.stdout(t.ownerWait(modes, w.timeoutSec ?? OWNER_WAIT_DEFAULT_SEC));
+          }
+        },
+      });
+      formatSummary(state).forEach((l) => io.stdout(l));
+      return EXIT[state.finish!.status];
+    })();
+    log.info(`Exit: code ${code}`);
+    return code;
+  } catch (e) {
+    logger?.error("Internal error", e);
+    io.stderr(t.internalError(e instanceof Error ? e.message : String(e)));
+    return EXIT.internal;
+  }
+}

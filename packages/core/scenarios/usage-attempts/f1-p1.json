@@ -1,0 +1,101 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f1-p1, шаг 1.",
+        "solution": "Версия f1-p1 №1.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f1-p1, шаг 2.",
+        "solution": "Версия f1-p1 №2.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 25,
+      "outputTokens": 15
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f1-p1, шаг 3.",
+        "solution": "Версия f1-p1 №3.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 25,
+      "outputTokens": 15
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f1-p1, шаг 4.",
+        "solution": "Версия f1-p1 №4.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 25,
+      "outputTokens": 15
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f1-p1, шаг 5.",
+        "solution": "Версия f1-p1 №5.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 25,
+      "outputTokens": 15
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f1-p1, шаг 6.",
+        "solution": "Версия f1-p1 №6.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 25,
+      "outputTokens": 15
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f1-p1, шаг 7.",
+        "solution": "Версия f1-p1 №7.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 25,
+      "outputTokens": 15
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f1-p1, шаг 8.",
+        "solution": "Версия f1-p1 №8.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 25,
+      "outputTokens": 15
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод f1-p1, шаг 9.",
+        "solution": "Версия f1-p1 №9.",
+        "answers": [],
+        "questions": []
+      },
+      "inputTokens": 25,
+      "outputTokens": 15
+    }
+  ]
+}

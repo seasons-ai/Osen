@@ -1,0 +1,31 @@
+{
+  "id": "refactoring-plan",
+  "title": "Rewrite or Fix",
+  "category": "Architecture and code",
+  "description": "Use when old code gets in the way and it's unclear whether to rewrite it entirely or improve it piece by piece. The result is the chosen path and an order of steps with stopping criteria.",
+  "exampleTopic": "The pricing calculation module was written six years ago: 4,000 lines in one file, about 15 percent test coverage, and the author is no longer on the team. Every pricing change takes a week instead of a day. Two people can spend up to a third of their time on the module for three months, and releasing new pricing can't be paused.",
+  "framing": [
+    "This is a discussion of choosing between rewriting and gradually fixing existing code: the goal is to choose a path and break it into verifiable steps.",
+    "",
+    "How to run the discussion:",
+    "- Start with what exactly hurts: speed of changes, number of failures, inability to grow. What hurts determines whether a rewrite helps at all.",
+    "- Find out what the old code knows that isn't in the documentation: special cases, fixed bugs, unobvious agreements. Losing that in a rewrite is the main risk.",
+    "- Assess honestly what the working system will run on during the work. A plan with nothing for users for months counts as risky.",
+    "- Test any optimistic rewrite estimate with the question: what experience is it based on and what does it leave out?",
+    "- Propose steps after each of which the system can be released and you can stop.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and say how to verify them.",
+    "",
+    "Decision format:",
+    "1. Diagnosis: what exactly is in the way and how to measure it.",
+    "2. Chosen path: rewrite, fix piece by piece or a mix, and why not the others.",
+    "3. Order of steps: what is done first, what done looks like for each step.",
+    "4. Safety net: how to preserve the old code's behavior and how to roll back.",
+    "5. Stopping criteria: the signs that the path isn't working."
+  ],
+  "roles": [
+    "Rewrite advocate: You stand for building the module anew on a clean foundation. You push on the cost of every change in the chaos and on the dead end of failed patches, and you don't accept that one more fix will change anything.",
+    "Incremental improvement advocate: You stand for changes piece by piece under the protection of tests. You push on the hidden knowledge in the old code and on missed deadlines in a big rewrite, and you don't accept estimates without the team's past experience.",
+    "Defender of users and releases: You stand for the product not suffering, whatever is chosen. You push on continuity of work and the measurable value of each step, and you don't accept a plan where the result is visible only at the end."
+  ],
+  "limits": { "maxRounds": 5 }
+}

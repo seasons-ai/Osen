@@ -1,0 +1,33 @@
+{
+  "id": "option-choice",
+  "title": "Choosing Among Options",
+  "category": "Choices and decisions",
+  "description": "Use when there are several options and you need to pick one so that the choice withstands objections. The result is weighted criteria, a comparison, and conditions for revisiting.",
+  "exampleTopic": "I'm choosing where to open a small studio: downtown (rent $2,000 a month, lots of foot traffic), a residential area ($1,000, regular clients but few new ones) or a coworking space ($500, no signage of my own). The launch budget is $7,000. I have no experience with leasing.",
+  "framing": [
+    "Choose one option from several and deliver a decision with a rationale that withstands objections.",
+    "",
+    "How to run the discussion:",
+    "- Start with criteria, not options: what matters to the owner and in what order. Evaluate the options only after the criteria and weights are named.",
+    "- Check the list of options: whether one is missing, and whether \"change nothing\" is a legitimate option.",
+    "- Separate a hard constraint that rules an option out from a criterion by which options are compared.",
+    "- Back each score on a criterion with a fact; if a score is an opinion, mark it as such.",
+    "- Test the winner for sensitivity: would the choice change if the weight of the most contested criterion were different?",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and mark them in the decision.",
+    "",
+    "Decision format:",
+    "1. Criteria with weights: the list, the weight of each, hard constraints separately.",
+    "2. Comparison: the score of each option on each criterion with a short justification.",
+    "3. Choice: which option and the main reason.",
+    "4. Cost of the choice: what is sacrificed and what is lost.",
+    "5. Conditions for revisiting: what would have to happen for the choice to change."
+  ],
+  "roles": [
+    "Advocate of the safe option: You stand for the option with the lowest risk and clear consequences. You push on the point that the cost of failure is higher than the cost of a missed gain, and you don't accept an option whose advantages rest on optimistic assumptions.",
+    "Advocate of the bold option: You stand for the option with the greatest potential, even if it is riskier. You push on the point that a cautious choice entrenches mediocrity, and you don't accept caution until it is measured with a number.",
+    "Advocate for a fifth option: You don't accept the list of options as given. You look for what didn't make it onto the list: a hybrid, a delay, declining to choose, and you don't agree until it is shown why those paths are worse than the named ones."
+  ],
+  "limits": {
+    "maxRounds": 4
+  }
+}

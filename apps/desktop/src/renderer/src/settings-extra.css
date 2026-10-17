@@ -1,0 +1,15 @@
+.settings-chip__x{display:inline-flex;align-items:center;justify-content:center;padding:0;margin:0;background:none;border:0;color:var(--text-dim);cursor:pointer;line-height:1}
+.settings-chip__x:hover{color:var(--text)}
+.settings-add{display:flex;align-items:center;gap:var(--sp-2)}
+.settings-add .input{flex:1;min-width:0;width:auto}
+.settings-p{display:flex;align-items:center;gap:var(--sp-3);min-width:0}
+.settings-p > div:not(.avatar){flex:1;min-width:0;overflow-wrap:anywhere}
+.settings-p .select{flex:0 0 160px;width:160px;min-width:0}
+.settings-p > .btn{flex:none}
+.settings-form{display:flex;flex-direction:column;gap:var(--sp-3)}
+.alert .select{margin-top:var(--sp-2);max-width:100%}
+.tabs + *{margin-top:var(--sp-4)}
+.settings-add .input{padding:var(--sp-1) var(--sp-3);font-size:var(--fs-sm)}
+/* registry and loading error alert sits outside the card: buttons go under the text, as in the mockup cards */
+.content > .alert{flex-wrap:wrap}
+.content > .alert > .alert__actions{flex-basis:100%;padding-left:calc(var(--sp-3) + 18px)}

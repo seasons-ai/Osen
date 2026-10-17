@@ -1,0 +1,16 @@
+#!/bin/sh
+# Before pushing: the vX.Y.Z tag matches the version in apps/desktop/package.json, typecheck and tests pass.
+zero=0000000000000000000000000000000000000000
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue
+  case "$local_ref" in
+    refs/tags/v*)
+      tag=${local_ref#refs/tags/}
+      ver=$(git show "$local_sha:apps/desktop/package.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).version))')
+      if [ "v$ver" != "$tag" ]; then
+        echo "Tag $tag does not match version $ver in apps/desktop/package.json. Tags are created only by npm run release." >&2
+        exit 1
+      fi ;;
+  esac
+done
+npm run typecheck < /dev/null && npm test < /dev/null

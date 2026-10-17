@@ -1,0 +1,31 @@
+{
+  "id": "root-cause",
+  "title": "Root Cause Analysis",
+  "category": "Problem analysis",
+  "description": "Use when something consistently or intermittently doesn't work and the cause is unclear. The result is a ranking of hypotheses and an order of checks to narrow the search quickly.",
+  "exampleTopic": "For some users the report page takes 30–40 seconds to open instead of 3. It started a week ago, affects 15 percent of requests, and there is no pattern by time of day. During those days a library update was rolled out and a new database index was added. Logs are available only for the last day.",
+  "framing": [
+    "This is a search for the cause of a problem that is so far unexplained: the goal is to line up hypotheses by likelihood and decide how to test each one.",
+    "",
+    "How to run the discussion:",
+    "- Start with a precise description of the symptom: what exactly is wrong, for whom, when it started, what works normally meanwhile. A vague description produces vague hypotheses.",
+    "- List what changed shortly before the start. A change that coincides in time is the prime suspect, but not proof.",
+    "- Phrase each hypothesis so that it can be refuted: if this is the cause, then this and that must be visible.",
+    "- Check first what is cheap and narrows the search sharply, not what seems most likely.",
+    "- Don't accept an explanation until it accounts for all observations, including the odd ones: why not for everyone, why not always.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and say how to find them out.",
+    "",
+    "Decision format:",
+    "1. What is known: verified facts about the symptom and conditions.",
+    "2. Hypotheses: a list in descending order of likelihood, with what speaks for and against each.",
+    "3. Test plan: the order, and what each check will show if the hypothesis is true or false.",
+    "4. What else to collect: the data, logs and metrics that are missing.",
+    "5. A temporary measure, if the problem does harm before the cause is found."
+  ],
+  "roles": [
+    "Last-change advocate: You stand for the cause being whatever changed before the problem began. You push on the coincidence in time and a quick rollback as a test, and you don't accept a hunt for exotic causes until recent changes are ruled out.",
+    "Coincidence skeptic: You stand for time being misleading and the need to look at the mechanism. You push on the point that a hypothesis must explain why not everyone is affected, and you don't accept as a suspect anything without a failure mechanism.",
+    "Economist of checks: You stand for ordering checks by cost and narrowing power. You push on collecting the missing data and turning on observation first, and you don't accept expensive experiments done blind."
+  ],
+  "limits": { "maxRounds": 5 }
+}

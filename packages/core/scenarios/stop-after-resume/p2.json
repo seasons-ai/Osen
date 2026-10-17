@@ -1,0 +1,84 @@
+{
+  "steps": [
+    {
+      "delayMs": 20000,
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод p2, шаг 1: ход длится 20 секунд, чтобы успеть остановить и продолжить.",
+        "solution": "Версия p2 №1.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "delayMs": 20000,
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод p2, шаг 2: ход длится 20 секунд, чтобы успеть остановить и продолжить.",
+        "solution": "Версия p2 №2.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "delayMs": 20000,
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод p2, шаг 3: ход длится 20 секунд, чтобы успеть остановить и продолжить.",
+        "solution": "Версия p2 №3.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "delayMs": 20000,
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод p2, шаг 4: ход длится 20 секунд, чтобы успеть остановить и продолжить.",
+        "solution": "Версия p2 №4.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "delayMs": 20000,
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод p2, шаг 5: ход длится 20 секунд, чтобы успеть остановить и продолжить.",
+        "solution": "Версия p2 №5.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "delayMs": 20000,
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод p2, шаг 6: ход длится 20 секунд, чтобы успеть остановить и продолжить.",
+        "solution": "Версия p2 №6.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "delayMs": 20000,
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод p2, шаг 7: ход длится 20 секунд, чтобы успеть остановить и продолжить.",
+        "solution": "Версия p2 №7.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "delayMs": 20000,
+      "response": {
+        "stance": "amend",
+        "reasoning": "Довод p2, шаг 8: ход длится 20 секунд, чтобы успеть остановить и продолжить.",
+        "solution": "Версия p2 №8.",
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "steps": [
+    {
+      "response": { "stance": "amend", "reasoning": "Предлагаю короткое имя.", "solution": "Назвать сервис «Совет».", "answers": [], "questions": [] }
+    },
+    {
+      "expectPrompt": "- p3 «Гамма»: возражает (ход 3): ВОЗРАЖЕНИЕ-P3-9d41",
+      "response": { "stance": "agree", "reasoning": "Возражение p3 учтено: имя уже короткое.", "solution": null, "answers": [], "questions": [] }
+    }
+  ]
+}

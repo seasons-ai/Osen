@@ -1,0 +1,33 @@
+{
+  "id": "product-idea",
+  "title": "Product Idea Check",
+  "category": "Product and strategy",
+  "description": "Use when you have a product idea and need to decide whether to build it, change it or drop it. The result is a verdict, a list of assumptions, and a cheap two-week test.",
+  "exampleTopic": "I want to build an app that reminds owners of small workshops about repeat client visits. So far I only have conversations with five acquaintances who run workshops, and two said \"that would be handy.\" The budget is about $5,000 and three months of my time. There seem to be no competitors, but many people keep their records in a messenger app.",
+  "framing": [
+    "Test the product idea for viability and deliver a decision: build, change or drop.",
+    "",
+    "How to run the discussion:",
+    "- Start with the customer: who exactly pays, what task they solve today and what they use instead of the product. An idea without a named customer can't be tested.",
+    "- Separate what is known from conversations and numbers from what the author wants to hear. \"That would be handy\" doesn't prove demand; proof is money, time or a prepayment.",
+    "- Find the most fragile assumption the idea rests on and propose the cheapest way to test it.",
+    "- Estimate the economics per customer: what it costs to acquire and serve one, and what they pay. Don't use market estimates \"in the billions\".",
+    "- Don't treat the absence of competitors as a good sign: find out how customers solve the task now.",
+    "- Don't invent facts that the topic doesn't contain: state them as assumptions and mark them in the decision.",
+    "",
+    "Decision format:",
+    "1. Verdict: build, change or drop, in one sentence with the main reason.",
+    "2. Customer and task: who pays, for what and what they use instead of the product now.",
+    "3. Assumptions: a list, each marked \"confirmed\" or \"unverified\".",
+    "4. Two-week test: what to do, what counts as success and what counts as failure.",
+    "5. What to change in the idea if the test fails."
+  ],
+  "roles": [
+    "Market skeptic: You stand for the idea being needed only by its author. You push on the point that customers already solve the task for free or in a familiar way, and you don't accept interest and surveys as demand until there is money.",
+    "Builder: You stand for assembling the idea in a narrow form and showing it to real people this week. You push on the point that arguments without a product are useless, and you don't accept postponing the launch for more research.",
+    "Customer with a wallet: You speak for the person who has to pay. You push on the point that they need a result, not features: price, switching effort, risk; and you don't agree until a reason to leave their current way of doing it is named."
+  ],
+  "limits": {
+    "maxRounds": 4
+  }
+}
