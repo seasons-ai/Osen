@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "A reader decides in the first screen. Say what the product is and show one real run; install comes next.",
+        "solution": "Open the README with one line about the product and a real run, then the install steps.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Moving the reference out keeps the first screen short. I agree.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

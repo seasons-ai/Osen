@@ -33,6 +33,7 @@ docs/*
 !docs/mcp.md
 !docs/data.md
 !docs/releases.md
+!docs/images/
 design/mockup-osen/SPEC.md
 /*.md
 !/README.md

@@ -1,0 +1,22 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Agreed on the order, but the reference still makes the page a wall of text. Move it to docs/ and link it.",
+        "solution": "Open the README with one line about the product and a real run, then the install steps. Keep the reference in docs/ and link each part from a short section.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "The version stands.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}
