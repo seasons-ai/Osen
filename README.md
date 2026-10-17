@@ -6,6 +6,7 @@
 [![version](https://img.shields.io/github/package-json/v/seasons-ai/Osen?filename=apps%2Fdesktop%2Fpackage.json&style=flat&color=e8925a)](CHANGELOG.md)
 [![ci](https://img.shields.io/github/actions/workflow/status/seasons-ai/Osen/ci.yml?style=flat&branch=main)](https://github.com/seasons-ai/Osen/actions/workflows/ci.yml)
 [![platform](https://img.shields.io/badge/platform-macOS%20arm64-lightgrey?style=flat)](docs/deploy.md)
+[![licence](https://img.shields.io/badge/licence-MIT-lightgrey?style=flat)](LICENSE)
 
 Several models take turns on your problem, editing one shared solution, until they agree.
 
@@ -189,7 +190,7 @@ What is not there:
 
 ## Roadmap
 
-**Now — a public repository.** This README, a contributing guide and a security policy, a licence (waiting for the owner's choice), and links that still point at files the public tree does not have.
+**Now — a public repository.** This README, a contributing guide, a security policy and an MIT licence.
 
 **Next — acceptance on the real thing.** Most mechanisms are proven on scripted participants and the development window. What waits is the same paths on the installed app, real `claude`, `codex` and HTTP participants, real agent dialogs over MCP and the skill, and macOS system dialogs and notifications.
 
@@ -206,3 +207,7 @@ One version for the product, Conventional Commits, and a two-stage release: [doc
 ## Contributing
 
 An issue first, then a pull request — [CONTRIBUTING.md](CONTRIBUTING.md) has the rules and why. Vulnerabilities go to [SECURITY.md](SECURITY.md), not a public issue.
+
+## Licence
+
+[MIT](LICENSE).
