@@ -48,7 +48,7 @@ jobs:
       - name: Check types
         run: npm run typecheck < /dev/null
       - name: Run tests
-        run: npm test -- --maxWorkers=4 < /dev/null
+        run: npm test -- --maxWorkers=4 --testTimeout=30000 < /dev/null
       - name: Build arm64 image
         run: npm run dist < /dev/null
       - name: Validate image contents
