@@ -38,6 +38,8 @@ design/mockup-osen/SPEC.md
 /*.md
 !/README.md
 !/CHANGELOG.md
+!/CONTRIBUTING.md
+!/SECURITY.md
 
 # Junk
 *.bak*
