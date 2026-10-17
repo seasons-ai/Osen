@@ -95,7 +95,7 @@ tail -n 20 "$HOME/Library/Application Support/osen/logs/app.log"
 
 ## Update
 
-1. Release the version: `npm run release` (the procedure is in README, "Versions and releases"). It bumps `version` in `apps/desktop/package.json`, appends to `CHANGELOG.md` and creates the tag `vX.Y.Z`.
+1. Complete the two-stage release procedure in README, "Versions and releases": `npm run release` prepares the version and CHANGELOG on a release branch; push it, squash merge its PR after CI, synchronize `main`, then run `npm run release -- publish` to publish its annotated tag. GitHub Actions builds and checks a DMG and creates a draft release. Review and publish that draft separately. App installation still requires the owner's approval.
 2. Build and check the image:
 
 ```bash
