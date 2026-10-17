@@ -14,7 +14,11 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 
 The hooks in `.githooks/` are connected by `npm install` (the `prepare` script); in an already installed folder — `git config core.hooksPath .githooks`. `commit-msg` rejects a message that does not match the format; `pre-push` rejects a tag that does not match the version in `apps/desktop/package.json` and runs the type check and tests.
 
-Changes go through a feature branch and a pull request. CI checks types, the full test suite and the desktop build; PR titles use Conventional Commits. Squash merge keeps one semantic commit per PR. `main` requires passing CI and resolved conversations, with no external reviewer required for this single-owner project. Force pushes and branch deletion are blocked. GitHub security alerts and Dependabot update PRs cover dependency maintenance.
+Changes go through a feature branch and a pull request. CI checks types, the full test suite and the desktop build; PR titles use Conventional Commits. Squash merge keeps one semantic commit per PR. `main` requires passing CI, resolved conversations and at least one approving review, including approval from the project owner listed in `.github/CODEOWNERS`. New reviewable commits dismiss previous approvals. Force pushes, branch deletion and administrator bypasses are blocked. GitHub security alerts and Dependabot update PRs cover dependency maintenance.
+
+GitHub does not allow authors to approve their own pull requests. To require the owner's approval on agent changes, create those pull requests using a separate bot or contributor account; do not approve them through the owner's CLI credentials. With a single code owner, owner-authored pull requests cannot obtain that owner's independent approval. Agents must leave pull requests open for review and must not approve or merge them without the owner's explicit instruction.
+
+GitHub uses the CODEOWNERS file from the PR's base branch. The owner-specific requirement takes effect after the initial CODEOWNERS PR is merged; that initial PR still requires the mandatory approving review.
 
 Releases have two stages. Start from clean `main` synchronized with `origin/main`:
 
