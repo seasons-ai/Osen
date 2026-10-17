@@ -1,0 +1,104 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      build_only:
+        description: Build and check main without creating a version, tag or release
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and check DMG
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - name: Require build-only dispatch on main
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SELECTED_REF: ${{ github.ref }}
+          BUILD_ONLY: ${{ inputs.build_only }}
+        run: test "$SELECTED_REF" = refs/heads/main && test "$BUILD_ONLY" = true
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Validate release tag and notes
+        if: github.event_name == 'push'
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release.ts verify-tag "$RELEASE_TAG" > release-notes.md
+      - name: Install dependencies
+        run: npm ci < /dev/null
+      - name: Check types
+        run: npm run typecheck < /dev/null
+      - name: Run tests
+        run: npm test -- --maxWorkers=4 --testTimeout=30000 < /dev/null
+      - name: Build arm64 image
+        run: npm run dist < /dev/null
+      - name: Validate image contents
+        run: npm run dist:check < /dev/null
+      - name: Write checksums
+        working-directory: apps/desktop/release
+        run: shasum -a 256 osen-*-arm64.dmg > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: osen-macos-arm64-${{ github.run_id }}
+          path: |
+            apps/desktop/release/osen-*-arm64.dmg
+            apps/desktop/release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload release notes
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-notes-${{ github.run_id }}
+          path: release-notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+  draft:
+    name: Create draft release
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Download checked image and notes
+        run: |
+          gh run download "$GITHUB_RUN_ID" --name "osen-macos-arm64-$GITHUB_RUN_ID" --dir release-assets
+          gh run download "$GITHUB_RUN_ID" --name "release-notes-$GITHUB_RUN_ID" --dir release-notes
+      - name: Verify downloaded checksums
+        working-directory: release-assets
+        run: sha256sum --check SHA256SUMS
+      - name: Create or update draft
+        run: |
+          if gh release view "$RELEASE_TAG" --json isDraft > existing-release.json 2>/dev/null; then
+            test "$(jq -r .isDraft existing-release.json)" = true
+            gh release upload "$RELEASE_TAG" release-assets/*.dmg release-assets/SHA256SUMS --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/*.dmg release-assets/SHA256SUMS --draft --verify-tag --title "Osen ${RELEASE_TAG#v}" --notes-file release-notes/release-notes.md
+          fi

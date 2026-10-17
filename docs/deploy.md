@@ -95,8 +95,8 @@ tail -n 20 "$HOME/Library/Application Support/osen/logs/app.log"
 
 ## Update
 
-1. Release the version: `npm run release` (the procedure is in README, "Versions and releases"). It bumps `version` in `apps/desktop/package.json`, appends to `CHANGELOG.md` and creates the tag `vX.Y.Z`.
-2. Build and check the image:
+1. Complete the two-stage release procedure in README, "Versions and releases": `npm run release` prepares the version and CHANGELOG on a release branch; push it, squash merge its PR after CI, synchronize `main`, then run `npm run release -- publish` to publish its annotated tag. GitHub Actions builds and checks a DMG and creates a draft release. Review and publish that draft separately. App installation still requires the owner's approval.
+2. Download the checked arm64 DMG and `SHA256SUMS` from the matching GitHub draft/release and verify its checksum with `shasum -a 256 -c SHA256SUMS`. To build locally, use a clean checkout of the published `vX.Y.Z` tag before running the following commands; do not package a main branch that has advanced beyond that tag under the released version:
 
 ```bash
 cd "/Users/korat/Desktop/Мозговой штурм" && npm run dist && npm run dist:check

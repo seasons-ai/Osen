@@ -13,4 +13,4 @@ while read -r local_ref local_sha remote_ref remote_sha; do
       fi ;;
   esac
 done
-npm run typecheck < /dev/null && npm test < /dev/null
+npm run typecheck < /dev/null && npm test -- --maxWorkers=4 < /dev/null
