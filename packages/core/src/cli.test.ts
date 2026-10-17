@@ -17,7 +17,7 @@ import { resolveDataDir } from "./store/data-dir.ts";
 import { runStoredSession } from "./store/run.ts";
 import { planResume, runResumedSession } from "./store/resume.ts";
 import { listSessions } from "./store/sessions.ts";
-import { appendEvent, createSessionJournal, eventsPath, materialPath } from "./store/journal.ts";
+import { appendEvent, createSessionJournal, eventsPath, materialPath, readEvents } from "./store/journal.ts";
 import { openOwnerQueue, ownerMessagesDir } from "./store/owner-messages.ts";
 import type { SessionEvent } from "./protocol/schema.ts";
 
@@ -1152,10 +1152,12 @@ describe("council say --answer: questions to the owner", () => {
       let id = "";
       for (let i = 0; i < 100 && !id; i++) {
         const cand = listSessions(home).find((s) => s.status === "running")?.id ?? "";
-        if (cand && existsSync(eventsPath(home, cand)) && readFileSync(eventsPath(home, cand), "utf8").includes('"id":"q1"')) id = cand;
+        const events = cand ? readEvents(home, cand)?.events ?? [] : [];
+        if (events.some((e) => e.type === "turn_started" && e.turn === 2)) id = cand;
         else await sleep(100);
       }
       expect(id).not.toBe("");
+      expect(readEvents(home, id)?.events.at(-1)).toMatchObject({ type: "turn_started", turn: 2 });
       const r = await run(["say", id, "--answer", "q1", "Формат — таблица"], { env: dev(home) });
       expect([r.code, r.out]).toEqual([0, OK(id)]);
       expect(await Promise.race([closedP, sleep(30_000).then(() => "timeout" as const)])).toBe(0);
