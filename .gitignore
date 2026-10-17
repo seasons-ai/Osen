@@ -26,6 +26,13 @@ CLAUDE.md
 openspec/
 docs/*
 !docs/deploy.md
+!docs/desktop.md
+!docs/cli.md
+!docs/materials.md
+!docs/participants.md
+!docs/mcp.md
+!docs/data.md
+!docs/releases.md
 design/mockup-osen/SPEC.md
 /*.md
 !/README.md
