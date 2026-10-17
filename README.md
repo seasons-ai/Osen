@@ -202,3 +202,7 @@ The data folder, the move from `model-council`, and every file format: [docs/dat
 ## Versions and releases
 
 One version for the product, Conventional Commits, and a two-stage release: [docs/releases.md](docs/releases.md).
+
+## Contributing
+
+An issue first, then a pull request — [CONTRIBUTING.md](CONTRIBUTING.md) has the rules and why. Vulnerabilities go to [SECURITY.md](SECURITY.md), not a public issue.
