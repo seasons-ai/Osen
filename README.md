@@ -23,7 +23,17 @@ Claude, Codex and any OpenAI-compatible model take turns on your problem. Each t
 - **Participants are sealed.** No tools, no MCP servers, no access to your disk. Your files reach them only as text, through the engine.
 - **You stay in the loop.** Add a remark mid-discussion, answer the models' questions, pause after each round, or pick a version yourself.
 
-## Quick start
+## Download
+
+You need macOS on Apple Silicon and at least one participant: the `claude` or `codex` CLI signed in, or an OpenAI-compatible endpoint. Node is not needed.
+
+1. Download `osen-<version>-arm64.dmg` from the [latest release](https://github.com/seasons-ai/Osen/releases/latest).
+2. Open the image and drag `Osen` to "Applications".
+3. Open `Osen`. The app has no Apple developer signature, so the first time macOS refuses to open it: press "Done", then open "System Settings" → "Privacy & Security", scroll down and press "Open Anyway". Later launches open normally.
+
+If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/Osen.app` in Terminal and open it again. Details and updates: [docs/deploy.md](docs/deploy.md).
+
+## From source
 
 You need macOS on Apple Silicon, Node 22.18+, and at least one participant: the `claude` or `codex` CLI signed in, or an OpenAI-compatible endpoint.
 
@@ -34,7 +44,7 @@ npm install
 npm run desktop
 ```
 
-The window opens on "History"; press "New" to start a discussion. To install the app as a `.dmg` instead: `npm run dist`, then [docs/deploy.md](docs/deploy.md).
+The window opens on "History"; press "New" to start a discussion. To build the `.dmg` yourself: `npm run dist`, then [docs/deploy.md](docs/deploy.md).
 
 Try it without spending anything — two scripted participants, 0 model calls:
 
