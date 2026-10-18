@@ -26,7 +26,7 @@ The version comes from the `version` field in `apps/desktop/package.json` (curre
 npm run dist
 ```
 
-2. The last line of the output is the path to the image: `<repository root>/apps/desktop/release/osen-<version>-arm64.dmg`. The `apps/desktop/release/` folder is not tracked by git.
+2. The last line of the output is the path to the image: `<repository root>/apps/desktop/release.noindex/osen-<version>-arm64.dmg`. The `apps/desktop/release.noindex/` folder is not tracked by git. The `.noindex` suffix keeps Spotlight from indexing the unpacked `Osen.app` next to the image, so Spotlight and Launchpad show only the installed copy.
 
 ## Checking the image
 
@@ -36,7 +36,7 @@ npm run dist
 npm run dist:check
 ```
 
-The check looks for the newest `osen-*.dmg` in `apps/desktop/release/`. To check a different image, pass its path: `npm run dist:check -- <path to .dmg>`.
+The check looks for the newest `osen-*.dmg` in `apps/desktop/release.noindex/`. To check a different image, pass its path: `npm run dist:check -- <path to .dmg>`.
 
 2. Each check prints an `OK` or `FAIL` line: the image contains `Osen.app`, its `Info.plist` has the identifier `com.osen.desktop` and the display name `Osen`; `Contents/Resources` contains `icon.icns` and `CFBundleIconFile` points to it; the `GrantFileProtocolExtraPrivileges` fuse is off and `RunAsNode` is on (it runs PDF text extraction); the built-in templates are present; there are no `.env*` files; there is no `.council-data` and no `sessions`; there are no `*.pem`, `*.key`, `*.p12`; there is no `node_modules` inside the app; the secret values from the environment and from the repository `.env` do not appear in the image.
 3. Exit code 0 means everything passed. On `FAIL`, do not install the image.
@@ -74,7 +74,7 @@ hdiutil detach /tmp/osen-dmg
 xattr -dr com.apple.quarantine "/Applications/Osen.app"
 ```
 
-- From the terminal, launch it only by the full path. The command `open -a "Osen"` may open the copy from `apps/desktop/release/mac-arm64/` instead of the installed one.
+- From the terminal, launch it only by the full path. The command `open -a "Osen"` may open the copy from `apps/desktop/release.noindex/mac-arm64/` instead of the installed one.
 
 ```bash
 open "/Applications/Osen.app"
@@ -102,7 +102,7 @@ tail -n 20 "$HOME/Library/Application Support/osen/logs/app.log"
 npm run dist && npm run dist:check
 ```
 
-3. Keep the image of the current (old) version: you need it for a rollback. The images are in `apps/desktop/release/`; building a new version does not delete the old one.
+3. Keep the image of the current (old) version: you need it for a rollback. The images are in `apps/desktop/release.noindex/`; building a new version does not delete the old one. Images built before this folder was introduced stay in `apps/desktop/release/`.
 4. Make a copy of the data folder:
 
 ```bash

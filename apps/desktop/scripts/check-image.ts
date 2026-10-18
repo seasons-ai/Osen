@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { appIconLine, bundleIdentityLine, FONT_FILES, fuseLine, htmlWorkerLine, missingFontFiles, missingTemplateFiles } from "./templates-in-image.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const releaseDir = join(root, "apps/desktop/release");
+const releaseDir = join(root, "apps/desktop/release.noindex");
 const SECRET_NAME = /KEY|TOKEN|SECRET|PASSWORD/i;
 
 function walk(dir: string): string[] {

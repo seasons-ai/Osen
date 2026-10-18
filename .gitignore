@@ -9,6 +9,7 @@ node_modules/
 dist/
 out/
 release/
+release.noindex/
 
 # App and stand data
 .council-data*/
