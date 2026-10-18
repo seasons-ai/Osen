@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const script = resolve("scripts/release.ts");
 const temporary: string[] = [];
@@ -16,6 +16,8 @@ function repository() {
   mkdirSync(join(dir, "bin"));
   writeFileSync(join(dir, "bin/npm"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   const env = { ...process.env, PATH: `${join(dir, "bin")}:${process.env.PATH}`, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+  // Git hooks export repository bindings; child fixtures must discover their own repositories.
+  for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_PREFIX"]) delete env[key];
   const git = (...args: string[]) => execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   git("init", "--bare", remote);
   git("init", "-b", "main");
@@ -54,6 +56,39 @@ function repository() {
 }
 
 describe("release delivery with a real local bare remote", { timeout: 30000 }, () => {
+  it("isolates release fixtures from the repository environment inherited by Git hooks", () => {
+    const sentinel = repository();
+    writeFileSync(join(sentinel.cwd, "owner-draft.txt"), "Uncommitted owner work\n");
+    const snapshot = () => ({
+      head: sentinel.git("rev-parse", "HEAD"),
+      status: sentinel.git("-c", "core.bare=false", "status", "--porcelain"),
+      config: readFileSync(join(sentinel.cwd, ".git/config"), "utf8"),
+      refs: sentinel.git("show-ref"),
+    });
+    const before = snapshot();
+    const gitDir = join(sentinel.cwd, ".git");
+    const inherited = {
+      GIT_DIR: gitDir,
+      GIT_WORK_TREE: sentinel.cwd,
+      GIT_INDEX_FILE: join(gitDir, "index"),
+      GIT_OBJECT_DIRECTORY: join(gitDir, "objects"),
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: join(gitDir, "objects"),
+      GIT_COMMON_DIR: gitDir,
+      GIT_PREFIX: "sentinel/",
+    };
+    try {
+      for (const [key, value] of Object.entries(inherited)) vi.stubEnv(key, value);
+      const r = repository();
+      r.prepare();
+      r.merge();
+      expect(r.run("publish")).toMatchObject({ code: 0 });
+      expect(r.git("rev-parse", "v0.9.1^{}")).toBe(r.git("rev-parse", "HEAD"));
+    } finally {
+      vi.unstubAllEnvs();
+      expect(snapshot()).toEqual(before);
+    }
+  });
+
   it("prepares a PR branch, squash merges and publishes only its annotated tag, including retry", () => {
     const r = repository();
     const old = r.git("commit-tree", "HEAD^{tree}", "-m", "chore: unrelated old history");
