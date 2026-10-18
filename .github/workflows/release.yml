@@ -54,14 +54,14 @@ jobs:
       - name: Validate image contents
         run: npm run dist:check < /dev/null
       - name: Write checksums
-        working-directory: apps/desktop/release
+        working-directory: apps/desktop/release.noindex
         run: shasum -a 256 osen-*-arm64.dmg > SHA256SUMS
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: osen-macos-arm64-${{ github.run_id }}
           path: |
-            apps/desktop/release/osen-*-arm64.dmg
-            apps/desktop/release/SHA256SUMS
+            apps/desktop/release.noindex/osen-*-arm64.dmg
+            apps/desktop/release.noindex/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
       - name: Upload release notes

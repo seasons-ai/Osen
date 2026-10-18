@@ -3,7 +3,7 @@ appId: com.osen.desktop
 # (electron-builder writes them in NFD, while Chromium looks them up in NFC). The displayed name is set by CFBundleDisplayName.
 productName: Osen
 directories:
-  output: release
+  output: release.noindex
 electronDist: ../../node_modules/electron/dist
 files:
   - out/**
