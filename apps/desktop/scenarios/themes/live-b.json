@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "response": { "stance": "agree", "reasoning": "Одна страница с таблицей подходит, возражений нет.", "solution": null, "answers": [], "questions": [] } },
+    { "delayMs": 3600000, "response": { "stance": "agree", "reasoning": "Остаюсь согласен.", "solution": null, "answers": [], "questions": [] } }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "response": { "stance": "amend", "reasoning": "Предлагаю отчёт на одну страницу с таблицей.", "solution": "Отчёт на одну страницу, таблицей.", "answers": [], "questions": [] } },
+    { "delayMs": 3600000, "response": { "stance": "agree", "reasoning": "Версия подходит.", "solution": null, "answers": [], "questions": [] } }
+  ]
+}
