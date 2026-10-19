@@ -103,6 +103,23 @@ env -i /Applications/Osen.app/Contents/Resources/bin/council --help
 
 The exit code is 0 and the help text is printed. `Resources/bin/osen-mcp` starts the MCP server the same way. The wrappers work only after the app has been opened once and allowed by Gatekeeper ("Open Anyway", see "First launch of an unsigned app"); before that macOS blocks them and may move the app to the Trash.
 
+### The `council` command in the terminal
+
+The app can create a symlink `~/.local/bin/council` pointing to `/Applications/Osen.app/Contents/Resources/bin/council`, so that `council` works in any new terminal without Node in `PATH`.
+
+1. Check in a new terminal window: `command -v council` prints `~/.local/bin/council`.
+2. If `~/.local/bin` is not in `PATH`, add this line to `~/.zprofile` yourself and open a new terminal: `export PATH="$HOME/.local/bin:$PATH"`. The app never edits shell files.
+3. A `council` that is not an Osen link (a file, a directory or a link to something else) is never overwritten or removed.
+4. If you move the app, the link points to the old path; the next install from the app updates it.
+5. Manual removal, only if the link is ours:
+
+```bash
+readlink ~/.local/bin/council
+rm ~/.local/bin/council
+```
+
+Run `rm` only when the `readlink` output ends with `/Osen.app/Contents/Resources/bin/council`.
+
 ## Update
 
 1. Complete the two-stage release procedure in [docs/releases.md, "Versions and releases"](releases.md#versions-and-releases): `npm run release` prepares the version and CHANGELOG on a release branch; push it, squash merge its PR after CI, synchronize `main`, then run `npm run release -- publish` to publish its annotated tag. GitHub Actions builds and checks a DMG and creates a draft release. Review and publish that draft separately. App installation still requires the owner's approval.

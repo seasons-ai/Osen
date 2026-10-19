@@ -1,0 +1,51 @@
+import { defineMessages } from "@model-council/core/i18n";
+
+// Terminal command `council` installer. Paths and the `export PATH=...` line are parameters: never translated.
+export const commandInstall = defineMessages({
+  en: {
+    notInstalled: (link: string): string => `Not installed: ${link} does not exist.`,
+    found: (link: string, target: string): string => `Installed: ${link} -> ${target}; the shell finds it.`,
+    notInPath: (link: string, hintFile: string, hintLine: string): string =>
+      `Installed: ${link}, but ~/.local/bin is not in the shell PATH. Add this line to ${hintFile}: ${hintLine}`,
+    shadowed: (link: string, shadowedBy: string): string => `Installed: ${link}, but the shell finds another council first: ${shadowedBy}`,
+    stale: (link: string, target: string, expected: string): string => `Outdated: ${link} points to ${target}, expected ${expected}.`,
+    foreign: (link: string, kind: string): string => `Taken by something else: ${link} is a ${kind} that is not an Osen link.`,
+    checkFailed: (link: string, reason: string): string => `Installed: ${link}, but the shell check failed: ${reason}`,
+    kindFile: "file",
+    kindDir: "directory",
+    kindSymlink: "symlink",
+    kindOther: "object",
+    refusalNoWrapper: (path: string): string => `No council wrapper at ${path}; nothing was created.`,
+    refusalForeign: (path: string, kind: string): string => `${path} is a ${kind} that is not an Osen link; left untouched.`,
+    refusalCreateFailed: (path: string, detail: string): string => `Could not create ${path}: ${detail}`,
+    hint: (file: string, line: string): string => `Add this line to ${file}: ${line}`,
+    probeNoMarkers: "the shell output had no markers",
+    probeExit: (code: string): string => `the shell exited with ${code}`,
+    probeTimeout: "the shell did not answer in time",
+    probeSpawn: (detail: string): string => `the shell did not start: ${detail}`,
+    notResolved: (dir: string): string => `${dir} is in PATH, but the shell does not find council`,
+  },
+  ru: {
+    notInstalled: (link: string): string => `Не установлена: ${link} нет.`,
+    found: (link: string, target: string): string => `Установлена: ${link} -> ${target}; оболочка её находит.`,
+    notInPath: (link: string, hintFile: string, hintLine: string): string =>
+      `Установлена: ${link}, но ~/.local/bin нет в PATH оболочки. Добавьте строку в ${hintFile}: ${hintLine}`,
+    shadowed: (link: string, shadowedBy: string): string => `Установлена: ${link}, но оболочка раньше находит другой council: ${shadowedBy}`,
+    stale: (link: string, target: string, expected: string): string => `Устарел путь: ${link} ведёт на ${target}, ожидается ${expected}.`,
+    foreign: (link: string, kind: string): string => `Занято чужим: ${link} — ${kind}, не ссылка Osen.`,
+    checkFailed: (link: string, reason: string): string => `Установлена: ${link}, но проверить оболочкой не удалось: ${reason}`,
+    kindFile: "файл",
+    kindDir: "папка",
+    kindSymlink: "ссылка",
+    kindOther: "объект",
+    refusalNoWrapper: (path: string): string => `Нет обёртки council по пути ${path}; ничего не создано.`,
+    refusalForeign: (path: string, kind: string): string => `${path} — ${kind}, не ссылка Osen; не тронуто.`,
+    refusalCreateFailed: (path: string, detail: string): string => `Не удалось создать ${path}: ${detail}`,
+    hint: (file: string, line: string): string => `Добавьте строку в ${file}: ${line}`,
+    probeNoMarkers: "в выводе оболочки нет маркеров",
+    probeExit: (code: string): string => `оболочка завершилась с кодом ${code}`,
+    probeTimeout: "оболочка не ответила вовремя",
+    probeSpawn: (detail: string): string => `оболочка не запустилась: ${detail}`,
+    notResolved: (dir: string): string => `${dir} есть в PATH, но оболочка не находит council`,
+  },
+});
