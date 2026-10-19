@@ -6,6 +6,7 @@ import { DefaultsPanel } from "./DefaultsPanel.tsx";
 import { settings } from "../../shared/messages/settings.ts";
 import { shell } from "../../shared/messages/shell.ts";
 import { Icon } from "./icons.tsx";
+import { AppearancePanel } from "./AppearancePanel.tsx";
 import { LanguagePanel } from "./LanguagePanel.tsx";
 import { useLanguageView, useMessages } from "./language.tsx";
 import { ProviderCard } from "./ProviderCard.tsx";
@@ -302,7 +303,7 @@ export function SettingsScreen({ state, now, on = noHandlers }: { state: Setting
   return (
     <>
       <header className="topbar"><Title /><div className="topbar__actions"></div></header>
-      <main className="content"><LanguagePanel /><Body state={state} now={now} on={on} /></main>
+      <main className="content"><LanguagePanel /><AppearancePanel /><Body state={state} now={now} on={on} /></main>
     </>
   );
 }
