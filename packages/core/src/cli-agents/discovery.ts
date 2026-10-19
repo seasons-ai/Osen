@@ -29,8 +29,17 @@ export const VERIFIED_VERSIONS: Record<CliAgent, readonly [min: string, max: str
 
 const MARK = "__COUNCIL_PATH__";
 
+/** The first ASCII digits.digits.digits substring. A forward scan over digit runs: /\d+\.\d+\.\d+/ retried from every digit and was quadratic on long digit runs. */
 export function parseVersion(raw: string): string | undefined {
-  return raw.match(/\d+\.\d+\.\d+/)?.[0];
+  type Run = { start: number; end: number };
+  const joined = (x: Run, y: Run) => y.start === x.end + 1 && raw[x.end] === ".";
+  let a: Run | undefined, b: Run | undefined;
+  for (const m of raw.matchAll(/[0-9]+/g)) {
+    const c = { start: m.index, end: m.index + m[0].length };
+    if (a && b && joined(a, b) && joined(b, c)) return raw.slice(a.start, c.end);
+    [a, b] = [b, c];
+  }
+  return undefined;
 }
 
 function compare(a: string, b: string): number {
