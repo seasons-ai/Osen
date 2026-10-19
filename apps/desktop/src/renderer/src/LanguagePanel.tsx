@@ -9,13 +9,15 @@ import { useLanguageView, useMessages } from "./language.tsx";
 const FORWARD = ["ArrowRight", "ArrowDown"];
 const BACK = ["ArrowLeft", "ArrowUp"];
 
-// Next option by an arrow key, cycling; other keys — null.
-export function nextLanguage(current: Language, key: string): Language | null {
+// Next option of a radiogroup by an arrow key, cycling; other keys — null.
+export function nextOption<T>(options: readonly T[], current: T, key: string): T | null {
   const step = FORWARD.includes(key) ? 1 : BACK.includes(key) ? -1 : 0;
   if (step === 0) return null;
-  const i = LANGUAGES.indexOf(current);
-  return LANGUAGES[(i + step + LANGUAGES.length) % LANGUAGES.length]!;
+  const n = options.length;
+  return options[(options.indexOf(current) + step + n) % n]!;
 }
+
+export const nextLanguage = (current: Language, key: string): Language | null => nextOption(LANGUAGES, current, key);
 
 export function LanguagePanel(): ReactNode {
   const view = useLanguageView();
