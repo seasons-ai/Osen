@@ -26,9 +26,10 @@ const ctx = {
   builtinTemplatesDir: paths.templates,
   scenariosDir: env["COUNCIL_DEV"] === "1" ? paths.scenarios : null,
   shutdown: controller.signal,
+  councilLaunch: { command: process.execPath, args: [paths.council], env: { ELECTRON_RUN_AS_NODE: "1" } },
 };
 
-// ponytail: abort() sends SIGTERM to participants synchronously, an immediate exit does not let the finish event be written — the session becomes interrupted; the SIGKILL follow-up after 2 s does not make it
+// ponytail: abort() sends SIGTERM to participants synchronously, an immediate exit does not let the finish event be written — the session becomes interrupted; council_start sessions run in their own detached process and are not affected
 const quit = (reason: string): void => {
   logger.info(`MCP server is stopping: ${reason}`);
   controller.abort();

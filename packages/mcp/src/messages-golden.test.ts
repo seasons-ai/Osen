@@ -29,6 +29,8 @@ const VARIANTS: Record<string, unknown[][]> = {
   startProviderNotFound: [["zzz", ["claude", "codex"]], ["zzz", []]],
   startProviderNeedsModel: [["pid"]],
   startProviderUnavailable: [["LBL", "RSN"], ["LBL", null], ["LBL", undefined]],
+  startExecutorFailed: [["RSN"]],
+  startExecutorTimeout: [[15]],
   startNext: [[false, false], [true, false], [false, true], [true, true]],
   startNextDrafts: [["p2", "NAME", true, 12], ["p2", "NAME", false, 12]],
   startNextOwnerWait: [[300]],

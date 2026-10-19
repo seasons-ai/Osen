@@ -138,6 +138,66 @@ export function scriptedRunLine(contents: string, work: string): Line {
   return { ok, text: `bin/council scripted run without PATH: consensus (exit 0), session saved${ok ? "" : `: exit ${String(r.status ?? r.error?.message)}, sessions ${sessions.length}, stderr ${r.stderr.slice(0, 200)}`}` };
 }
 
+/** council_start through bin/osen-mcp: the session is run by a detached executor and reaches consensus after the server has exited. */
+export async function detachedStartLine(contents: string, work: string, timeoutMs = 60000): Promise<Line> {
+  const { env, home } = dirs(work, "detached");
+  const label = "MCP server osen-mcp without PATH: council_start session finishes with consensus after the server exited (detached executor)";
+  const child = spawn(bin(contents, "osen-mcp"), [], { env, stdio: ["pipe", "pipe", "pipe"] });
+  let buf = "", stderr = "", spawnError = "";
+  const replies = new Map<number, { result?: { isError?: boolean; content?: { text: string }[] } }>();
+  let wake: () => void = () => {};
+  child.on("error", (e) => { spawnError = e.message; wake(); });
+  child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+  const exited = new Promise<number | null>((res) => child.on("close", (code) => { wake(); res(code); }));
+  child.stdout.on("data", (d: Buffer) => {
+    buf += d.toString();
+    let i: number;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i);
+      buf = buf.slice(i + 1);
+      try { const m = JSON.parse(line) as { id?: number }; if (m.id !== undefined) replies.set(m.id, m); } catch { /* reported by the mcp line */ }
+    }
+    wake();
+  });
+  const timer = (ms: number) => new Promise<"timeout">((res) => setTimeout(() => res("timeout"), ms).unref());
+  const send = (m: object) => child.stdin.write(`${JSON.stringify(m)}\n`);
+  child.stdin.on("error", () => { /* the server died early: reported below */ });
+  const fail = (why: string): Line => ({ ok: false, text: `${label}: ${why}${stderr ? ` (stderr: ${stderr.trim().slice(0, 200)})` : ""}` });
+  const reply = async (id: number): Promise<"timeout" | undefined> => {
+    const end = Date.now() + timeoutMs;
+    while (!replies.has(id) && Date.now() < end && !spawnError) await Promise.race([new Promise<void>((res) => { wake = res; }), timer(200)]);
+    return replies.has(id) ? undefined : "timeout";
+  };
+  try {
+    send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: LATEST_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "headless-check", version: "1" } } });
+    send({ jsonrpc: "2.0", method: "notifications/initialized" });
+    const sc = (p: string) => ({ providerId: "scripted", model: `consensus/${p}` });
+    send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "council_start", arguments: { topic: "Entry points check", participants: [sc("p1.json"), sc("p2.json")], maxRounds: 3 } } });
+    if (await reply(2) === "timeout") return fail(spawnError ? `cannot start: ${spawnError}` : "no council_start reply in time");
+    const result = replies.get(2)!.result;
+    const text = result?.content?.[0]?.text ?? "";
+    if (result?.isError) return fail(`council_start refused: ${text.slice(0, 200)}`);
+    const id = (JSON.parse(text) as { sessionId?: string }).sessionId;
+    if (!id) return fail("no sessionId in the council_start reply");
+    child.stdin.end();
+    const code = await Promise.race([exited, timer(timeoutMs)]);
+    if (code === "timeout") return fail("did not exit after stdin closed");
+    const events = join(home, "sessions", id, "events.jsonl");
+    const end = Date.now() + timeoutMs;
+    let finished = "";
+    while (Date.now() < end) {
+      const text = existsSync(events) ? readFileSync(events, "utf8") : "";
+      const m = /"type":"session_finished","status":"(\w+)"/.exec(text) ?? /"type":"session_finished"[^\n]*?"status":"(\w+)"/.exec(text);
+      if (m) { finished = m[1]!; break; }
+      await new Promise((res) => setTimeout(res, 200));
+    }
+    if (finished !== "consensus") return fail(`session ${id} status after the server exited: ${finished || "not finished in time"}`);
+    return { ok: true, text: label };
+  } finally {
+    child.kill(); // no-op after a normal exit; the executor is a separate process and is not touched
+  }
+}
+
 /** All lines in order; `report` prints them. A folder `work` is created by the caller. */
 export async function reportHeadlessLines(contents: string, work: string, report: (ok: boolean, text: string) => void): Promise<void> {
   const wrappers = wrappersLine(contents);
@@ -146,5 +206,5 @@ export async function reportHeadlessLines(contents: string, work: string, report
   report(self.ok, self.text);
   // the runs below need the wrappers: without them the lines would only repeat the same fault
   if (!wrappers.ok) return;
-  for (const line of [await mcpLine(contents, work), helpLine(contents, work), scriptedRunLine(contents, work)]) report(line.ok, line.text);
+  for (const line of [await mcpLine(contents, work), helpLine(contents, work), scriptedRunLine(contents, work), await detachedStartLine(contents, work)]) report(line.ok, line.text);
 }

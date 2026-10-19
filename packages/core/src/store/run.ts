@@ -1,19 +1,21 @@
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { checkSessionMaterials, checkSessionWorkspace, runSession } from "../engine.ts";
 import type { RunSessionOptions, SessionRun } from "../engine.ts";
-import { appendEvent, createSessionJournal, sessionDir, stopRequestPath, writeMaterialSnapshots, writeWorkspaceSnapshot } from "./journal.ts";
+import { appendEvent, createSessionJournal, resumeLockPath, sessionDir, stopRequestPath, writeMaterialSnapshots, writeWorkspaceSnapshot } from "./journal.ts";
 import { storedDraftStore } from "./draft-snapshots.ts";
 import type { Logger } from "./log.ts";
 import { checkSources, writeMaterialSources } from "./material-sources.ts";
 import type { MaterialSource } from "./material-sources.ts";
 import { openOwnerQueue } from "./owner-messages.ts";
-import { markRunningHere, unmarkRunningHere } from "./sessions.ts";
+import { tryPidLock } from "./pid-lock.ts";
+import { isProcessAlive, markRunningHere, unmarkRunningHere } from "./sessions.ts";
 
 export interface StoredRunOptions extends RunSessionOptions {
   dataDir: string;
   logger?: Logger;
   stopPollMs?: number;
   sources?: readonly MaterialSource[];
+  isAlive?: (pid: number) => boolean; // liveness of the pid in a lock found in the new folder (tests)
 }
 
 /** Polls the stop request file; when it appears, calls onStop once. Returns the poll timer. */
@@ -27,11 +29,12 @@ export function watchStopRequest(path: string, pollMs: number | undefined, onSto
 }
 
 export async function runStoredSession(options: StoredRunOptions): Promise<SessionRun> {
-  const { dataDir, logger, stopPollMs, sources, ...rest } = options;
+  const { dataDir, logger, stopPollMs, sources, isAlive, ...rest } = options;
   const { session } = rest;
   const own = new AbortController();
   let timer: NodeJS.Timeout | undefined;
   let created = false; // this run created the session folder
+  let locked = false; // this run holds resume.lock
   let journaled = false; // the first event is written: from then on the folder is the owner's session
   markRunningHere(session.id);
   try {
@@ -43,6 +46,9 @@ export async function runStoredSession(options: StoredRunOptions): Promise<Sessi
     }
     createSessionJournal(dataDir, session.id);
     created = true;
+    // The single-executor lock before the first event; the folder is new, so the lock cannot be busy (a repeated id fails above).
+    if (!tryPidLock(resumeLockPath(dataDir, session.id), isAlive ?? isProcessAlive)) throw new Error(`Session ${session.id}: the executor lock is held`);
+    locked = true;
     writeMaterialSnapshots(dataDir, session.id, rest.materials ?? []);
     writeMaterialSources(dataDir, session.id, sources ?? []);
     writeWorkspaceSnapshot(dataDir, session.id, rest.workspace ?? []);
@@ -76,6 +82,15 @@ export async function runStoredSession(options: StoredRunOptions): Promise<Sessi
     throw e;
   } finally {
     clearInterval(timer);
+    if (locked) releaseOwnLock(resumeLockPath(dataDir, session.id));
     unmarkRunningHere(session.id);
   }
+}
+
+// Removes the lock only while it still holds this process's pid; a missing or unreadable file is left alone
+// so that the session's own error is not masked (a leftover lock of a dead pid is stale and gets replaced).
+function releaseOwnLock(path: string): void {
+  try {
+    if (readFileSync(path, "utf8").trim() === String(process.pid)) unlinkSync(path);
+  } catch { /* already removed or unreadable */ }
 }

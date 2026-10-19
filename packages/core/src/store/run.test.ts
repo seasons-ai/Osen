@@ -9,12 +9,13 @@ import { createSession, SessionInputError } from "../engine.ts";
 import { createScriptedDriver, readScenario } from "../participants/scripted.ts";
 import type { Scenario } from "../participants/scripted.ts";
 import type { ParticipantDriver } from "../participants/driver.ts";
-import { MaterialSnapshotError, eventsPath, materialPath, materialsDir, readEvents, SessionExistsError, sessionDir, stopRequestPath } from "./journal.ts";
+import { MaterialSnapshotError, resumeLockPath, eventsPath, materialPath, materialsDir, readEvents, SessionExistsError, sessionDir, stopRequestPath } from "./journal.ts";
 import { runStoredSession } from "./run.ts";
 import { draftPath, readDraftSnapshot } from "./draft-snapshots.ts";
 import { OwnerMessageRejectedError, OwnerReleaseRejectedError, ownerMessagesDir, requestOwnerMessage, requestOwnerRelease } from "./owner-messages.ts";
 import { StopRejectedError, listSessions, readSession, requestStop } from "./sessions.ts";
-import { planResume } from "./resume.ts";
+import { ResumeRejectedError, acquireResumeLock, planResume, runResumedSession } from "./resume.ts";
+import type { ResumePlan } from "./resume.ts";
 
 const fsHook = vi.hoisted(() => ({ failOn: "" }));
 vi.mock("node:fs", async (orig) => {
@@ -687,5 +688,102 @@ describe("Interrupted session: executor crashed in a live process", () => {
     release();
     await run;
     expect(readSession(dir, "c")!.status).toBe("consensus");
+  });
+});
+
+describe("Executor lock at session start", () => {
+  // a driver that blocks the first call until released
+  const gated = async (id: string) => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let started!: () => void;
+    const hasStarted = new Promise<void>((r) => { started = r; });
+    const base = await pair("consensus");
+    const slow: ParticipantDriver = { call: async (r) => { started(); await gate; return base.p1!.call(r); } };
+    return { drivers: { ...base, p1: slow }, release, hasStarted, id };
+  };
+  const rejected = (f: () => unknown) => { try { f(); } catch (e) { return e; } return null; };
+
+  it("holds resume.lock with this pid while running and removes it after the end", async () => {
+    const dir = tmp();
+    const g = await gated("a");
+    const run = runStoredSession({ session: mk("a"), drivers: g.drivers, dataDir: dir });
+    await g.hasStarted;
+    expect(readFileSync(resumeLockPath(dir, "a"), "utf8").trim()).toBe(String(process.pid));
+    g.release();
+    await run;
+    expect(existsSync(resumeLockPath(dir, "a"))).toBe(false);
+  });
+
+  it("removes the lock after a stop", async () => {
+    const dir = tmp();
+    let at = 0;
+    const run = await runStoredSession({
+      session: mk("s"), drivers: await pair("slow"), dataDir: dir, stopPollMs: 20,
+      onEvent: (e) => {
+        if (e.type === "turn_started" && !at) { at = 1; expect(existsSync(resumeLockPath(dir, "s"))).toBe(true); writeFileSync(stopRequestPath(dir, "s"), ""); }
+      },
+    });
+    expect(run.state.finish!.status).toBe("stopped");
+    expect(existsSync(resumeLockPath(dir, "s"))).toBe(false);
+  });
+
+  it("removes the folder with the lock after an error before the first event", async () => {
+    const dir = tmp();
+    const text = "x\n";
+    const m = { id: "m1", name: "a.txt", text, chars: text.length, sha256: createHash("sha256").update(text, "utf8").digest("hex") };
+    const session = createSession(
+      {
+        topic: "Тема", framing: "", origin: "cli", limits: { maxRounds: 3, turnTimeoutSec: 30, contextChars: 20000, materialsChars: 1000 },
+        participants: [1, 2].map((i) => ({ name: `N${i}`, providerId: "scripted", model: "m", role: null })), materials: [m],
+      },
+      { maxParticipants: 8, id: "e" },
+    );
+    fsHook.failOn = "m1.txt";
+    try {
+      await expect(runStoredSession({ session, drivers: await pair("consensus"), dataDir: dir, materials: [m] })).rejects.toBeInstanceOf(MaterialSnapshotError);
+    } finally { fsHook.failOn = ""; }
+    expect(existsSync(sessionDir(dir, "e"))).toBe(false);
+  });
+
+  it("rejects a repeated start with SessionExistsError and leaves the first lock and journal untouched", async () => {
+    const dir = tmp();
+    const g = await gated("r");
+    const run = runStoredSession({ session: mk("r"), drivers: g.drivers, dataDir: dir });
+    await g.hasStarted;
+    const lock = readFileSync(resumeLockPath(dir, "r"), "utf8");
+    const journal = readFileSync(eventsPath(dir, "r"));
+    await expect(runStoredSession({ session: mk("r"), drivers: await pair("consensus"), dataDir: dir })).rejects.toBeInstanceOf(SessionExistsError);
+    expect(readFileSync(resumeLockPath(dir, "r"), "utf8")).toBe(lock);
+    expect(readFileSync(eventsPath(dir, "r")).equals(journal)).toBe(true);
+    g.release();
+    await run;
+    expect(existsSync(resumeLockPath(dir, "r"))).toBe(false);
+  });
+
+  it("rejects another executor of a running session with busy before any writes", async () => {
+    const dir = tmp();
+    const g = await gated("b");
+    const run = runStoredSession({ session: mk("b"), drivers: g.drivers, dataDir: dir });
+    await g.hasStarted;
+    const journal = readFileSync(eventsPath(dir, "b"));
+    const e1 = rejected(() => acquireResumeLock(resumeLockPath(dir, "b"), () => true));
+    expect(e1).toBeInstanceOf(ResumeRejectedError);
+    expect((e1 as ResumeRejectedError).reason).toBe("busy");
+    const e2 = await runResumedSession({ dataDir: dir, plan: { id: "b" } as ResumePlan, drivers: {} }).catch((e) => e);
+    expect(e2).toBeInstanceOf(ResumeRejectedError);
+    expect((e2 as ResumeRejectedError).reason).toBe("busy");
+    expect(readFileSync(eventsPath(dir, "b")).equals(journal)).toBe(true);
+    expect(readFileSync(resumeLockPath(dir, "b"), "utf8").trim()).toBe(String(process.pid));
+    g.release();
+    await run;
+  });
+
+  it("replaces a stale lock of a dead process", async () => {
+    const dir = tmp();
+    mkdirSync(sessionDir(dir, "d"), { recursive: true });
+    writeFileSync(resumeLockPath(dir, "d"), "999999");
+    acquireResumeLock(resumeLockPath(dir, "d"), (pid) => pid !== 999999);
+    expect(readFileSync(resumeLockPath(dir, "d"), "utf8").trim()).toBe(String(process.pid));
   });
 });

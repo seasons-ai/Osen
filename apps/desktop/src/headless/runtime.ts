@@ -12,6 +12,7 @@ export function bundlePaths(dir: string) {
     resources,
     templates: join(resources, "templates"),
     scenarios: join(resources, "scenarios"),
+    council: join(dir, "council.mjs"),
     pdfExtract: join(dir, "pdf-extract.mjs"),
     htmlWorker: join(dir, "html-worker.mjs"),
   };

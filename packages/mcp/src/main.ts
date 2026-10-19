@@ -23,9 +23,10 @@ const ctx = {
   builtinTemplatesDir: join(import.meta.dirname, "../../../templates"),
   scenariosDir: env["COUNCIL_DEV"] === "1" ? join(import.meta.dirname, "../../core/scenarios") : null,
   shutdown: controller.signal,
+  councilLaunch: { command: process.execPath, args: [join(import.meta.dirname, "../../core/src/council.ts")], env: {} },
 };
 
-// ponytail: abort() sends SIGTERM to participants synchronously, an immediate exit does not let the finish event be written — the session becomes interrupted; the SIGKILL follow-up after 2 s does not make it
+// ponytail: council_start sessions run in their own detached process and survive this exit; abort() only affects in-process council_resume sessions: it sends SIGTERM to participants synchronously, an immediate exit does not let the finish event be written — such a session becomes interrupted; the follow-up after 2 s does not make it
 const quit = (reason: string): void => {
   logger.info(`MCP server is stopping: ${reason}`);
   controller.abort();

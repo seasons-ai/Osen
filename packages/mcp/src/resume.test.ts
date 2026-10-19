@@ -29,7 +29,7 @@ function ctxOf(dataDir: string, scn: string | null, over: Partial<ToolContext> =
   const ctrl = new AbortController();
   aborts.push(ctrl);
   return {
-    dataDir, env, pollMs: 20, shutdown: ctrl.signal, builtinTemplatesDir: "", scenariosDir: scn, inspectDeps: { locate: notFound },
+    dataDir, env, councilLaunch: { command: process.execPath, args: [], env: {} }, pollMs: 20, shutdown: ctrl.signal, builtinTemplatesDir: "", scenariosDir: scn, inspectDeps: { locate: notFound },
     logger: { info: (m: string) => { logs.push(m); }, error: (m: string) => { logs.push(m); } } as ToolContext["logger"], logs, ...over,
   };
 }
