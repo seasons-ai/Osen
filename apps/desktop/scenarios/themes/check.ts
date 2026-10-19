@@ -101,7 +101,13 @@ async function connect(ws: string): Promise<Cdp> {
   await new Promise((ok, fail) => { sock.onopen = ok; sock.onerror = fail; });
   let id = 0;
   const wait = new Map<number, (m: any) => void>();
-  sock.onmessage = (e) => { const m = JSON.parse(String(e.data)); wait.get(m.id)?.(m); wait.delete(m.id); };
+  sock.onmessage = (e) => {
+    const m = JSON.parse(String(e.data));
+    if (typeof m.id !== "number") return; // events carry no id
+    const done = wait.get(m.id);
+    wait.delete(m.id);
+    if (typeof done === "function") done(m);
+  };
   return {
     send: (method, params = {}) => new Promise((ok, fail) => {
       const n = ++id;
@@ -119,6 +125,13 @@ async function pageTarget(port: number): Promise<string> {
 }
 async function evaluate(cdp: Cdp, expression: string): Promise<any> {
   const r = await cdp.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+  if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
+  return r.result.value;
+}
+// Values reach the page as CDP call arguments, never spliced into code.
+async function callIn(cdp: Cdp, fn: (...a: any[]) => unknown, ...args: unknown[]): Promise<any> {
+  const self = await cdp.send("Runtime.evaluate", { expression: "globalThis" });
+  const r = await cdp.send("Runtime.callFunctionOn", { functionDeclaration: fn.toString(), objectId: self.result.objectId, arguments: args.map((value) => ({ value })), awaitPromise: true, returnByValue: true });
   if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
   return r.result.value;
 }
@@ -252,11 +265,12 @@ const waitFor = async (cond: string, what: string, ms = 15000) => {
 };
 const run = (code: string) => evaluate(cdp, `(async () => { ${code} })()`);
 // Native value setter: React sees the change as typed input.
-const typeInto = (selector: string, value: string) => run(`
-  const el = document.querySelector(${JSON.stringify(selector)});
-  if (!el) throw new Error("no ${selector}");
-  Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value").set.call(el, ${JSON.stringify(value)});
-  el.dispatchEvent(new Event("input", { bubbles: true }));`);
+const typeInto = (selector: string, value: string) => callIn(cdp, (sel: string, v: string) => {
+  const el = document.querySelector(sel);
+  if (!el) throw new Error(`no ${sel}`);
+  Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")!.set!.call(el, v);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}, selector, value);
 const rail = async (i: number, ready: string) => {
   await run(`document.querySelectorAll(".rail__item")[${i}].click()`);
   await waitFor(ready, `rail item ${i}`);
@@ -266,7 +280,11 @@ const history = () => rail(1, `document.querySelector(".history-row")`);
 const gallery = async () => { await history(); await rail(0, `document.querySelector(".grid-cards .card--dashed")`); };
 const card = (i: number) => run(`document.querySelectorAll(".grid-cards")[0].querySelectorAll("button.card--dashed")[${i}].click()`);
 const openRow = async (prefix: string) => {
-  const found = await run(`const b = [...document.querySelectorAll(".history-open")].find((x) => x.title.startsWith(${JSON.stringify(prefix)})); if (b) b.click(); return Boolean(b);`);
+  const found = await callIn(cdp, (p: string) => {
+    const b = [...document.querySelectorAll<HTMLElement>(".history-open")].find((x) => x.title.startsWith(p));
+    if (b) b.click();
+    return Boolean(b);
+  }, prefix);
   if (!found) throw new Error(`no history row "${prefix}": was the folder prepared with --seed-only?`);
 };
 
