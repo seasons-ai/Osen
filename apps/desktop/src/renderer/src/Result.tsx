@@ -503,7 +503,7 @@ export function Result({ id = "", state, status, notice, onCopy, onCopyChoice, o
           <button type="button" className="btn btn--ghost" onClick={onNew}><Icon name="i-plus" size="sm" />{t.newDiscussion}</button>
         </div>
       </header>
-      <main className="content">
+      <main className="content result-content">
         {version === null && <p className="result-note muted result-rerun-note"><Icon name="i-info" size="sm" />{t.noVersionNote}</p>}
         <section className="result-hero" data-tone={view ? view.tone : h.tone}>
           <span className="result-hero__icon"><Icon name={view ? view.icon : h.icon} size="lg" /></span>

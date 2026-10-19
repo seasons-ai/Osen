@@ -7,10 +7,6 @@
 .topbar > :first-child { min-width: 0; }
 .topbar .badge { flex: none; }
 .topbar__actions { flex: none; white-space: nowrap; }
-/* narrow window (minimum 900): the result status stays in the block under the bar; discussion columns shrink via flex (session.css) */
-@media (max-width: 1000px) {
-  .topbar__title.row .badge { display: none; }
-}
 
 .rail__version { font-size: var(--fs-xs); font-family: var(--font-mono); color: var(--text-faint); text-align: center; padding: var(--sp-2); }
 
