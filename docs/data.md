@@ -90,3 +90,14 @@ Check without cost (real main modules and the `council` process, 0 model calls);
 COUNCIL_DEV=1 COUNCIL_HOME="$(mktemp -d "$PWD/.council-data-language-XXXXXX")" node apps/desktop/scenarios/language/check.ts
 COUNCIL_DEV=1 COUNCIL_HOME="$(mktemp -d "$PWD/.council-data-language-XXXXXX")" node apps/desktop/scenarios/language/check.ts --seed-only
 ```
+
+## Appearance
+
+The app theme is stored in `appearance.json` in the data folder: `{ "mode": "dark" | "light" | "system", "lightTheme": "tuman" | "len" | "inei" | "pergament" }`. Defaults: `dark` and `tuman`. Only the desktop app reads it; `council`, the MCP server and `preferences.json` are not affected (the theme has its own file because `writeLanguage` rewrites `preferences.json` whole).
+
+Effective theme: `dark` gives `osen`; `light` gives the chosen light theme; `system` gives `osen` when macOS appearance is dark, otherwise the light theme. Changing the mode never changes the chosen light theme.
+
+- A missing file means the defaults. The file is not created at startup; it is written atomically (temp file and rename) only when the owner changes the theme.
+- A read-only file is respected: the change is refused with a reason in the interface language, the theme and the file stay unchanged.
+- An unreadable file, invalid JSON or a value that is not an object gives defaults for both fields; an unknown value of one field gives the default for that field only. In both cases one warning line with the reason goes to `logs/app.log`, startup is not blocked, and the file is not rewritten until the owner chooses a theme.
+- The "Appearance" section of Settings arrives with change 147; until then the theme is changed by editing the file or through the bridge action `setAppearance`.

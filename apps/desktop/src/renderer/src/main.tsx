@@ -27,5 +27,9 @@ import "./setup-extra.css";
 import "./solution-extra.css";
 import "./settings-extra.css";
 import { App } from "./App.tsx";
+import { applyInitialTheme, followTheme } from "./theme.ts";
 
+// before the first paint: the window starts in its theme, not in the default one
+applyInitialTheme(document, window.osenInitial);
 createRoot(document.getElementById("root")!).render(<App />);
+followTheme(document, window.council);

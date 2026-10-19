@@ -55,6 +55,8 @@ export const shell = defineMessages({
     languageInvalid: "Unknown language: choose English or Русский.",
     languageLocked: "The language is set by the COUNCIL_LANG environment variable and cannot be changed here.",
     languageWriteFailed: (code: string | null): string => `Language not saved: cannot write preferences.json${code ? ` (${code})` : ""}`,
+    appearanceInvalid: "Unknown theme setting.",
+    appearanceWriteFailed: (code: string | null): string => `Theme not saved: cannot write appearance.json${code ? ` (${code})` : ""}`,
     languageFileNotice: (reason: "unreadable" | "not_json" | "no_language" | "unknown_language", code: string | null): string =>
       `The language file preferences.json ${reasonEn(reason, code)}. English is in use and the file is unchanged; choose a language in Settings to fix it.`,
     connectionClientUnknown: (id: string): string => `Unknown client: ${id}. Nothing was changed.`,
@@ -103,6 +105,8 @@ export const shell = defineMessages({
     languageInvalid: "Неизвестный язык: выберите English или Русский.",
     languageLocked: "Язык задан переменной окружения COUNCIL_LANG, здесь его не изменить.",
     languageWriteFailed: (code: string | null): string => `Язык не сохранён: нет доступа на запись preferences.json${code ? ` (${code})` : ""}`,
+    appearanceInvalid: "Неизвестная настройка темы.",
+    appearanceWriteFailed: (code: string | null): string => `Тема не сохранена: нет доступа на запись appearance.json${code ? ` (${code})` : ""}`,
     languageFileNotice: (reason: "unreadable" | "not_json" | "no_language" | "unknown_language", code: string | null): string => {
       const why = {
         unreadable: `не читается${code ? ` (${code})` : ""}`,
