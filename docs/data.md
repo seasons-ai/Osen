@@ -66,6 +66,7 @@ rm -rf "$HOME/Library/Application Support/model-council-backup-"*
 - `prepared-materials/<id>/` — prepared sets of materials for preview (`set.json` with the texts and `set.sha256` with the checksum; a set with links also contains `sources.json`); a set is valid for 24 hours, is not deleted automatically, and the `prepared-materials/` folder can be deleted manually: sessions and history do not change as a result.
 - `sessions/<id>/drafts/d1.txt`, `d2.txt`, … — snapshots of the texts of accepted independent drafts (`d<N>`, N is the participant's place in the list); written before the `draft_completed` event, an accepted snapshot does not change; the folder exists only for sessions with `--drafts`.
 - `sessions/<id>/owner-messages/` — the queue of the owner's messages for a running session: one file per message from `council say`; an applied request is deleted, and after the session finishes the folder does not exist.
+- `launch/<id>.json` — the launch file of an MCP-started session (the prepared session, mode 0600, no secrets): written by the MCP server, deleted by the executor once read, 15-second deadline; `launch/<id>.err` — the executor's stderr until the first event, deleted by the server.
 - `logs/app.log` — the log.
 - `.env` — keys of HTTP providers, one `NAME=value` per line; the name is given in `config.json` in the `apiKeyEnv` field (see [docs/participants.md, "HTTP participants"](participants.md#http-participants)).
 

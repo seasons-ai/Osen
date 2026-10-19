@@ -19,7 +19,7 @@ afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true 
 
 const ctxOf = (dataDir: string): ToolContext => ({
   dataDir, env, pollMs: 20, shutdown: new AbortController().signal,
-  logger: { info: () => {}, error: () => {} }, builtinTemplatesDir: "", scenariosDir: null,
+  logger: { info: () => {}, error: () => {} }, builtinTemplatesDir: "", scenariosDir: null, councilLaunch: { command: process.execPath, args: [], env: {} },
 });
 
 const mk = (id: string, n: number, maxRounds = 3, maxTotalTokens?: number) =>

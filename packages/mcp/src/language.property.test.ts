@@ -25,7 +25,7 @@ const dir = join(root, "data");
 const scn = join(root, "scn");
 const deadOwner = spawnSync(process.execPath, ["-e", ""]).pid!;
 const ctx = (): ToolContext => ({
-  dataDir: dir, env, pollMs: 20, shutdown: new AbortController().signal,
+  dataDir: dir, env, councilLaunch: { command: process.execPath, args: [], env: {} }, pollMs: 20, shutdown: new AbortController().signal,
   logger: { info: () => {}, error: () => {} }, builtinTemplatesDir: join(import.meta.dirname, "../../../templates"), scenariosDir: scn,
   inspectDeps: { locate: async (agent) => ({ agent, found: false, searchPath: "", reason: "нет" }) },
 });

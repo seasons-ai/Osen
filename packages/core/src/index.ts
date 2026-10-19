@@ -30,6 +30,7 @@ export * from "./store/usage.ts";
 export * from "./store/tariffs.ts";
 export * from "./store/owner-messages.ts";
 export * from "./store/run.ts";
+export * from "./store/launch.ts";
 export * from "./store/resume.ts";
 export * from "./store/owner-selection.ts";
 export * from "./store/watch.ts";

@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -7,7 +7,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { createServer } from "./server.ts";
-import { setProcessLanguage, saveLineup, configPath, createScriptedDriver, createSession, eventsPath, initialRegistry, listSessions, readEvents, readSession, runStoredSession } from "@model-council/core";
+import { setProcessLanguage, saveLineup, configPath, createScriptedDriver, createSession, eventsPath, initialRegistry, listSessions, readEvents, readSession, requestStop, runStoredSession } from "@model-council/core";
 
 const root = join(import.meta.dirname, "../../..");
 const main = join(import.meta.dirname, "main.ts");
@@ -19,6 +19,15 @@ const clients: Client[] = [];
 afterEach(async () => {
   for (const c of clients.splice(0)) await c.close().catch(() => {});
   for (const p of pids.splice(0)) try { process.kill(p, "SIGKILL"); } catch {}
+  // council_start sessions live in detached executors: stop them before the folders go
+  for (const d of dirs) {
+    for (const x of listSessions(d)) {
+      const pid = readSession(d, x.id)?.state.pid ?? null;
+      if (x.status !== "running" || pid === null) continue;
+      requestStop(d, x.id);
+      if (!(await waitExit(pid, 5000))) try { process.kill(pid, "SIGKILL"); } catch {}
+    }
+  }
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
@@ -274,24 +283,55 @@ describe("MCP server osen", () => {
     expect(s.solution.text).toContain("Тигра");
   }, 30000);
 
+  // council_start sessions run in a detached executor: the server exit does not touch them
+  const executorOf = (dir: string, id: string) => {
+    const lock = join(dir, "sessions", id, "resume.lock");
+    return existsSync(lock) ? Number(readFileSync(lock, "utf8").trim()) : readSession(dir, id)!.state.pid!;
+  };
   for (const [name, stop] of [
     ["закрытие stdin", async (c: Client) => { await c.close(); }],
     ["SIGTERM", async (_c: Client, pid: number) => { process.kill(pid, "SIGTERM"); }],
   ] as const) {
-    it(`server shutdown in the middle of a session (${name}) leaves the session interrupted`, async () => {
+    it(`Завершение сервера: server shutdown in the middle of a session (${name}) keeps the session running in its executor`, async () => {
       const dir = tmp();
       const { client, pid } = await connect(dir);
       const sessionId = await startSlow(client);
+      const executor = executorOf(dir, sessionId);
+      expect(executor).not.toBe(pid);
       const t0 = Date.now();
       await stop(client, pid);
       expect(await waitExit(pid)).toBe(true);
       expect(Date.now() - t0).toBeLessThanOrEqual(5500);
+      expect(alive(executor)).toBe(true);
       const s = readSession(dir, sessionId)!;
-      expect(s.status).toBe("interrupted");
-      expect(s.state.turns.length).toBeGreaterThanOrEqual(1);
+      expect(s.status).toBe("running");
       expect(s.state.finish).toBeNull();
-    }, 30000);
+      requestStop(dir, sessionId);
+      expect(await waitExit(executor, 15000)).toBe(true);
+      const done = readSession(dir, sessionId)!;
+      expect(done.status).toBe("stopped");
+      expect(existsSync(join(dir, "sessions", sessionId, "resume.lock"))).toBe(false);
+    }, 40000);
   }
+
+  it("Завершение сервера: a forced end of the executor leaves the session interrupted, a new server resumes the same session", async () => {
+    const dir = tmp();
+    const first = await connect(dir);
+    const sessionId = await startSlow(first.client);
+    const executor = executorOf(dir, sessionId);
+    await first.client.close();
+    expect(await waitExit(first.pid)).toBe(true);
+    process.kill(executor, "SIGKILL");
+    expect(await waitExit(executor)).toBe(true);
+    expect(readSession(dir, sessionId)!.status).toBe("interrupted");
+    const { client } = await connect(dir);
+    const plan = json(await call(client, "council_resume", { sessionId }));
+    expect(plan.planToken).toBeTruthy();
+    expect(json(await call(client, "council_resume", { sessionId, execute: true, planToken: plan.planToken })).accepted).toBe(true);
+    await poll(() => evCount(dir, sessionId, "session_resumed") === 1);
+    expect(listSessions(dir).filter((x) => x.id === sessionId)).toHaveLength(1);
+    expect(readSession(dir, sessionId)!.status).toBe("running");
+  }, 40000);
 
   it("stdout contains only JSON-RPC", async () => {
     const dir = tmp();
@@ -404,7 +444,7 @@ describe("server text language", () => {
   const CYR = /[А-Яа-яЁё]/;
   const noop = () => {};
   async function inMemory() {
-    const server = createServer({ dataDir: "/nonexistent", env: {}, logger: { info: noop, warn: noop, error: noop, debug: noop } as never, builtinTemplatesDir: "", scenariosDir: null, shutdown: new AbortController().signal });
+    const server = createServer({ dataDir: "/nonexistent", env: {}, logger: { info: noop, warn: noop, error: noop, debug: noop } as never, builtinTemplatesDir: "", scenariosDir: null, shutdown: new AbortController().signal, councilLaunch: { command: process.execPath, args: [], env: {} } });
     const [a, b] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: "lang", version: "0" });
     clients.push(client);
