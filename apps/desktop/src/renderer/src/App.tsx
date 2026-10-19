@@ -11,7 +11,7 @@ import { Settings } from "./Settings.tsx";
 import { SessionScreen } from "./SessionScreen.tsx";
 import { initialUi, pendingFor, reduce } from "./store.ts";
 import type { Section, UiAction, UiState } from "./store.ts";
-import mark from "../../../../../design/mockup-osen/brand/svg/osen-mark-small.svg";
+import { OsenMark } from "../../../../../design/mockup-osen/brand/OsenMark.tsx";
 
 const NAV: { key: Section; label: "navNew" | "navHistory" | "navSettings"; icon: IconName }[] = [
   { key: "new", label: "navNew", icon: "i-plus" },
@@ -34,7 +34,7 @@ export function Shell({ state, dispatch, version, language }: { state: UiState; 
     <div className="app">
       <IconSprite />
       <nav className="rail">
-        <div className="rail__brand" aria-hidden="true"><img src={mark} alt="" width={32} height={32} /></div>
+        <div className="rail__brand" aria-hidden="true"><OsenMark size={32} /></div>
         {NAV.map((n) => (
           <button
             key={n.key}
