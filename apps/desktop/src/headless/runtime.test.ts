@@ -21,6 +21,7 @@ describe("bundlePaths", () => {
       resources: "/A b/Osen.app/Contents/Resources",
       templates: "/A b/Osen.app/Contents/Resources/templates",
       scenarios: "/A b/Osen.app/Contents/Resources/scenarios",
+      council: `${dir}/council.mjs`,
       pdfExtract: `${dir}/pdf-extract.mjs`,
       htmlWorker: `${dir}/html-worker.mjs`,
     });

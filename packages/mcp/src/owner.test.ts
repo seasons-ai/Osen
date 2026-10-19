@@ -18,7 +18,7 @@ const tmp = () => { const d = mkdtempSync(join(realpathSync(tmpdir()), "council-
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 
 const ctxOf = (dataDir: string, logger: ToolContext["logger"] = { info: () => {}, error: () => {} }): ToolContext => ({
-  dataDir, env, pollMs: 20, shutdown: new AbortController().signal, logger, builtinTemplatesDir: "", scenariosDir: null,
+  dataDir, env, councilLaunch: { command: process.execPath, args: [], env: {} }, pollMs: 20, shutdown: new AbortController().signal, logger, builtinTemplatesDir: "", scenariosDir: null,
 });
 
 const aborts: AbortController[] = [];

@@ -82,7 +82,7 @@ export const mcpMessages = defineMessages({
 
     // council_start
     startDesc:
-      "Starts a discussion between several models on a topic and immediately returns sessionId; the session runs in the background, the state and the result are read through council_status. " +
+      "Starts a discussion between several models on a topic and immediately returns sessionId; the session runs in the background in its own process: closing the agent does not interrupt it, stop it with council_stop; the state and the result are read through council_status. " +
       "The start spends the owner's subscriptions or money and is done only with the owner's consent. The valid templates, providers and models are in council_options. " +
       "Before the call, you must write to the owner in a separate message the topic, the participants, the round limit and the upper bound on the number of model calls (participants × rounds × 3; with independent drafts — participants × (rounds + 1) × 3), even when consent is not required." +
       " The owner's files and folders are passed in attachments: only those named by the owner or clearly meant, only by absolute paths; in the message before the start, tell the number of materials and their size — they go into every call and increase the spend." +
@@ -121,6 +121,8 @@ export const mcpMessages = defineMessages({
     startProviderNotFound: (id: string, known: string[]) => `Provider “${id}” was not found in the registry; available: ${known.join(", ") || "no providers"}.`,
     startProviderNeedsModel: (id: string) => `Provider “${id}” needs a model.`,
     startProviderUnavailable: (label: string, reason: string | null | undefined) => `Provider “${label}” is unavailable: ${reason ?? "reason unknown"}`,
+    startExecutorFailed: (reason: string) => `The session executor did not start: ${reason}`,
+    startExecutorTimeout: (sec: number) => `The executor did not respond in ${sec} s.`,
     startNext: (hasMaterials: boolean, hasFolder: boolean) => `If you have not yet told the owner the participants, the round limit and the upper bound on calls (maxCalls)${hasMaterials ? " and the number and size of the materials (materials)" : ""}${hasFolder ? " and the folder snapshot size (folder) and the number of files that did not fit into the initial set (materials.left.count)" : ""}, say it now in one line. Then call council_status with this sessionId and waitSec up to 50, without messages on every turn; the result is taken only from its response.`,
     startNextLineupNotes: " Pass the lineup's model notes (lineup.notes) to the owner.",
     startNextDrafts: (synthesizerId: string, synthesizerName: string, byDefault: boolean, bound: number) => ` Independent drafts are enabled (experiment): first each participant writes a draft without seeing the others', then the ordinary discussion is started by the synthesizer ${synthesizerId} (${synthesizerName})${byDefault ? ", chosen by default" : ""}; tell the owner the synthesizer and the call bound ${bound} (participants × (rounds + 1) × 3).`,
@@ -225,7 +227,7 @@ export const mcpMessages = defineMessages({
     stopDone: "Сессия остановлена.",
 
     startDesc:
-      "Запускает обсуждение нескольких моделей по теме и сразу возвращает sessionId; сессия идёт в фоне, состояние и итог читаются через council_status. " +
+      "Запускает обсуждение нескольких моделей по теме и сразу возвращает sessionId; сессия идёт в фоне в своём процессе: закрытие агента её не прерывает, остановить можно через council_stop; состояние и итог читаются через council_status. " +
       "Запуск расходует подписки или деньги владельца и делается только с его согласия. Допустимые шаблоны, провайдеры и модели — в council_options. " +
       "Перед вызовом обязательно напиши владельцу отдельным сообщением тему, участников, лимит кругов и верхнюю границу числа вызовов моделей (участники × круги × 3; с независимыми черновиками — участники × (круги + 1) × 3), даже когда согласие не требуется." +
       " Файлы и папки владельца передаются в attachments: только названные владельцем или явно подразумеваемые, только абсолютными путями; в сообщении перед запуском назови число материалов и их объём — они уходят в каждый вызов и увеличивают расход." +
@@ -264,6 +266,8 @@ export const mcpMessages = defineMessages({
     startProviderNotFound: (id: string, known: string[]) => `Провайдер «${id}» не найден в реестре: есть ${known.join(", ") || "провайдеров нет"}.`,
     startProviderNeedsModel: (id: string) => `Для провайдера «${id}» нужна модель.`,
     startProviderUnavailable: (label: string, reason: string | null | undefined) => `Провайдер «${label}» недоступен: ${reason ?? "причина неизвестна"}`,
+    startExecutorFailed: (reason: string) => `Исполнитель сессии не запустился: ${reason}`,
+    startExecutorTimeout: (sec: number) => `исполнитель не ответил за ${sec} с`,
     startNext: (hasMaterials: boolean, hasFolder: boolean) => `Если ещё не назвал владельцу участников, лимит кругов и верхнюю границу вызовов (maxCalls)${hasMaterials ? " и число и объём материалов (materials)" : ""}${hasFolder ? " и объём снимка папки (folder) и число не вошедших в исходный набор файлов (materials.left.count)" : ""}, назови сейчас одной строкой. Дальше council_status с этим sessionId и waitSec до 50, без сообщений на каждый ход; итог берётся только из его ответа.`,
     startNextLineupNotes: " Передай владельцу пометки о моделях состава (lineup.notes).",
     startNextDrafts: (synthesizerId: string, synthesizerName: string, byDefault: boolean, bound: number) => ` Включены независимые черновики (эксперимент): сначала каждый участник пишет черновик, не видя чужих, затем обычное обсуждение начинает синтезатор ${synthesizerId} (${synthesizerName})${byDefault ? ", выбранный по умолчанию" : ""}; назови владельцу синтезатора и границу вызовов ${bound} (участники × (круги + 1) × 3).`,

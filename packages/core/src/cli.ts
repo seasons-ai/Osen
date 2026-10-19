@@ -31,7 +31,8 @@ import { sessionUsage } from "./protocol/usage.ts";
 import type { SessionState } from "./protocol/state.ts";
 import { DataDirError, ensureDataDir, prepareDataDir } from "./store/data-dir.ts";
 import { envFilePath } from "./store/env.ts";
-import { readEvents } from "./store/journal.ts";
+import { readEvents, SessionExistsError } from "./store/journal.ts";
+import { LaunchFileError, readLaunchFile } from "./store/launch.ts";
 import { createLogger } from "./store/log.ts";
 import type { Logger } from "./store/log.ts";
 import { runStoredSession } from "./store/run.ts";
@@ -370,6 +371,50 @@ function formatShow(events: SessionEvent[], status: StoredStatus, partial: Journ
   return out;
 }
 
+/** Internal command: runs a session prepared by the MCP server from a launch file (not listed in help). */
+async function runPrepared(file: string, dataDir: string, io: CliIo, log: Logger): Promise<number> {
+  const t = cliMessages();
+  const fail = (message: string) => { log.error("Prepared start failed", message); io.stderr(t.error(message)); return EXIT.usage; };
+  let payload;
+  try {
+    payload = readLaunchFile(file);
+  } catch (e) {
+    if (e instanceof LaunchFileError) return fail(e.message);
+    throw e;
+  }
+  const { session, materials, workspace } = payload;
+  try {
+    let registry: Registry | undefined;
+    if (session.participants.some((p) => p.providerId !== "scripted")) {
+      await ensureRegistry(dataDir, { env: io.env, deps: io.inspectDeps });
+      registry = readRegistry(dataDir);
+    }
+    const drivers: Record<string, ParticipantDriver> = {};
+    for (const p of session.participants) {
+      if (p.providerId === "scripted") {
+        const path = payload.scenarios[p.id];
+        if (path === undefined) return fail(t.launchInvalid(file, `scenarios.${p.id}: missing`));
+        drivers[p.id] = createScriptedDriver(await readScenario(path), io.env);
+        continue;
+      }
+      const provider = registry!.providers.find((x) => x.id === p.providerId);
+      if (!provider) return fail(t.unknownProvider(p.providerId, registry!.providers.map((x) => x.id).join(", ")));
+      const found = await inspectProvider(provider, { env: io.env, withModels: false, deps: io.inspectDeps, keyFile: envFilePath(dataDir) });
+      if (!found.runtime && !found.http) { log.error("Provider unavailable", p.providerId); io.stderr(t.providerUnavailable(p.providerId, String(found.status.reason))); return EXIT.usage; }
+      drivers[p.id] = found.runtime ? createCliDriver(found.runtime) : createHttpDriver(found.http!);
+    }
+    log.info(`Prepared start: session ${session.id}`);
+    const { state } = await runStoredSession({
+      session, drivers, materials, ...(workspace?.length ? { workspace } : {}), signal: io.signal, dataDir, logger: log,
+    });
+    log.info(`Prepared session finished: ${state.finish!.status}`);
+    return EXIT[state.finish!.status];
+  } catch (e) {
+    if (e instanceof ScriptedUnavailableError || e instanceof SessionExistsError || e instanceof ResumeRejectedError || e instanceof RegistryError) return fail(e.message);
+    throw e;
+  }
+}
+
 export async function main(argv: string[], io: CliIo): Promise<number> {
   // the language is set by the entry point before main is called and does not change until the call ends
   const t = cliMessages();
@@ -426,7 +471,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
 
     const [cmd = "run", ...rest] = positionals;
     if (values.answer !== undefined && cmd !== "say") return usageFail(t.answerOnlySay);
-    if (!["run", "providers", "list", "show", "stop", "say", "status", "continue", "resume", "home", "templates", "lineups", "doctor"].includes(cmd)) return usageFail(t.unknownCommand(cmd));
+    if (!["run", "providers", "list", "show", "stop", "say", "status", "continue", "resume", "home", "templates", "lineups", "doctor", "run-prepared"].includes(cmd)) return usageFail(t.unknownCommand(cmd));
     if (values.json) {
       const jsonCmd = cmd === "lineups" && rest.length ? "lineups save" : cmd;
       if (!JSON_COMMANDS.includes(jsonCmd)) return usageFail(t.jsonNotSupported(jsonCmd));
@@ -437,6 +482,9 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     } else if (cmd === "lineups") {
       if (rest.length && !(rest[0] === "save" && rest.length === 2)) return usageFail(t.lineupsUsage);
       if (rest.length && values["from-session"] === undefined) return usageFail(t.lineupsSaveNeedsSession);
+    } else if (cmd === "run-prepared") {
+      if (rest.length !== 1) return usageFail(t.launchUsage);
+      if (Object.values(values).some((v) => v !== undefined)) return usageFail(t.launchUsage);
     } else if (cmd === "say") {
       if (rest.length !== 2) return usageFail(t.sayArgs);
     } else if (cmd !== "run" && rest.length !== 1) {
@@ -530,6 +578,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     };
     const code = await (async (): Promise<number> => {
       let registry: Registry | undefined, registryState: "created" | "exists" = "exists";
+      if (cmd === "run-prepared") return runPrepared(rest[0]!, dataDir, io, log);
       if (cmd === "run" || cmd === "providers" || cmd === "resume" || cmd === "doctor") {
         try {
           registryState = await ensureRegistry(dataDir, { env: io.env, deps: io.inspectDeps });

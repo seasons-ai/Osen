@@ -1,8 +1,11 @@
+import { spawn } from "node:child_process";
+import { closeSync, existsSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
-import { checkLineup, collectSessionMaterials, createCliDriver, createHttpDriver, createScriptedDriver, createSession, DEFAULT_MODEL, ensureRegistry, envFilePath, FOLDER_LIMITS, folderStats, inspectProvider, LineupsError, maxCallsBound, loadTemplates, logRegistryLoaded, MaterialsError, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, readLineups, readRegistry, readScenario, runStoredSession, ScriptedUnavailableError, scriptedDevOnlyMessage, SessionInputError, templateSessionInput, UnknownTemplateError, userTemplatesDir } from "@model-council/core";
-import type { FolderFile, ParticipantDriver } from "@model-council/core";
+import { checkLineup, collectSessionMaterials, createSession, eventsPath, launchErrPath, launchFilePath, writeLaunchFile, DEFAULT_MODEL, ensureRegistry, envFilePath, FOLDER_LIMITS, folderStats, inspectProvider, LineupsError, maxCallsBound, loadTemplates, logRegistryLoaded, MaterialsError, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, readLineups, readRegistry, readScenario, ScriptedUnavailableError, scriptedDevOnlyMessage, SessionInputError, templateSessionInput, UnknownTemplateError, userTemplatesDir } from "@model-council/core";
+import type { FolderFile, LaunchPayload } from "@model-council/core";
 import { z } from "zod";
 import { defineTool, ROUNDS_BOUNDS, resumeScenarioPath, SCRIPTED_PROVIDER_ID, scriptedProviderLabel, scenarioPath, ToolError } from "./context.ts";
+import type { ToolContext } from "./context.ts";
 import { mcpMessages } from "./messages.ts";
 import { lineupScripted } from "./options.ts";
 
@@ -43,6 +46,64 @@ export const rosterProviders = (registry: ReturnType<typeof readRegistry>): Prov
   ...registry.providers.map((p) => ({ id: p.id, label: p.label, defaultModel: p.kind === "cli" ? DEFAULT_MODEL : null })),
   { id: SCRIPTED_PROVIDER_ID, label: scriptedProviderLabel(), defaultModel: null },
 ];
+
+const START_TIMEOUT_MS = 15_000;
+
+// Hands the prepared session to a detached executor and waits for the first journal event; any other outcome is a ToolError and leaves no launch files.
+async function startExecutor(ctx: ToolContext, payload: Omit<LaunchPayload, "deadline">): Promise<void> {
+  const m = mcpMessages();
+  const id = payload.session.id;
+  const timeoutMs = ctx.startTimeoutMs ?? START_TIMEOUT_MS;
+  const pollMs = ctx.startPollMs ?? 100;
+  const file = launchFilePath(ctx.dataDir, id);
+  const errPath = launchErrPath(ctx.dataDir, id);
+  const cleanup = (): void => { rmSync(file, { force: true }); rmSync(errPath, { force: true }); };
+  let failure: string | null = null;
+  try {
+    writeLaunchFile(ctx.dataDir, { ...payload, deadline: new Date(Date.now() + timeoutMs).toISOString() });
+    const reason = (code: number | null): string => {
+      let text = "";
+      try { text = readFileSync(errPath, "utf8").trim(); } catch { /* no .err file */ }
+      return text || `exit code ${code}`;
+    };
+    if (ctx.spawnExecutor) {
+      ctx.spawnExecutor(file, errPath).then((code) => { failure ??= reason(code); }, (e: unknown) => { failure ??= e instanceof Error ? e.message : String(e); });
+    } else {
+      const errFd = openSync(errPath, "w", 0o600);
+      try {
+        const child = spawn(ctx.councilLaunch.command, [...ctx.councilLaunch.args, "run-prepared", file], {
+          detached: true,
+          stdio: ["ignore", "ignore", errFd],
+          env: { ...Object.fromEntries(Object.entries(ctx.env).filter((e): e is [string, string] => e[1] !== undefined)), COUNCIL_HOME: ctx.dataDir, ...ctx.councilLaunch.env },
+        });
+        child.on("error", (e) => { failure ??= e.message; });
+        child.on("exit", (code) => { failure ??= reason(code); });
+        child.unref();
+      } finally {
+        closeSync(errFd);
+      }
+    }
+    ctx.logger.info(`Executor started for session ${id}, waiting for the first event up to ${timeoutMs} ms`);
+    const first = eventsPath(ctx.dataDir, id);
+    const hasEvent = (): boolean => { try { return existsSync(first) && statSync(first).size > 0; } catch { return false; } };
+    const end = Date.now() + timeoutMs;
+    while (!hasEvent()) {
+      if (failure !== null) {
+        ctx.logger.error(`Executor of session ${id} failed before the first event`, failure);
+        throw new ToolError(m.startExecutorFailed(failure));
+      }
+      if (Date.now() >= end) {
+        ctx.logger.error(`Executor of session ${id} did not respond in ${timeoutMs} ms`);
+        throw new ToolError(m.startExecutorTimeout(Math.round(timeoutMs / 1000)));
+      }
+      await new Promise((r) => setTimeout(r, pollMs));
+    }
+    cleanup();
+  } catch (e) {
+    cleanup();
+    throw e;
+  }
+}
 
 export const councilStart = defineTool({
   name: "council_start",
@@ -175,15 +236,18 @@ export const councilStart = defineTool({
     const count = materials?.length ?? 0;
     const chars = materials?.reduce((n, m) => n + m.chars, 0) ?? 0;
     const folder = workspace.length ? folderStats(workspace) : null;
-    const drivers: Record<string, ParticipantDriver> = {};
+    // The session runs in a detached `council run-prepared` process; here we only validate providers and scenarios.
+    const scenarios: Record<string, string> = {};
     for (const [i, e] of entries.entries()) {
       if (e.providerId === SCRIPTED_PROVIDER_ID) {
+        const path = (lineup ? resumeScenarioPath : scenarioPath)(ctx.scenariosDir, e.model)!;
         try {
-          drivers[`p${i + 1}`] = createScriptedDriver(await readScenario((lineup ? resumeScenarioPath : scenarioPath)(ctx.scenariosDir, e.model)!), ctx.env);
+          await readScenario(path);
         } catch (err) {
           if (err instanceof ScriptedUnavailableError) throw new ToolError(err.message);
           throw err;
         }
+        scenarios[`p${i + 1}`] = path;
         continue;
       }
       const provider = registry.providers.find((p) => p.id === e.providerId)!;
@@ -193,17 +257,13 @@ export const councilStart = defineTool({
         found.set(e.providerId, r);
       }
       if (!r.runtime && !r.http) throw new ToolError(m.startProviderUnavailable(provider.label, r.status.reason));
-      drivers[`p${i + 1}`] = r.runtime ? createCliDriver(r.runtime) : createHttpDriver(r.http!);
     }
 
     const ow = session.ownerWait
       ? { pauseAfterRound: session.ownerWait.pauseAfterRound === true, waitForOwner: session.ownerWait.waitForOwner === true, timeoutSec: session.ownerWait.timeoutSec ?? OWNER_WAIT_DEFAULT_SEC }
       : null;
     ctx.logger.info(`Session start from MCP: template ${session.templateId ?? "none"}, participants ${session.participants.length}, round limit ${session.limits.maxRounds}, materials ${count}, size ${chars}, snapshot files ${folder?.files ?? 0}, snapshot size ${folder?.chars ?? 0}, not in the initial set ${left.length}, ${session.limits.maxTotalTokens === undefined ? "no token cap" : `token cap ${session.limits.maxTotalTokens}`}, ${ow === null ? "owner wait: none" : `owner wait: pause after round ${ow.pauseAfterRound ? "yes" : "no"}, answer to a question ${ow.waitForOwner ? "yes" : "no"}, timeout ${ow.timeoutSec} s`}, ${lineup ? `lineup ${lineup.id}` : "no lineup"}`);
-    // We resolve on the first event (the journal is already created); we do not wait for the discussion to end, a late failure is already written to the log.
-    await new Promise<void>((resolve, reject) => {
-      runStoredSession({ session, drivers, dataDir: ctx.dataDir, logger: ctx.logger, signal: ctx.shutdown, materials, ...(workspace.length ? { workspace } : {}), onEvent: () => resolve() }).catch(reject);
-    });
+    await startExecutor(ctx, { session, ...(materials ? { materials } : {}), ...(workspace.length ? { workspace } : {}), scenarios });
 
     const draftsView: StartView["drafts"] = session.drafts
       ? { synthesizerId: session.drafts.synthesizerId, synthesizerName: session.participants.find((p) => p.id === session.drafts!.synthesizerId)!.name, byDefault: input.synthesizerId === undefined }

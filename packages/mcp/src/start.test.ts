@@ -1,10 +1,11 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { setProcessLanguage, createLogger, FOLDER_LIMITS, listSessions, loadTemplates, readSession, readEvents } from "@model-council/core";
+import { setProcessLanguage, createLogger, FOLDER_LIMITS, listSessions, loadTemplates, readSession, readEvents, requestStop, launchErrPath, launchFilePath } from "@model-council/core";
 import type { CliLocation } from "@model-council/core";
 import { configPath, initialRegistry, lineupsPath, saveLineup } from "@model-council/core";
+import { main } from "../../core/src/cli.ts";
 import { councilStart } from "./start.ts";
 import { makeImageOnlyPdf, makePdf } from "../../core/src/pdf/fixture.ts";
 import { councilStatus } from "./status.ts";
@@ -14,10 +15,24 @@ import type { ToolContext } from "./context.ts";
 
 const tmps: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "council-")); tmps.push(d); return d; };
-afterAll(() => { for (const d of tmps) rmSync(d, { recursive: true, force: true }); });
+// Sessions run in detached executors: stop what is still running and wait for the executor pids to exit before the folders are removed.
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+afterAll(async () => {
+  for (const d of tmps) {
+    for (const s of listSessions(d)) {
+      if (s.status !== "running") continue;
+      const pid = readSession(d, s.id)?.state.pid ?? null;
+      requestStop(d, s.id);
+      for (let i = 0; i < 200 && pid !== null && alive(pid); i++) await sleep(50);
+    }
+  }
+  for (const d of tmps) rmSync(d, { recursive: true, force: true });
+}, 30_000);
 
 const templatesDir = join(import.meta.dirname, "../../../templates");
 const scenariosDir = join(import.meta.dirname, "../../core/scenarios");
+const councilLaunch = { command: process.execPath, args: [join(import.meta.dirname, "../../core/src/council.ts")], env: {} };
 const FIX = join(import.meta.dirname, "../../core/src/cli-agents/fixtures");
 
 const notFound = async (agent: "claude" | "codex"): Promise<CliLocation> => ({ agent, found: false, searchPath: "", reason: `Команда ${agent} не найдена` });
@@ -27,7 +42,7 @@ function ctxOf(over: Partial<ToolContext> = {}): ToolContext {
   const env = over.env ?? { COUNCIL_DEV: "1" };
   return {
     dataDir, env, logger: createLogger(dataDir, "mcp", env), builtinTemplatesDir: templatesDir, scenariosDir,
-    shutdown: new AbortController().signal, inspectDeps: { locate: notFound }, ...over,
+    shutdown: new AbortController().signal, councilLaunch, inspectDeps: { locate: notFound }, ...over,
   };
 }
 
@@ -95,7 +110,9 @@ describe("council_start", () => {
     const dataDir = tmp();
     const inspectDeps = { locate: cliStub("claude"), listModels: async () => ({ models: [], confirmed: true }) };
     const both = async (a: "claude" | "codex") => (a === "claude" ? inspectDeps.locate(a) : cliStub("codex")(a));
-    const ctx = ctxOf({ dataDir, inspectDeps: { ...inspectDeps, locate: both } });
+    const deps = { ...inspectDeps, locate: both };
+    // the CLI stubs cannot be handed to a separate process: the executor runs in this one
+    const ctx = ctxOf({ dataDir, inspectDeps: deps, spawnExecutor: async (file, errPath) => main(["run-prepared", file], { stdout: () => {}, stderr: (t) => appendFileSync(errPath, t), env: { COUNCIL_HOME: dataDir }, inspectDeps: deps }) });
     const v = await start(ctx, { topic: "Тема по умолчанию" });
     const reg = JSON.parse(readFileSync(configPath(dataDir), "utf8"));
     expect(v.templateId).toBeNull();
@@ -431,10 +448,9 @@ describe("council_start: waiting for the owner", () => {
   });
 
   it("5. default deadline 300", async () => {
-    const ac = new AbortController();
-    const ctx = ctxOf({ shutdown: ac.signal });
+    const ctx = ctxOf();
     const v = await start(ctx, { topic: "т", participants: [sc("owner-wait/ask-p1.json"), sc("owner-wait/answer-p2.json")], waitForOwner: true });
-    ac.abort();
+    requestStop(ctx.dataDir, v.sessionId);
     expect(v.ownerWait).toEqual({ pauseAfterRound: false, waitForOwner: true, timeoutSec: 300 });
     expect(readSession(ctx.dataDir, v.sessionId)!.state.session!.ownerWait).toEqual({ waitForOwner: true });
     await finished(ctx, v.sessionId);
@@ -567,7 +583,7 @@ describe("council_start: folder snapshot", () => {
         for (const bad of ["ТЕКСТ-", "СЕКРЕТ-", fx]) expect(text.includes(bad), `${where}: «${bad}» в ${what}`).toBe(false);
       }
     }
-  });
+}, 60_000);
 });
 
 describe("council_start: named lineups", () => {
@@ -678,5 +694,52 @@ describe("council_start: independent drafts", () => {
     const ctx = ctxD();
     await rejectsTool(ctx, { topic: "Т", participants: three, synthesizerId: "p2" }, /synthesizerId работает только вместе с drafts: true\./);
     await rejectsTool(ctx, { topic: "Т", participants: three, drafts: true, synthesizerId: "p9" }, /p9/);
+  });
+});
+
+describe("council_start: detached executor", () => {
+  const noLaunchFiles = (ctx: ToolContext, id?: string) => {
+    const dir = join(ctx.dataDir, "launch");
+    expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);
+    if (id) { expect(existsSync(launchFilePath(ctx.dataDir, id))).toBe(false); expect(existsSync(launchErrPath(ctx.dataDir, id))).toBe(false); }
+  };
+  const script = (body: string) => { const f = join(tmp(), "exec.mjs"); writeFileSync(f, body); return f; };
+  const withScript = (body: string, over: Partial<ToolContext> = {}) => ctxOf({ councilLaunch: { command: process.execPath, args: [script(body)], env: {} }, ...over });
+
+  it("a. the id comes after the first event; the executor is another process", async () => {
+    const ctx = ctxOf();
+    const v = await start(ctx, { topic: "т", participants: [sc("owner-wait/ask-p1.json"), sc("owner-wait/answer-p2.json")], waitForOwner: true });
+    const s = readSession(ctx.dataDir, v.sessionId)!;
+    expect(readEvents(ctx.dataDir, v.sessionId)!.events.length).toBeGreaterThan(0);
+    const lock = join(ctx.dataDir, "sessions", v.sessionId, "resume.lock");
+    const pid = existsSync(lock) ? Number(readFileSync(lock, "utf8")) : s.state.pid!;
+    expect(pid).not.toBe(process.pid);
+    expect(s.state.pid).not.toBe(process.pid);
+    expect(s.status).toBe("running");
+    noLaunchFiles(ctx, v.sessionId);
+    requestStop(ctx.dataDir, v.sessionId);
+    await until(() => !alive(pid));
+    expect(readSession(ctx.dataDir, v.sessionId)!.status).toBe("stopped");
+  });
+
+  it("b. the executor cannot be started: the reason, no session, no launch files", async () => {
+    const ctx = ctxOf({ councilLaunch: { command: join(tmp(), "no-such-node"), args: [], env: {} } });
+    await rejectsTool(ctx, { topic: "т", participants: two }, /не запустился: .*ENOENT/);
+    noLaunchFiles(ctx);
+  });
+
+  it("c. the executor exits before the first event: the text of stderr, no session, no launch files", async () => {
+    const ctx = withScript('process.stderr.write("boom\\n"); process.exit(3);');
+    await rejectsTool(ctx, { topic: "т", participants: two }, /boom/);
+    noLaunchFiles(ctx);
+  });
+
+  it("d. the executor does not respond: timeout, no session appears later, no launch files", async () => {
+    const ctx = withScript("setTimeout(() => {}, 1500);", { startTimeoutMs: 500, startPollMs: 20 });
+    await rejectsTool(ctx, { topic: "т", participants: two }, /исполнитель не ответил за 1 с/);
+    noLaunchFiles(ctx);
+    await sleep(2000);
+    expect(listSessions(ctx.dataDir)).toEqual([]);
+    noLaunchFiles(ctx);
   });
 });

@@ -27,7 +27,7 @@ const ctxOf = (over: Partial<ToolContext> = {}, dataDir = tmp()): ToolContext =>
   const env = over.env ?? {};
   return {
     dataDir, env, logger: createLogger(dataDir, "mcp", env), builtinTemplatesDir: join(import.meta.dirname, "../../../templates"),
-    scenariosDir: null, shutdown: new AbortController().signal, inspectDeps: deps(), ...over,
+    scenariosDir: null, shutdown: new AbortController().signal, councilLaunch: { command: process.execPath, args: [join(import.meta.dirname, "../../core/src/council.ts")], env: {} }, inspectDeps: deps(), ...over,
   };
 };
 const run = (ctx: ToolContext) => councilOptions.run(ctx, {}) as ReturnType<typeof councilOptions.run> & Promise<import("./options.ts").OptionsView>;
@@ -193,6 +193,7 @@ describe("Shared log: loading settings in MCP", () => {
     await run(ctx);
     const view = await councilStart.run(ctx, { topic: "Как назвать кота", participants: [{ providerId: "scripted", model: "consensus/p1.json" }, { providerId: "scripted", model: "consensus/p2.json" }] }) as { sessionId: string };
     expect(view.sessionId).toBeTruthy();
+    for (let i = 0; i < 200 && !/session_finished/.test(readFileSync(join(dataDir, "sessions", view.sessionId, "events.jsonl"), "utf8")); i++) await new Promise((r) => setTimeout(r, 50)); // the executor is a separate process: let it finish before the folder is removed
     const lines = readFileSync(join(dataDir, "logs", "app.log"), "utf8").split("\n").filter((l) => l.includes("Settings loaded"));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/ INFO \[mcp\] Settings loaded: .*config\.json, providers: \d+$/);
