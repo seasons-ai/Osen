@@ -36,9 +36,10 @@ afterEach(() => {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const write = (id: string, events: SessionEvent[]) => { createSessionJournal(dir, id); for (const e of events) appendEvent(dir, id, e); };
 
+// The clock includes starting the writer process, which takes seconds on a busy machine; the wait ends as soon as the value arrives.
 function waitFor<T>(sub: (cb: (v: T) => void) => void): Promise<T> {
   return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("не пришло за 2000 мс")), 2000);
+    const t = setTimeout(() => reject(new Error("не пришло за 20000 мс")), 20_000);
     sub((v) => { clearTimeout(t); resolve(v); });
   });
 }

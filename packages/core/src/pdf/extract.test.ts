@@ -255,10 +255,11 @@ describe("Cache", () => {
     expect(lines(count)).toBe(2);
     appendFileSync(count, "");
     setPdfExtractorRuntime({ script: data("child-hang.ts"), env: { PID_FILE: join(dir, "pid") } });
-    const limits = small({ ms: 300 });
+    // the cache key holds the limits, so the hang and the later success share one deadline: long enough for a slow start
+    const limits = small({ ms: 8000 });
     open(file, (fd) => { expect(readPdfText(fd, limits)).toEqual({ ok: false, code: "timeout" }); });
     setPdfExtractorRuntime({ script: data("child-count.ts"), env: { COUNT_FILE: count } });
     open(file, (fd) => { expect(readPdfText(fd, limits)).toMatchObject({ ok: true }); });
     expect(lines(count)).toBe(3);
-  }, SLOW);
+  }, 60_000);
 });

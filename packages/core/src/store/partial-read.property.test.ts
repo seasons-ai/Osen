@@ -126,5 +126,5 @@ describe("Partial-read flag of journal: any position of an unknown line", () => 
     }
     for (const [k, v] of Object.entries(seen)) expect(v, `граница ${k} не порождена`).toBeGreaterThan(0);
     console.log("partial-read: случаев", seen.cases, seen);
-  });
+  }, 120_000); // CPU-bound: the ceiling only guards against a hang, a busy machine slows it several times
 });

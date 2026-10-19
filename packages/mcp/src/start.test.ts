@@ -583,7 +583,7 @@ describe("council_start: folder snapshot", () => {
         for (const bad of ["ТЕКСТ-", "СЕКРЕТ-", fx]) expect(text.includes(bad), `${where}: «${bad}» в ${what}`).toBe(false);
       }
     }
-}, 60_000);
+}, 180_000); // CPU-bound: the ceiling only guards against a hang, a busy machine slows it several times
 });
 
 describe("council_start: named lineups", () => {

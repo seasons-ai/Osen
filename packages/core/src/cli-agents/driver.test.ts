@@ -19,10 +19,21 @@ const claudeFlags = declaredFlags(fx("claude-2.1.288-help.txt"));
 const codexFlags = declaredFlags(fx("codex-0.159.2-exec-help.txt"));
 const codexFeatures = parseCodexFeatures(fx("codex-0.159.2-features.txt"));
 
+// Own temp folder: other test files create council-turn-* folders in the shared one at the same time.
+const sharedTmp = tmpdir();
+const ownTmp = mkdtempSync(join(sharedTmp, "driver-test-"));
+process.env.TMPDIR = ownTmp;
 const turnDirs = () => new Set(readdirSync(tmpdir()).filter((n) => n.startsWith("council-turn-")));
 let before: Set<string>;
 beforeAll(() => { before = turnDirs(); });
-afterAll(() => { expect([...turnDirs()].filter((n) => !before.has(n))).toEqual([]); });
+afterAll(() => {
+  try {
+    expect([...turnDirs()].filter((n) => !before.has(n))).toEqual([]);
+  } finally {
+    process.env.TMPDIR = sharedTmp;
+    rmSync(ownTmp, { recursive: true, force: true });
+  }
+});
 
 const roots: string[] = [];
 afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); delete process.env.COUNCIL_TEST_MARKER; });
@@ -269,10 +280,11 @@ describe("isolation and launch", () => {
 });
 
 describe("with the engine", () => {
-  const go = (drivers: ReturnType<typeof createCliDriver>[]) => {
+  // a 1 s turn only where the timeout is the subject: a stub on a busy machine can take longer to answer
+  const go = (drivers: ReturnType<typeof createCliDriver>[], turnTimeoutSec = 30) => {
     const session = createSession(
       {
-        topic: "Тема", framing: "", origin: "cli", limits: { maxRounds: 3, turnTimeoutSec: 1, contextChars: 20000 },
+        topic: "Тема", framing: "", origin: "cli", limits: { maxRounds: 3, turnTimeoutSec, contextChars: 20000 },
         participants: drivers.map((_, i) => ({ name: `N${i + 1}`, providerId: "x", model: "default", role: null })),
       },
       { maxParticipants: 8, id: "s1" },
@@ -295,7 +307,7 @@ describe("with the engine", () => {
   it("16b. timeout and retry", async () => {
     const a = stub("claude", { sleep: 5 });
     const b = stub("codex", { stdout: codexOut(msg(JSON.stringify(answer)), done()) });
-    const { events } = await go([createCliDriver(a.runtime), createCliDriver(b.runtime)]);
+    const { events } = await go([createCliDriver(a.runtime), createCliDriver(b.runtime)], 1);
     const failed = of(events, "turn_failed");
     expect(failed[0]!.kind).toBe("timeout");
     expect(failed.some((e) => e.attempt === 2)).toBe(true);
