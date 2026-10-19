@@ -1,8 +1,9 @@
 import { parseArgs } from "node:util";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { createSession, SessionInputError } from "./engine.ts";
 import { cliMessages } from "./messages/cli.ts";
+import { doctorJson, JSON_COMMANDS, lineupsJson, listJson, providersJson, showJson, statusJson, templatesJson } from "./cli-json.ts";
 import { resumeMessages } from "./messages/resume.ts";
 import { attachedFolderPrefixes, collectSessionMaterials, MaterialsError } from "./materials.ts";
 import type { MaterialSet } from "./materials.ts";
@@ -40,7 +41,7 @@ import type { Provider, Registry } from "./registry/config.ts";
 import { checkLineup } from "./registry/lineup-check.ts";
 import { LineupsError, readLineups, saveLineup } from "./registry/lineups.ts";
 import { ensureRegistry, inspectProvider, inspectProviders } from "./registry/providers.ts";
-import type { InspectDeps } from "./registry/providers.ts";
+import type { InspectDeps, ProviderStatus } from "./registry/providers.ts";
 import { DraftSnapshotError, readDraftSnapshot } from "./store/draft-snapshots.ts";
 import { listSessions, partialNote, readSession, requestStop, StopRejectedError } from "./store/sessions.ts";
 import type { JournalPartial, StoredStatus } from "./store/sessions.ts";
@@ -60,6 +61,8 @@ export interface CliIo {
   builtinTemplatesDir?: string; // for tests and packaging: the folder of built-in templates
   urlTransport?: UrlTransport; // for the stand and tests: replacement of DNS and of the connection
   urlWorker?: string; // for packaging: path of the HTML text extraction worker
+  appVersion?: string; // application version, passed by the entry point (doctor)
+  processVersions?: Partial<NodeJS.ProcessVersions>; // for tests: replacement of process.versions (doctor)
 }
 
 export const help = (): string => cliMessages().help;
@@ -429,6 +432,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         allowPositionals: true,
         options: {
           help: { type: "boolean" },
+          json: { type: "boolean" },
           topic: { type: "string" },
           participant: { type: "string", multiple: true },
           "max-rounds": { type: "string" },
@@ -467,9 +471,13 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
 
     const [cmd = "run", ...rest] = positionals;
     if (values.answer !== undefined && cmd !== "say") return usageFail(t.answerOnlySay);
-    if (!["run", "providers", "list", "show", "stop", "say", "status", "continue", "resume", "home", "templates", "lineups", "run-prepared"].includes(cmd)) return usageFail(t.unknownCommand(cmd));
+    if (!["run", "providers", "list", "show", "stop", "say", "status", "continue", "resume", "home", "templates", "lineups", "doctor", "run-prepared"].includes(cmd)) return usageFail(t.unknownCommand(cmd));
+    if (values.json) {
+      const jsonCmd = cmd === "lineups" && rest.length ? "lineups save" : cmd;
+      if (!JSON_COMMANDS.includes(jsonCmd)) return usageFail(t.jsonNotSupported(jsonCmd));
+    }
     if (cmd === "run" && positionals.length) return usageFail(t.unknownCommand(cmd));
-    if (cmd === "home" || cmd === "list" || cmd === "providers" || cmd === "templates") {
+    if (cmd === "home" || cmd === "list" || cmd === "providers" || cmd === "templates" || cmd === "doctor") {
       if (rest.length) return usageFail(t.noArgs(cmd));
     } else if (cmd === "lineups") {
       if (rest.length && !(rest[0] === "save" && rest.length === 2)) return usageFail(t.lineupsUsage);
@@ -550,8 +558,11 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     }
 
     let dataDir: string;
+    let dataDirExisted = false;
     try {
-      dataDir = ensureDataDir(prepareDataDir(io.env));
+      const prepared = prepareDataDir(io.env);
+      if (cmd === "doctor") dataDirExisted = existsSync(prepared);
+      dataDir = ensureDataDir(prepared);
     } catch (e) {
       if (!(e instanceof DataDirError)) throw e;
       io.stderr(t.error(e.message));
@@ -566,11 +577,11 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       return EXIT.usage;
     };
     const code = await (async (): Promise<number> => {
-      let registry: Registry | undefined;
+      let registry: Registry | undefined, registryState: "created" | "exists" = "exists";
       if (cmd === "run-prepared") return runPrepared(rest[0]!, dataDir, io, log);
-      if (cmd === "run" || cmd === "providers" || cmd === "resume") {
+      if (cmd === "run" || cmd === "providers" || cmd === "resume" || cmd === "doctor") {
         try {
-          await ensureRegistry(dataDir, { env: io.env, deps: io.inspectDeps });
+          registryState = await ensureRegistry(dataDir, { env: io.env, deps: io.inspectDeps });
           registry = readRegistry(dataDir);
           logRegistryLoaded(log, dataDir, registry);
         } catch (e) {
@@ -580,18 +591,57 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           return EXIT.usage;
         }
       }
+      // lines of one provider; the warning goes to stdout (providers) or stderr (doctor)
+      const printProvider = (s: ProviderStatus, warn: (text: string) => void) => {
+        const isHttp = s.kind === "openai-http";
+        io.stdout([`${s.id}  ${s.kind}  ${s.available ? t.available : t.unavailable(s.reason ?? "")}`, s.version && t.version(s.version), s.path ?? s.baseUrl].filter(Boolean).join("  "));
+        if (s.warning) warn(t.providerWarning(s.warning));
+        if (isHttp) io.stdout(s.keyEnv ? t.key(s.keyEnv, !!s.keySet) : t.keyNotRequired);
+        io.stdout(t.models(isHttp ? (s.models.length ? s.models.join(", ") : t.modelsManual(s.id)) : [DEFAULT_MODEL, ...s.models].join(", ")));
+        if (!s.modelsConfirmed && s.modelsReason) io.stdout(t.modelsUnconfirmed(s.modelsReason));
+      };
+      if (cmd === "doctor") {
+        const found = await inspectProviders(registry!, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir) });
+        const statuses = found.map((f) => f.status);
+        statuses.forEach((s) => { if (s.warning) io.stderr(t.providerWarning(s.warning)); });
+        const versions = io.processVersions ?? process.versions;
+        let writable = true;
+        try { accessSync(dataDir, constants.W_OK); } catch { writable = false; }
+        const facts = {
+          execPath: process.execPath, entry: process.argv[1] ?? null, version: io.appVersion ?? null,
+          mode: versions.electron ? "packaged" as const : "node" as const, node: versions.node ?? null,
+          language: getProcessLanguage(),
+          dataDir: { path: dataDir, exists: dataDirExisted, writable },
+          config: { path: configPath(dataDir), created: registryState === "created" },
+          providers: statuses,
+        };
+        if (values.json) {
+          io.stdout(JSON.stringify(doctorJson(facts)));
+          return EXIT.consensus;
+        }
+        io.stdout(t.doctorBinary(facts.execPath, facts.entry ?? t.unknown));
+        io.stdout(t.doctorVersion(facts.version ?? t.unknown));
+        io.stdout(facts.mode === "packaged" ? t.doctorRuntimePackaged(facts.node ?? t.unknown) : t.doctorRuntimeNode(facts.node ?? t.unknown));
+        io.stdout(t.doctorLanguage(facts.language));
+        io.stdout(t.doctorDataDir(dataDir, facts.dataDir.exists, writable));
+        io.stdout(t.doctorConfig(facts.config.path, facts.config.created));
+        io.stdout(t.doctorProviders(statuses.length));
+        statuses.forEach((s) => printProvider(s, () => {}));
+        return EXIT.consensus;
+      }
       if (cmd === "providers") {
+        if (values.json) {
+          const all = await inspectProviders(registry!, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir) });
+          all.forEach(({ status: s }) => { if (s.warning) io.stderr(t.providerWarning(s.warning)); });
+          io.stdout(JSON.stringify(providersJson(all.map((f) => f.status))));
+          return EXIT.consensus;
+        }
         if (!registry!.providers.length) {
           io.stdout(t.noProviders(configPath(dataDir)));
           return EXIT.consensus;
         }
         for (const { status: s } of await inspectProviders(registry!, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir) })) {
-          const isHttp = s.kind === "openai-http";
-          io.stdout([`${s.id}  ${s.kind}  ${s.available ? t.available : t.unavailable(s.reason ?? "")}`, s.version && t.version(s.version), s.path ?? s.baseUrl].filter(Boolean).join("  "));
-          if (s.warning) io.stdout(t.providerWarning(s.warning));
-          if (isHttp) io.stdout(s.keyEnv ? t.key(s.keyEnv, !!s.keySet) : t.keyNotRequired);
-          io.stdout(t.models(isHttp ? (s.models.length ? s.models.join(", ") : t.modelsManual(s.id)) : [DEFAULT_MODEL, ...s.models].join(", ")));
-          if (!s.modelsConfirmed && s.modelsReason) io.stdout(t.modelsUnconfirmed(s.modelsReason));
+          printProvider(s, io.stdout);
         }
         return EXIT.consensus;
       }
@@ -599,6 +649,10 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       const sourceText = (src: string) => (src === "user" ? t.userSource : t.builtinSource);
       if (cmd === "templates") {
         const c = catalog();
+        if (values.json) {
+          io.stdout(JSON.stringify(templatesJson(c)));
+          return EXIT.consensus;
+        }
         if (!c.templates.length) io.stdout(t.noTemplates);
         for (const tp of c.templates) io.stdout(`${tp.id}  ${tp.category}  ${tp.title}  ${sourceText(tp.source)}`);
         if (c.errors.length) {
@@ -611,6 +665,10 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         try {
           if (!rest.length) {
             const all = readLineups(dataDir);
+            if (values.json) {
+              io.stdout(JSON.stringify(lineupsJson(all)));
+              return EXIT.consensus;
+            }
             if (!all.length) io.stdout(t.noLineups);
             for (const l of all) {
               io.stdout(`${l.id}  ${l.name}`);
@@ -632,6 +690,10 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       }
       if (cmd === "list") {
         const all = listSessions(dataDir);
+        if (values.json) {
+          io.stdout(JSON.stringify(listJson(all)));
+          return EXIT.consensus;
+        }
         if (!all.length) io.stdout(t.noSessions);
         for (const s of all) {
           const tp = s.topic.replace(/\s*[\r\n]+\s*/g, " ");
@@ -644,6 +706,10 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         const id = rest[0]!;
         const s = readSession(dataDir, id);
         if (s === null) return argFail(t.sessionNotFound(id), false);
+        if (values.json) {
+          io.stdout(JSON.stringify(showJson(id, s.status, s.partial, s.state)));
+          return EXIT.consensus;
+        }
         formatShow(readEvents(dataDir, id)?.events ?? [], s.status, s.partial, snapshotReader(dataDir, id)).forEach((l) => io.stdout(l));
         return EXIT.consensus;
       }
@@ -663,6 +729,10 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         const id = rest[0]!;
         const s = readSession(dataDir, id);
         if (s === null) return argFail(t.sessionNotFound(id), false);
+        if (values.json) {
+          io.stdout(JSON.stringify(statusJson(id, s.status, s.partial, s.state)));
+          return EXIT.consensus;
+        }
         formatStatus(id, s.status, s.partial, s.state, Date.now()).forEach((l) => io.stdout(l));
         return EXIT.consensus;
       }

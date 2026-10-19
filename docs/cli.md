@@ -69,6 +69,95 @@ COUNCIL_DEV=1 node packages/core/scenarios/newer-version/check.ts
 | 4 | stopped |
 | 5 | failed |
 
+## Machine output (--json)
+
+For agents and scripts: `status <id>`, `list`, `show <id>`, `providers`, `templates`, `lineups` and `doctor` accept `--json`. Stdout then carries exactly one JSON document on one line, ended with a newline, and nothing else; warnings, diagnostics and errors go to stderr, and on an error stdout is empty. Exit codes are the same as for the text output (see the table in ["The `council` command"](#the-council-command) above). Other commands (a plain launch, `resume`, `say`, `stop`, `continue`, `home`, `lineups save`) reject `--json` with a reason and help, code 2, and do nothing: no session is created, no journal changes.
+
+```bash
+COUNCIL_HOME=.council-data npx council list --json
+COUNCIL_HOME=.council-data npx council status <id> --json
+COUNCIL_HOME=.council-data npx council show <id> --json
+COUNCIL_HOME=.council-data npx council providers --json
+COUNCIL_HOME=.council-data npx council templates --json
+COUNCIL_HOME=.council-data npx council lineups --json
+```
+
+- Keys, status names, reason codes and identifiers do not depend on `COUNCIL_LANG`; free text (topic, decision text, objections) is passed as is. With `COUNCIL_LANG=en` and `ru` the document is byte-for-byte the same, with two exceptions: `templates` takes `title` and `category` (and their order) from the template files of the selected language, provider diagnostics (`reason`, `warning`, `modelsReason` in `providers` and `doctor`) are written in the selected language as in the text output, and `doctor` reports the selected `language`.
+- Every document has `schemaVersion` (an integer, now `1`) and only the facts the text output already prints. An absent value is `null`, never a missing key.
+- `status` is the original session status name: `running`, `consensus`, `no_consensus`, `stopped`, `failed`, `interrupted`, not a translated label.
+- A session whose journal was not read in full has `partial` = `{reason, lastEvent}` (otherwise `null`). A session of a newer version is recognised by `partial.reason == "newer_version"`; treat its state as undetermined, as the text output does.
+- `providers` never contains a key value, only the variable name (`keyEnv`) and the flag (`keySet`).
+
+Schemas:
+
+```
+list:      {schemaVersion, sessions: [{id, createdAt, status, origin, topic, partial}]}
+             topic is complete, not shortened; partial: null | {reason, lastEvent}
+status:    {schemaVersion, id, status, partial, round, maxRounds, turns, waiting}
+             waiting: null | {waitId, reasons, questions: [{id, from, text}], deadline}
+show:      {schemaVersion, id, status, partial, finish, currentVersion, agreed, waiting, ownerSelection, totals}
+             finish: null (running session) | {status, reason, agreed, objecting}
+             currentVersion: null | {number, authorId, text}
+             ownerSelection: null | {version, ts, note, statusAtSelection}
+             totals: {turns, drafts, durationMs, inputTokens, outputTokens, costUsd, incomplete}
+providers: {schemaVersion, providers: [{id, kind, label, available, reason, warning, path, version,
+                                        baseUrl, keyEnv, keySet, models, modelsConfirmed, modelsReason}]}
+templates: {schemaVersion, templates: [{id, category, title, source}], errors: [{file, source, reason}]}
+             source: "builtin" | "user"
+lineups:   {schemaVersion, lineups: [{id, name, participants: [{providerId, model, role}]}]}
+```
+
+`show` has no turn feed; `totals` hold the same values as the totals line of the text output. With no sessions or lineups, `list` and `lineups` print an empty array and exit with code 0. `list` shows the sessions with a partly read journal along with the rest, code 0.
+
+Example, `list` (the document is on one line; wrapped here):
+
+```json
+{"schemaVersion":1,"sessions":[
+  {"id":"0eccca17-9f71-4aac-9e14-52fe43737a0a","createdAt":"2026-05-12T09:30:00.000Z","status":"consensus","origin":"cli","topic":"Как назвать кота","partial":null},
+  {"id":"18fd7e46-67ad-40b0-8d0e-826faa88f9b2","createdAt":"2026-05-11T16:02:10.000Z","status":"running","origin":"mcp","topic":"Выбрать базу данных","partial":{"reason":"newer_version","lastEvent":3}}]}
+```
+
+Example, `show` of a finished session (wrapped here):
+
+```json
+{"schemaVersion":1,"id":"0eccca17-9f71-4aac-9e14-52fe43737a0a","status":"consensus","partial":null,
+ "finish":{"status":"consensus","reason":null,"agreed":["p1","p2"],"objecting":[]},
+ "currentVersion":{"number":2,"authorId":"p2","text":"Назвать кота Рыжик."},
+ "agreed":["p1","p2"],"waiting":null,"ownerSelection":null,
+ "totals":{"turns":3,"drafts":0,"durationMs":1200,"inputTokens":0,"outputTokens":0,"costUsd":0,"incomplete":false}}
+```
+
+## Diagnostics: council doctor
+
+`council doctor` prints the facts needed to see why a run does not start. No model is called and no session journal is written.
+
+```bash
+COUNCIL_HOME=.council-data npx council doctor
+COUNCIL_HOME=.council-data npx council doctor --json
+```
+
+Without `--json` it prints the same facts as labelled lines in the interface language. The `--json` document is `{schemaVersion, binary, runtime, language, dataDir, config, providers}`:
+
+```
+binary:    {execPath, entry, version}
+             execPath — the executable of the process, entry — the script that was run,
+             version — the app version from apps/desktop/package.json; null if the entry point did not pass it
+runtime:   {mode, node}
+             mode — "packaged" if the process is the packaged app in Node mode (decided by process.versions.electron), else "node"
+             node — the Node version
+language:  the selected output language
+dataDir:   {path, exists, writable}
+             exists — the folder existed before this call (the call creates it, as `providers` does)
+             writable — a write-permission check, no files are created
+config:    {path, created}
+             created — true if this call created the file (the same way as `providers`)
+providers: the same items as in `providers --json`: availability, version, reason for unavailability, warning
+```
+
+- Key values never appear in the output.
+- An unavailable provider does not change the exit code: it is shown with its `reason`, the rest is printed, code 0; provider warnings also go to stderr.
+- An inaccessible data folder gives the reason in stderr, code 1 and empty stdout; a broken `config.json` gives code 2 — the same codes and reasons as `council providers`.
+
 ## Owner's message
 
 While a discussion runs in one terminal, you can send a message from another: `council say <id> <text>`. The message is queued and applied after the current turn; the running turn is not interrupted. An `owner_message` event appears in the journal; everyone who agreed must speak again, so consensus requires fresh agreement from every active participant. Participants see all messages in every following request and know that the owner's message outranks the participants' opinions.
