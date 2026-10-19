@@ -43,11 +43,24 @@ function matchingBrace(text: string, start: number): number {
   return -1;
 }
 
+// Bodies of fenced blocks in source order: "```", an info string up to a newline or backtick, the body up to the next "```"
+// (its leading newline is trimmed by the caller). A forward scan: once a fence has no closing "```", no later fence can have one.
+function* fencedBodies(raw: string): Generator<string> {
+  for (let open = raw.indexOf("```"); open !== -1; ) {
+    let body = open + 3;
+    while (body < raw.length && raw[body] !== "\n" && raw[body] !== "`") body++;
+    const close = raw.indexOf("```", body);
+    if (close === -1) return;
+    yield raw.slice(body, close);
+    open = raw.indexOf("```", close + 3);
+  }
+}
+
 export function extractJsonObject(raw: string): Record<string, unknown> | undefined {
   const whole = tryObject(raw.trim());
   if (whole) return whole;
-  for (const m of raw.matchAll(/```[^\n`]*\n?([\s\S]*?)```/g)) {
-    const obj = tryObject((m[1] ?? "").trim());
+  for (const body of fencedBodies(raw)) {
+    const obj = tryObject(body.trim());
     if (obj) return obj;
   }
   for (let i = raw.indexOf("{"); i !== -1; i = raw.indexOf("{", i + 1)) {

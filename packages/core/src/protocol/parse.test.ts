@@ -1,3 +1,6 @@
+import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { describe, it, expect } from "vitest";
 import { initialState } from "./state.ts";
 import type { SessionState, QuestionState } from "./state.ts";
@@ -271,5 +274,98 @@ describe("Parsing a response does not depend on language", () => {
     expect(errs(parseTurnResponse(resp({ questions: [{ to: "p1", text: "?" }] }), withLang(state(), "en"), "p1"))).toEqual(["A question to yourself is not allowed."]);
     expect(parseDraftResponse("text", "en")).toEqual({ ok: false, errors: ["No JSON object found in the answer."] });
     expect(truncateRaw("x".repeat(RAW_LIMIT + 1), "en").endsWith(` … [truncated, ${RAW_LIMIT + 1} characters in total]`)).toBe(true);
+  });
+});
+
+// The attack runs only in a child with a finite watchdog: a vitest timeout cannot interrupt synchronous regex work.
+describe("Bounded fenced response extraction", () => {
+  it("child probe: '```' + '_'.repeat(1,048,576) has median <= 1,000 ms and finishes before the 5,000 ms watchdog", async () => {
+    const probe = fileURLToPath(new URL("../../scenarios/security-turn-response/probe.ts", import.meta.url));
+    const parse = fileURLToPath(new URL("./parse.ts", import.meta.url));
+    const pending = promisify(execFile)(process.execPath, [probe, parse, String(1 << 20)], { timeout: 5_000, maxBuffer: 4 * 1024 * 1024 });
+    pending.child.stdin?.end();
+    const result = JSON.parse((await pending).stdout) as { n: number; samples: number[]; median: number };
+    expect(result.n).toBe(1_048_576);
+    expect(result.samples).toHaveLength(3);
+    expect(result.median).toBeLessThanOrEqual(1_000);
+  }, 15_000);
+});
+
+// Independent reference: the extractor with the previous fence expression, used only on bounded inputs.
+function oracle(raw: string): Record<string, unknown> | undefined {
+  const obj = (text: string) => {
+    try { const v: unknown = JSON.parse(text); return typeof v === "object" && v !== null && !Array.isArray(v) ? v as Record<string, unknown> : undefined; } catch { return undefined; }
+  };
+  const whole = obj(raw.trim());
+  if (whole) return whole;
+  for (const m of raw.matchAll(/```[^\n`]*\n?([\s\S]*?)```/g)) {
+    const o = obj((m[1] ?? "").trim());
+    if (o) return o;
+  }
+  for (let i = raw.indexOf("{"); i !== -1; i = raw.indexOf("{", i + 1)) {
+    let depth = 0, inString = false, end = -1;
+    for (let j = i; j < raw.length && end === -1; j++) {
+      const c = raw[j];
+      if (inString) { if (c === "\\") j++; else if (c === "\"") inString = false; }
+      else if (c === "\"") inString = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) end = j;
+    }
+    if (end === -1) continue;
+    const o = obj(raw.slice(i, end + 1));
+    if (o) return o;
+  }
+  return undefined;
+}
+
+const SNIPPETS = ["```", "```json\n", "```json", "``", "`", "\n", '{"a":1}', '{"b":"}{"}', "[1,2]", "{bad}", '{"c":"\\"x"}', "_", " ", "}"];
+function genFenced(rand: () => number, length: number): string {
+  let s = "";
+  while (s.length < length) s += SNIPPETS[Math.floor(rand() * SNIPPETS.length)];
+  return s.slice(0, length);
+}
+
+describe("Bounded fenced response extraction", () => {
+  it("compatibility examples keep their previous results", () => {
+    const examples: Array<[string, Record<string, unknown> | undefined]> = [
+      ['{"a":1}', { a: 1 }],
+      ['Here it is:\n```json\n{"a":1}\n```\nDone.', { a: 1 }],
+      ['{bad} then {"a":1}', { a: 1 }],
+      ['```json\n[1,2]\n```\n```json\n{"b":2}\n```', { b: 2 }],
+      ['```\n{"a":"x \\" } {"}\n```', { a: 'x " } {' }],
+      ['```json\n{"a":1}\n```\n```json\n{"b":2}\n```', { a: 1 }],
+      ["``````", undefined],
+      ['```json\n{"a":1}', { a: 1 }],
+      ['```json{"a":1}```', { a: 1 }],
+      ['```{bad}```{"b":2}```', { b: 2 }],
+      ['```\n{"a":1}```', { a: 1 }],
+      ['{"s":"```"}', { s: "```" }],
+      ["```" + "_".repeat(16_384), undefined],
+      ["", undefined],
+    ];
+    for (const [raw, expected] of examples) {
+      expect(extractJsonObject(raw), JSON.stringify(raw)).toEqual(expected);
+      expect(oracle(raw), JSON.stringify(raw)).toEqual(expected);
+    }
+  });
+
+  it("direct consumers keep their results and error language on the malformed fence", () => {
+    const attack = "```" + "_".repeat(16_384);
+    expect(parseFileRequest(attack)).toBeNull();
+    expect(parseFileRequest('```json\n{"files":["a.md"]}\n```')).toEqual(["a.md"]);
+    expect(parseDraftResponse(attack, "ru")).toEqual({ ok: false, errors: ["В ответе не найден JSON-объект."] });
+    expect(parseDraftResponse(attack, "en")).toEqual({ ok: false, errors: ["No JSON object found in the answer."] });
+    expect(errs(run(attack))).toEqual(["В ответе не найден JSON-объект."]);
+    expect(run("```json\n" + resp() + "\n```").ok).toBe(true);
+  });
+
+  it("generated inputs over 320 seeds and boundary lengths match the reference", () => {
+    for (let seed = 1; seed <= 320; seed++) {
+      const rand = mulberry32(seed);
+      for (const length of [0, 1, 2, 3, Math.floor(rand() * 60), 1_024, 4_096, 16_384]) {
+        const raw = genFenced(rand, length);
+        expect(extractJsonObject(raw), `seed ${seed}, length ${length}`).toEqual(oracle(raw));
+      }
+    }
   });
 });
