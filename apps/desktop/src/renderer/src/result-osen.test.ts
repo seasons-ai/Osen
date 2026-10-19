@@ -80,6 +80,32 @@ describe("Summary per osen mockup: rules of result.css", () => {
     expect(rule(css, ".result-author .tag")).toMatch(/overflow-wrap:\s*anywhere/);
   });
 
+  it("top bar: only the topic shrinks, actions wrap as whole buttons", () => {
+    const title = rule(css, ".topbar.topbar--wrap > :first-child")!;
+    expect(title).toMatch(/flex:\s*1 1 0(?:\D|$)/);
+    expect(title).toMatch(/min-width:\s*clamp\(/);
+    const actions = rule(css, ".topbar--wrap .topbar__actions")!;
+    expect(actions).toMatch(/flex:\s*0 1 auto/);
+    expect(actions).toMatch(/flex-wrap:\s*wrap/);
+    expect(actions).toMatch(/white-space:\s*nowrap/);
+    expect(actions).not.toMatch(/white-space:\s*normal/);
+    const topic = rule(css, ".topbar--wrap .session-view__topic")!;
+    expect(topic).toMatch(/text-overflow:\s*ellipsis/);
+    expect(topic).toMatch(/white-space:\s*nowrap/);
+    // the status badge next to the topic hides up to 1000 px as before; the rule is shared with the mockup
+    expect(css).toMatch(/@media \(max-width:\s*1000px\)\s*\{\s*\.topbar--wrap \.topbar__title \.badge\s*\{\s*display:\s*none/);
+  });
+
+  it("content no wider than --content-max, pressed to the left", () => {
+    expect(rule(css, ".result-content")).toMatch(/padding-right:\s*max\(var\(--sp-6\),\s*calc\(100% - var\(--content-max\) \+ var\(--sp-6\)\)\)/);
+    expect(read("apps/desktop/src/renderer/src/Result.tsx")).toContain('<main className="content result-content">');
+    expect(html).toContain('<main class="content result-content">');
+  });
+
+  it("an odd last statistics tile spans the whole grid", () => {
+    expect(rule(css, ".result-stats > :last-child:nth-child(odd)")).toMatch(/grid-column:\s*1 \/ -1/);
+  });
+
   it("version chip — frame and text in the tone color", () => {
     const chip = rule(css, ".result-meta .chip[data-tone]")!;
     expect(chip).toMatch(/color:\s*var\(--c\)/);
