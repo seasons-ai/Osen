@@ -456,3 +456,115 @@ describe("language choice when run from a terminal", () => {
     expect(help({ COUNCIL_HOME: home })).toBe(installMessages("en").help);
   });
 });
+
+describe("Claude Desktop", () => {
+  const NODE = "/usr/local/bin/node-test";
+  const withDesktop = (over: { codex?: boolean; claude?: boolean } = {}) => {
+    const t = setup(over);
+    const app = join(tmp(), "Claude.app");
+    mkdirSync(app, { recursive: true });
+    t.deps.desktopApps = [app];
+    t.deps.nodePath = NODE;
+    const cfg = join(t.home, "Library/Application Support/Claude/claude_desktop_config.json");
+    return { ...t, cfg };
+  };
+  const original = { theme: "dark", mcpServers: { other: { command: "x", args: ["y"] } } };
+  const desktopLines = (text: string) => text.split("\n").filter((l) => l.startsWith("Claude Desktop"));
+
+  it("install adds only mcpServers.osen with the absolute node, no skill folders", async () => {
+    const t = withDesktop();
+    put(t.cfg, JSON.stringify(original));
+    const before = snapshot(t.home);
+    expect(await run([], t.deps)).toBe(0);
+    expect(readJson(t.cfg)).toEqual({ ...original, mcpServers: { ...original.mcpServers, osen: { command: NODE, args: [t.main] } } });
+    expect(t.text()).toContain("Claude Desktop · скилл · без скилла");
+    expect(t.text()).toContain("Claude Desktop · перезапусти клиент");
+    const after = snapshot(t.home);
+    const added = Object.keys(after).filter((k) => !(k in before));
+    expect(added.filter((k) => k.startsWith("Library/Application Support/Claude/skills"))).toEqual([]);
+    expect(Object.keys(after).filter((k) => k.startsWith("Library") && k !== "Library/Application Support/Claude/claude_desktop_config.json")).toEqual([]);
+  });
+
+  it("preview changes nothing and names the file and the key", async () => {
+    const t = withDesktop(); t.seedForeign();
+    put(t.cfg, JSON.stringify(original));
+    const before = snapshot(t.home);
+    expect(await run(["--dry-run"], t.deps)).toBe(0);
+    expect(snapshot(t.home)).toEqual(before);
+    for (const s of ["claude_desktop_config.json", "mcpServers.osen", "будет добавлен"]) expect(desktopLines(t.text()).join("\n")).toContain(s);
+  });
+
+  it.each(["{ broken", '{"mcpServers": []}'])("corrupt config %s is reported and left byte-identical", async (bad) => {
+    const t = withDesktop();
+    put(t.cfg, bad);
+    expect(await run([], t.deps)).toBe(1);
+    expect(readFileSync(t.cfg, "utf8")).toBe(bad);
+    expect(desktopLines(t.text()).join("\n")).toContain("расхождение");
+    expect(t.claudeServers()["osen"]).toBeTruthy();
+    expect(t.codexServers()["osen"]).toBeTruthy();
+  });
+
+  it("uninstall removes only our entry", async () => {
+    const t = withDesktop();
+    put(t.cfg, JSON.stringify(original));
+    expect(await run([], t.deps)).toBe(0);
+    expect(readJson(t.cfg).mcpServers.osen).toEqual({ command: NODE, args: [t.main] });
+    t.out.length = 0;
+    expect(await run(["--uninstall"], t.deps)).toBe(0);
+    expect(readJson(t.cfg)).toEqual(original);
+  });
+
+  it("a foreign osen entry is a mismatch, file untouched", async () => {
+    const t = withDesktop();
+    const text = JSON.stringify({ mcpServers: { osen: { command: "npx", args: ["other-server"] } } });
+    put(t.cfg, text);
+    expect(await run([], t.deps)).toBe(1);
+    expect(readFileSync(t.cfg, "utf8")).toBe(text);
+    expect(desktopLines(t.text()).join("\n")).toContain("npx other-server");
+  });
+
+  it.each([[[]], [["--uninstall"]]])("stale_path entry of Claude Code is never touched (%j)", async (args) => {
+    const t = withDesktop({ codex: false });
+    put(t.claudeFile, JSON.stringify({ mcpServers: { osen: { type: "stdio", command: "node", args: ["/gone/copy/packages/mcp/src/main.ts"], env: {} } } }));
+    expect(await run(args, t.deps)).toBe(1);
+    expect(t.calls.filter((c) => c.startsWith("claude") && / (add|remove)\b/.test(c))).toEqual([]);
+    expect(t.text()).toContain("запись указывает на несуществующий файл: node /gone/copy/packages/mcp/src/main.ts");
+  });
+
+  it("a failing `claude mcp add` is reported with its output", async () => {
+    const t = withDesktop();
+    const exec = t.deps.exec;
+    t.deps.exec = (bin, args) => (bin === "claude" && args[1] === "add" ? { ok: false, stdout: "", stderr: "boom" } : exec(bin, args));
+    expect(await run([], t.deps)).toBe(1);
+    expect(t.text()).toContain("boom");
+    expect(readJson(t.cfg).mcpServers.osen).toEqual({ command: NODE, args: [t.main] });
+  });
+
+  it("texts follow the language", async () => {
+    for (const language of ["en", "ru"] as const) {
+      const t = withDesktop();
+      t.deps.language = language;
+      put(t.cfg, JSON.stringify({ mcpServers: { osen: { command: "npx", args: ["other-server"] } } }));
+      expect(await run([], t.deps)).toBe(1);
+      const lines = desktopLines(t.text()).join("\n");
+      if (language === "en") { expect(lines).toContain("no skill"); expect(lines).toContain("mismatch"); }
+      else {
+        expect(lines).toContain("без скилла");
+        expect(lines).toContain("расхождение");
+        for (const w of ["no skill", "mismatch", "restart"]) expect(t.text()).not.toContain(w);
+      }
+    }
+    const t = withDesktop();
+    expect(await run([], t.deps)).toBe(0);
+    expect(t.text()).toContain("перезапусти клиент");
+    const e = withDesktop(); e.deps.language = "en";
+    expect(await run([], e.deps)).toBe(0);
+    expect(e.text()).toContain("restart the client");
+  });
+
+  it("without the app the client is skipped", async () => {
+    const t = setup();
+    expect(await run([], t.deps)).toBe(0);
+    expect(t.text()).toContain("Claude Desktop: не найден, пропущен");
+  });
+});

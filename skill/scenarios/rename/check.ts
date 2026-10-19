@@ -182,7 +182,8 @@ const codexServers = (home: string) => readJson(join(home, ".codex/fake-state.js
   const markers: Record<string, string> = { "preferences.json": '{"language":"ru"}\n', "sessions/x/events.jsonl": "{}\n", ".env": "KEY=stand\n" };
   for (const [f, t] of Object.entries(markers)) put(join(old, f), t);
   // links differ from folders: lstat, link target, sha256 of files
-  const lsTree = (dir: string) => readdirSync(dir, { recursive: true, encoding: "utf8" }).sort().map((rel) => {
+  // Claude/ is Claude Desktop's settings folder (change 140): the installer connects it when Claude.app is on the machine
+  const lsTree = (dir: string) => readdirSync(dir, { recursive: true, encoding: "utf8" }).filter((rel) => rel !== "Claude" && !rel.startsWith("Claude/")).sort().map((rel) => {
     const p = join(dir, rel), st = lstatSync(p);
     return st.isSymbolicLink() ? `${rel} -> ${readlinkSync(p)}` : st.isDirectory() ? `${rel}/` : `${rel} ${createHash("sha256").update(readFileSync(p)).digest("hex")}`;
   });
@@ -226,6 +227,8 @@ const codexServers = (home: string) => readJson(join(home, ".codex/fake-state.js
     c.mcpServers.osen = { type: "stdio", command: "node", args: [serverMain], env: {} };
     x.servers.osen = { command: "node", args: [serverMain] };
     put(join(home, ".claude.json"), JSON.stringify(c)); put(join(home, ".codex/fake-state.json"), JSON.stringify(x));
+    // Claude Desktop (change 140) is found through /Applications/Claude.app; its entry runs the installer's own node
+    put(join(home, "Library/Application Support/Claude/claude_desktop_config.json"), JSON.stringify({ mcpServers: { osen: { command: process.execPath, args: [serverMain] } } }));
   };
   const skillTree = () => JSON.stringify(skills.map((d) => existsSync(d) ? tree(d) : null));
   const mismatch = (out: string) => ["Claude Code", "Codex"].every((a) => out.includes(`${a} · скилл · расхождение: папка установлена из другой копии репозитория: ${other}, не изменено`));

@@ -5,8 +5,9 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { DEFAULT_LANGUAGE, defineMessages, peekDataDir, resolveLanguage } from "@model-council/core";
 import type { Language } from "@model-council/core";
+import { connect, desktopApps, disconnect, skillsDir, status } from "@model-council/connect";
+import type { ActionResult, Bin, ClientAction, ClientId, ConnectDeps, Reason, ServerCommand } from "@model-council/connect";
 
-type Bin = "claude" | "codex";
 export interface Deps {
   home: string;
   repoRoot: string;
@@ -15,6 +16,10 @@ export interface Deps {
   hasCommand(bin: Bin): boolean;
   exec(bin: Bin, args: string[]): { ok: boolean; stdout: string; stderr: string };
   out(line: string): void;
+  // Claude.app bundle paths; not set — Claude Desktop counts as not installed
+  desktopApps?: string[];
+  // node for Claude Desktop (an app started from Finder does not see the shell PATH); not set — this process's node
+  nodePath?: string;
 }
 
 const NAME = "osen";
@@ -29,7 +34,7 @@ export const installMessages = defineMessages({
     help: `Usage: node skill/install.ts [--dry-run] [--uninstall] [--help]
 
 Modes:
-  (no flags)    install the osen skill and MCP server into Claude Code and Codex and remove the previous model-council entries of this installation
+  (no flags)    install the osen skill and MCP server into Claude Code, Codex and Claude Desktop and remove the previous model-council entries of this installation
   --dry-run     preview: show what will be done without changing anything
   --uninstall   remove the osen skill and MCP server and the previous model-council entries (only our own; foreign ones are left alone)
   --help        this help`,
@@ -59,6 +64,14 @@ Modes:
     emptyOutput: "empty output",
     cliError: (output: string) => `CLI error: ${output}`,
     notOursAfterAdd: "error: after adding, the entry is missing or not ours",
+    noSkill: "no skill: support is not confirmed, the rules come from the MCP server instructions",
+    staleEntry: (command: string) => `the entry points to a missing file: ${command}`,
+    unexpectedShape: (file: string) => `${file}: mcpServers is not an object or the file is not a JSON object`,
+    unreadable: (file: string, reason: string) => `could not read ${file}: ${reason}`,
+    writeFailed: (file: string, reason: string) => `could not write ${file}: ${reason}`,
+    needRestart: "restart the client",
+    needUnverified: "whether the client needs a restart is not verified: restart it to be sure",
+    needConfirm: "confirm the server in the client",
     noAgents: "No agent found: nothing to install into.",
     allInstalled: "Everything is already installed.",
     restart: "Restart the agents and check the server with the /mcp command in Claude Code.",
@@ -67,7 +80,7 @@ Modes:
     help: `Использование: node skill/install.ts [--dry-run] [--uninstall] [--help]
 
 Режимы:
-  (без флагов)  установить скилл и MCP-сервер osen в Claude Code и Codex и снять прежние записи model-council этой установки
+  (без флагов)  установить скилл и MCP-сервер osen в Claude Code, Codex и Claude Desktop и снять прежние записи model-council этой установки
   --dry-run     предпросмотр: показать, что будет сделано, ничего не меняя
   --uninstall   удалить скилл и MCP-сервер osen и прежние записи model-council (только свои; чужие не трогаются)
   --help        эта справка`,
@@ -97,6 +110,14 @@ Modes:
     emptyOutput: "пустой вывод",
     cliError: (output: string) => `ошибка CLI: ${output}`,
     notOursAfterAdd: "ошибка: после добавления запись не найдена или не наша",
+    noSkill: "без скилла: поддержка не подтверждена, правила приходят из инструкций MCP-сервера",
+    staleEntry: (command: string) => `запись указывает на несуществующий файл: ${command}`,
+    unexpectedShape: (file: string) => `${file}: mcpServers не объект или файл не объект JSON`,
+    unreadable: (file: string, reason: string) => `не удалось прочитать ${file}: ${reason}`,
+    writeFailed: (file: string, reason: string) => `не удалось записать ${file}: ${reason}`,
+    needRestart: "перезапусти клиент",
+    needUnverified: "нужен ли перезапуск клиента, не проверено: перезапусти его для надёжности",
+    needConfirm: "подтверди сервер в клиенте",
     noAgents: "Ни один агент не найден: устанавливать некуда.",
     allInstalled: "Всё уже установлено.",
     restart: "Перезапусти агентов и проверь сервер командой /mcp в Claude Code.",
@@ -104,55 +125,23 @@ Modes:
 });
 type Messages = ReturnType<typeof installMessages>;
 
-type Entry = { kind: "none" } | { kind: "found"; command: string; args: string[] } | { kind: "error"; message: string };
-
-interface Agent {
-  title: string;
-  bin: Bin;
-  skillsDir(home: string): string;
-  settings(home: string): string;
-  read(deps: Deps, m: Messages, name: string): Entry;
-  add(main: string): string[];
-  remove(name: string): string[];
-}
-
-const AGENTS: Agent[] = [
-  {
-    title: "Claude Code", bin: "claude",
-    skillsDir: (h) => join(h, ".claude", "skills"),
-    settings: (h) => join(h, ".claude.json"),
-    read: (d, m, name) => {
-      const file = join(d.home, ".claude.json");
-      if (!existsSync(file)) return { kind: "none" };
-      try {
-        const e = JSON.parse(readFileSync(file, "utf8"))?.mcpServers?.[name];
-        if (!e) return { kind: "none" };
-        return { kind: "found", command: String(e.command ?? ""), args: Array.isArray(e.args) ? e.args.map(String) : [] };
-      } catch (err) {
-        return { kind: "error", message: m.parseFailed(file, (err as Error).message) };
-      }
-    },
-    add: (main) => ["mcp", "add", "--scope", "user", NAME, "--", "node", main],
-    remove: (name) => ["mcp", "remove", "--scope", "user", name],
-  },
-  {
-    title: "Codex", bin: "codex",
-    skillsDir: (h) => join(h, ".codex", "skills"),
-    settings: (h) => join(h, ".codex", "config.toml"),
-    read: (d, m, name) => {
-      const r = d.exec("codex", ["mcp", "get", name, "--json"]);
-      try {
-        const t = JSON.parse(r.stdout)?.transport;
-        if (t) return { kind: "found", command: String(t.command ?? ""), args: Array.isArray(t.args) ? t.args.map(String) : [] };
-      } catch { /* not JSON: the text is parsed below */ }
-      // "no entry" — only on an explicit CLI answer: codex mcp add silently overwrites an existing entry
-      const text = `${r.stdout}${r.stderr}`.trim();
-      return text.includes("No MCP server named") ? { kind: "none" } : { kind: "error", message: m.codexUnclear(text || m.emptyOutput) };
-    },
-    add: (main) => ["mcp", "add", NAME, "--", "node", main],
-    remove: (name) => ["mcp", "remove", name],
-  },
+const CLIENTS: { id: ClientId; title: string }[] = [
+  { id: "claude-code", title: "Claude Code" },
+  { id: "codex", title: "Codex" },
+  { id: "claude-desktop", title: "Claude Desktop" },
 ];
+
+function reasonText(m: Messages, r: Reason, file: string): string {
+  switch (r.code) {
+    case "parse": return m.parseFailed(file, r.detail);
+    case "shape": return m.unexpectedShape(file);
+    case "unreadable": return m.unreadable(file, r.detail);
+    case "codex_unclear": return m.codexUnclear(r.detail || m.emptyOutput);
+    case "cli": return m.cliError(r.detail);
+    case "verify": return m.notOursAfterAdd;
+    case "write": return m.writeFailed(file, r.detail);
+  }
+}
 
 function files(dir: string): Map<string, string> {
   const m = new Map<string, string>();
@@ -188,82 +177,96 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
 
   deps.out(`${dry ? m.preview : un ? m.uninstall : m.install}\n${m.repo(repoRoot)}`);
 
-  for (const a of AGENTS) {
-    if (!deps.hasCommand(a.bin)) { deps.out(m.notFound(a.title)); continue; }
+  const cdeps: ConnectDeps = { home, hasCommand: deps.hasCommand, exec: deps.exec, desktopApps: deps.desktopApps ?? [] };
+  const needText: Record<ClientAction, string> = { none: "", restart_client: m.needRestart, unverified: m.needUnverified, confirm_in_client: m.needConfirm };
+  const joined = (e: ServerCommand) => [e.command, ...e.args].join(" ");
+
+  for (const { id, title } of CLIENTS) {
+    const desktop = id === "claude-desktop";
+    const cmd: ServerCommand = { command: desktop ? deps.nodePath ?? process.execPath : "node", args: [main] };
+    const st = status(id, cmd, cdeps);
+    if (st.state === "not_installed") { deps.out(m.notFound(title)); continue; }
     found++;
     const problemsBefore = problems;
-    const skill = join(a.skillsDir(home), NAME);
-    const sLine = (act: string) => deps.out(`${a.title} · ${m.skill} · ${act} · ${skill}`);
-    const vLine = (act: string) => deps.out(`${a.title} · ${m.server} · ${act} · ${a.settings(home)} · node ${main}`);
+    const skillsRoot = skillsDir(id, home);
+    const vLine = (act: string) => deps.out(desktop
+      ? `${title} · ${m.server} · ${act} · ${st.file} · mcpServers.osen · ${cmd.command} ${main}`
+      : `${title} · ${m.server} · ${act} · ${st.file} · node ${main}`);
     const bad = (print: (s: string) => void, what: string) => { problems++; print(m.mismatch(what)); };
-    const fail = (print: (s: string) => void, r: { stderr: string; stdout: string }) => { problems++; print(m.cliError((r.stderr || r.stdout).trim())); };
+    const fail = (print: (s: string) => void, r: Extract<ActionResult, { ok: false }>) => {
+      problems++;
+      print(r.reason ? reasonText(m, r.reason, r.file) : m.notOursAfterAdd);
+    };
 
-    // skill: our own folder has a marker with this copy's path; without a marker, or with another copy's marker, it is foreign
-    const owner = existsSync(join(skill, MARKER)) ? readFileSync(join(skill, MARKER), "utf8") : null;
-    const own = owner === marker;
-    const foreign = existsSync(skill) && !own ? (owner === null ? m.foreignFolder : m.otherCopyFolder(owner.replace(/\n$/, ""))) : "";
-    if (un) {
-      if (foreign) bad(sLine, foreign);
-      else if (!own) sLine(m.notInstalled);
-      else { if (!dry) rmSync(skill, { recursive: true, force: true }); changed = true; sLine(will(m.willRemove, m.removed)); }
-    } else if (foreign) bad(sLine, foreign);
-    else if (!existsSync(src)) bad(sLine, m.noSource(src));
+    if (skillsRoot === null) deps.out(`${title} · ${m.skill} · ${m.noSkill}`);
     else {
-      const upToDate = own && sameFiles(src, skill);
-      if (upToDate) sLine(m.alreadyInstalled);
+      const skill = join(skillsRoot, NAME);
+      const sLine = (act: string) => deps.out(`${title} · ${m.skill} · ${act} · ${skill}`);
+      // skill: our own folder has a marker with this copy's path; without a marker, or with another copy's marker, it is foreign
+      const owner = existsSync(join(skill, MARKER)) ? readFileSync(join(skill, MARKER), "utf8") : null;
+      const own = owner === marker;
+      const foreign = existsSync(skill) && !own ? (owner === null ? m.foreignFolder : m.otherCopyFolder(owner.replace(/\n$/, ""))) : "";
+      if (un) {
+        if (foreign) bad(sLine, foreign);
+        else if (!own) sLine(m.notInstalled);
+        else { if (!dry) rmSync(skill, { recursive: true, force: true }); changed = true; sLine(will(m.willRemove, m.removed)); }
+      } else if (foreign) bad(sLine, foreign);
+      else if (!existsSync(src)) bad(sLine, m.noSource(src));
       else {
-        if (!dry) {
-          rmSync(skill, { recursive: true, force: true });
-          mkdirSync(a.skillsDir(home), { recursive: true });
-          cpSync(src, skill, { recursive: true });
-          writeFileSync(join(skill, MARKER), marker);
+        const upToDate = own && sameFiles(src, skill);
+        if (upToDate) sLine(m.alreadyInstalled);
+        else {
+          if (!dry) {
+            rmSync(skill, { recursive: true, force: true });
+            mkdirSync(skillsRoot, { recursive: true });
+            cpSync(src, skill, { recursive: true });
+            writeFileSync(join(skill, MARKER), marker);
+          }
+          changed = true;
+          sLine(own ? will(m.willUpdate, m.updated) : will(m.willAdd, m.added));
         }
-        changed = true;
-        sLine(own ? will(m.willUpdate, m.updated) : will(m.willAdd, m.added));
       }
     }
 
-    // server
-    const isOurs = (e: Entry) => e.kind === "found" && e.command === "node" && e.args.length === 1 && e.args[0] === main;
-    const e = a.read(deps, m, NAME);
-    if (e.kind === "error") { bad(vLine, e.message); continue; }
-    const other = e.kind === "found" && !isOurs(e) ? m.pointsTo([e.command, ...e.args].join(" ")) : "";
+    // server: a stale_path entry is only reported, the app updates it (change 142)
+    const mismatch = (print: (s: string) => void, s: typeof st) => {
+      if (s.state === "corrupt") bad(print, reasonText(m, s.reason!, s.file));
+      else bad(print, s.state === "stale_path" ? m.staleEntry(joined(s.entry!)) : m.pointsTo(joined(s.entry!)));
+    };
+    const done = (r: ActionResult) => {
+      if (!r.ok) { fail(vLine, r); return; }
+      changed = true;
+      vLine(will(un ? m.willRemove : m.willAdd, un ? m.removed : m.added));
+      if (!dry && needText[r.need]) deps.out(`${title} · ${needText[r.need]}`);
+    };
+    if (st.state === "corrupt") { mismatch(vLine, st); continue; }
     if (un) {
-      if (e.kind === "none") vLine(m.notInstalled);
-      else if (other) bad(vLine, other);
-      else if (dry) { changed = true; vLine(m.willRemove); }
-      else {
-        const r = deps.exec(a.bin, a.remove(NAME));
-        if (!r.ok) fail(vLine, r); else { changed = true; vLine(m.removed); }
-      }
-    } else if (e.kind === "found") {
-      if (other) bad(vLine, other); else vLine(m.alreadyInstalled);
-    } else if (dry) { changed = true; vLine(m.willAdd); }
-    else {
-      const r = deps.exec(a.bin, a.add(main));
-      if (!r.ok) fail(vLine, r);
-      else if (!isOurs(a.read(deps, m, NAME))) { problems++; vLine(m.notOursAfterAdd); }
-      else { changed = true; vLine(m.added); }
-    }
+      if (st.state === "not_connected") vLine(m.notInstalled);
+      else if (st.state === "connected") done(disconnect(id, cmd, cdeps, { dryRun: dry }));
+      else mismatch(vLine, st);
+    } else if (st.state === "connected") vLine(m.alreadyInstalled);
+    else if (st.state === "not_connected") done(connect(id, cmd, cdeps, { dryRun: dry }));
+    else mismatch(vLine, st);
 
     // legacy model-council entries: removed on install only if osen was set up for the agent without mismatches
-    if (!un && problems > problemsBefore) continue;
-    const legacy = join(a.skillsDir(home), LEGACY_NAME);
-    const lsLine = (act: string) => deps.out(`${a.title} · ${m.skill} · ${act} · ${legacy}`);
+    if (desktop || (!un && problems > problemsBefore)) continue;
+    const legacy = join(skillsRoot!, LEGACY_NAME);
+    const lsLine = (act: string) => deps.out(`${title} · ${m.skill} · ${act} · ${legacy}`);
     if (existsSync(legacy)) {
       const text = (f: string) => (existsSync(f) ? readFileSync(f, "utf8") : "");
       const ours = text(join(legacy, LEGACY_MARKER)) === marker && /^name: model-council$/m.test(text(join(legacy, "SKILL.md")));
       if (!ours) bad(lsLine, m.notOurFolder);
       else { if (!dry) rmSync(legacy, { recursive: true, force: true }); changed = true; lsLine(will(m.willRemove, m.removed)); }
     }
-    const lvLine = (act: string) => deps.out(`${a.title} · ${m.server} ${LEGACY_NAME} · ${act} · ${a.settings(home)} · node ${main}`);
-    const le = a.read(deps, m, LEGACY_NAME);
-    if (le.kind === "error") bad(lvLine, le.message);
-    else if (le.kind === "found" && !isOurs(le)) bad(lvLine, m.pointsTo([le.command, ...le.args].join(" ")));
-    else if (le.kind === "found" && dry) { changed = true; lvLine(m.willRemove); }
-    else if (le.kind === "found") {
-      const r = deps.exec(a.bin, a.remove(LEGACY_NAME));
-      if (!r.ok) fail(lvLine, r); else { changed = true; lvLine(m.removed); }
+    const lvLine = (act: string) => deps.out(`${title} · ${m.server} ${LEGACY_NAME} · ${act} · ${st.file} · node ${main}`);
+    const lopts = { name: LEGACY_NAME, dryRun: dry };
+    const ls = status(id, cmd, cdeps, lopts);
+    if (ls.state === "connected") {
+      const r = disconnect(id, cmd, cdeps, lopts);
+      if (r.ok) { changed = true; lvLine(will(m.willRemove, m.removed)); } else fail(lvLine, r);
+    } else if (ls.state === "corrupt" || ls.state === "foreign" || ls.state === "stale_path") {
+      if (ls.state === "corrupt") bad(lvLine, reasonText(m, ls.reason!, ls.file));
+      else bad(lvLine, m.pointsTo(joined(ls.entry!)));
     }
   }
 
@@ -285,6 +288,7 @@ if (import.meta.main) {
       catch (e) { const x = e as { stdout?: string; stderr?: string; message: string }; return { ok: false, stdout: String(x.stdout ?? ""), stderr: String(x.stderr ?? x.message) }; }
     },
     out: (l) => console.log(l),
+    desktopApps: desktopApps(homedir()),
   });
   process.exitCode = code;
 }
