@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Osen — темы оформления</title>
+<link rel="stylesheet" href="brand/tokens.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+:root{color-scheme:dark}
+body{margin:0;background:#0F0C0A}
+.mono{font-family:var(--font-mono)}
+.chip{display:inline-flex;align-items:center;padding:0 var(--sp-2);border-radius:var(--r-pill);border:1px solid currentColor;font-size:var(--fs-sm);line-height:20px;white-space:nowrap}
+.av{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;box-sizing:border-box;border-radius:50%;border:1px solid var(--text-decor);font-family:var(--font-mono);font-size:var(--fs-xs);flex:none}
+</style>
+</head>
+<body>
+<div style="width: 1440px; height: 980px; box-sizing: border-box; padding: var(--sp-7) var(--sp-7) 40px; background: #0F0C0A; color: #EDE4D8; font-family: var(--font-ui); font-size: var(--fs-md); line-height: 1.5; display: flex; flex-direction: column; gap: 28px">
+
+  <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-5)">
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <h1 style="margin: 0; font-size: 28px; font-weight: 600">Темы оформления</h1>
+      <p style="margin: 0; max-width: 760px; color: #B3A797">Одна тёмная и четыре светлых. Правило цвета везде одно: тёплый лист — то, что идёт сейчас, холодный дождь — то, что устоялось. Текст и смысловые цвета держат не меньше 4,5:1 на любой поверхности своей темы.</p>
+    </div>
+    <span class="mono" style="font-size: var(--fs-sm); color: #8E8273">Настройки → Оформление</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-4); flex: 1; min-height: 0">
+    
+      <section data-theme="osen" style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 8px; background: var(--bg-0); color: var(--text); border: 1px solid var(--line)">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2)">
+            <h2 style="margin: 0; font-size: var(--fs-xl); font-weight: 600">Осень</h2>
+            <span class="mono" style="font-size: var(--fs-xs); color: var(--text-faint)">тёмная</span>
+          </div>
+          <span style="font-size: var(--fs-ui); color: var(--text-dim)">Тёмная. Вечер, тёплый свет лампы. По умолчанию.</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av" style="border-color: var(--leaf); color: var(--leaf)">2</span><span style="flex: 1; font-weight: 500">Codex</span><span class="chip" style="color: var(--leaf)">⠹ думает</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av">1</span><span style="flex: 1; font-weight: 500">Claude</span><span class="chip" style="color: var(--rain)">✓ согласен</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av">3</span><span style="flex: 1; font-weight: 500">Llama</span><span class="chip" style="color: var(--danger)">× возражает</span></div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="chip" style="color: var(--warn)">! согласия нет</span><span class="chip" style="color: var(--ok)">✓ доступен</span></div>
+          <span style="font-size: var(--fs-ui); color: var(--text-dim)">Платит отдел, помесячно: «Старт» — 990 ₽.</span>
+          <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">круг 3 из 4 · 31.2k tok</span>
+          <div style="display: flex; gap: 6px; padding-top: var(--sp-1)">
+            <span style="display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); background: var(--leaf); color: var(--text-on-accent); font-size: var(--fs-ui); font-weight: 500">Начать</span>
+            <span style="display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--line-strong); font-size: var(--fs-ui)">Отмена</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 5px">
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-0)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-0</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#17130F</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-2)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-2</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#211B16</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-3)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-3</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#2A221B</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--line)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">line</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#2E261F</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#EDE4D8</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text-dim)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text-dim</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#B3A797</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text-faint)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text-faint</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#8E8273</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--leaf)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">leaf</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#EE9A62</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--rain)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">rain</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#9EBFD3</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--ok)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">ok</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#A7CC96</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--warn)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">warn</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#E8C66E</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--danger)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">danger</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#EC8A7A</span>
+            </div>
+          
+        </div>
+      </section>
+    
+      <section data-theme="tuman" style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 8px; background: var(--bg-0); color: var(--text); border: 1px solid var(--line)">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2)">
+            <h2 style="margin: 0; font-size: var(--fs-xl); font-weight: 600">Туман</h2>
+            <span class="mono" style="font-size: var(--fs-xs); color: var(--text-faint)">светлая</span>
+          </div>
+          <span style="font-size: var(--fs-ui); color: var(--text-dim)">Тёплая бумага. Светлая тема по умолчанию.</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av" style="border-color: var(--leaf); color: var(--leaf)">2</span><span style="flex: 1; font-weight: 500">Codex</span><span class="chip" style="color: var(--leaf)">⠹ думает</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av">1</span><span style="flex: 1; font-weight: 500">Claude</span><span class="chip" style="color: var(--rain)">✓ согласен</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av">3</span><span style="flex: 1; font-weight: 500">Llama</span><span class="chip" style="color: var(--danger)">× возражает</span></div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="chip" style="color: var(--warn)">! согласия нет</span><span class="chip" style="color: var(--ok)">✓ доступен</span></div>
+          <span style="font-size: var(--fs-ui); color: var(--text-dim)">Платит отдел, помесячно: «Старт» — 990 ₽.</span>
+          <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">круг 3 из 4 · 31.2k tok</span>
+          <div style="display: flex; gap: 6px; padding-top: var(--sp-1)">
+            <span style="display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); background: var(--leaf); color: var(--text-on-accent); font-size: var(--fs-ui); font-weight: 500">Начать</span>
+            <span style="display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--line-strong); font-size: var(--fs-ui)">Отмена</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 5px">
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-0)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-0</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#F6F1EA</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-2)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-2</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#FDFAF6</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-3)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-3</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#ECE4D9</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--line)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">line</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#E4DACD</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#2D251F</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text-dim)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text-dim</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#574B41</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text-faint)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text-faint</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#6E6154</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--leaf)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">leaf</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#A44A1C</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--rain)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">rain</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#2E6888</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--ok)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">ok</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#3A6D42</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--warn)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">warn</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#835A0C</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--danger)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">danger</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#A3392F</span>
+            </div>
+          
+        </div>
+      </section>
+    
+      <section data-theme="len" style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 8px; background: var(--bg-0); color: var(--text); border: 1px solid var(--line)">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2)">
+            <h2 style="margin: 0; font-size: var(--fs-xl); font-weight: 600">Лён</h2>
+            <span class="mono" style="font-size: var(--fs-xs); color: var(--text-faint)">светлая</span>
+          </div>
+          <span style="font-size: var(--fs-ui); color: var(--text-dim)">Нейтральная, почти белая. Максимум контраста.</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av" style="border-color: var(--leaf); color: var(--leaf)">2</span><span style="flex: 1; font-weight: 500">Codex</span><span class="chip" style="color: var(--leaf)">⠹ думает</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av">1</span><span style="flex: 1; font-weight: 500">Claude</span><span class="chip" style="color: var(--rain)">✓ согласен</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av">3</span><span style="flex: 1; font-weight: 500">Llama</span><span class="chip" style="color: var(--danger)">× возражает</span></div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="chip" style="color: var(--warn)">! согласия нет</span><span class="chip" style="color: var(--ok)">✓ доступен</span></div>
+          <span style="font-size: var(--fs-ui); color: var(--text-dim)">Платит отдел, помесячно: «Старт» — 990 ₽.</span>
+          <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">круг 3 из 4 · 31.2k tok</span>
+          <div style="display: flex; gap: 6px; padding-top: var(--sp-1)">
+            <span style="display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); background: var(--leaf); color: var(--text-on-accent); font-size: var(--fs-ui); font-weight: 500">Начать</span>
+            <span style="display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--line-strong); font-size: var(--fs-ui)">Отмена</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 5px">
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-0)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-0</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#F5F5F2</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-2)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-2</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#FFFFFF</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-3)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-3</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#EAE9E4</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--line)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">line</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#E1E0DA</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#1D1C1A</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text-dim)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text-dim</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#4A4843</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text-faint)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text-faint</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#66635C</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--leaf)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">leaf</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#A84A1C</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--rain)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">rain</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#2A6383</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--ok)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">ok</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#356A40</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--warn)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">warn</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#7C570E</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--danger)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">danger</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#9F352C</span>
+            </div>
+          
+        </div>
+      </section>
+    
+      <section data-theme="inei" style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 8px; background: var(--bg-0); color: var(--text); border: 1px solid var(--line)">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2)">
+            <h2 style="margin: 0; font-size: var(--fs-xl); font-weight: 600">Иней</h2>
+            <span class="mono" style="font-size: var(--fs-xs); color: var(--text-faint)">светлая</span>
+          </div>
+          <span style="font-size: var(--fs-ui); color: var(--text-dim)">Холодная, серо-голубая. Первые заморозки.</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av" style="border-color: var(--leaf); color: var(--leaf)">2</span><span style="flex: 1; font-weight: 500">Codex</span><span class="chip" style="color: var(--leaf)">⠹ думает</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av">1</span><span style="flex: 1; font-weight: 500">Claude</span><span class="chip" style="color: var(--rain)">✓ согласен</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av">3</span><span style="flex: 1; font-weight: 500">Llama</span><span class="chip" style="color: var(--danger)">× возражает</span></div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="chip" style="color: var(--warn)">! согласия нет</span><span class="chip" style="color: var(--ok)">✓ доступен</span></div>
+          <span style="font-size: var(--fs-ui); color: var(--text-dim)">Платит отдел, помесячно: «Старт» — 990 ₽.</span>
+          <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">круг 3 из 4 · 31.2k tok</span>
+          <div style="display: flex; gap: 6px; padding-top: var(--sp-1)">
+            <span style="display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); background: var(--leaf); color: var(--text-on-accent); font-size: var(--fs-ui); font-weight: 500">Начать</span>
+            <span style="display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--line-strong); font-size: var(--fs-ui)">Отмена</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 5px">
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-0)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-0</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#F1F4F6</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-2)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-2</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#FBFCFD</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-3)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-3</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#E3E8EC</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--line)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">line</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#DAE0E5</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#1C2328</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text-dim)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text-dim</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#455059</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text-faint)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text-faint</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#5C6770</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--leaf)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">leaf</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#A54A1F</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--rain)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">rain</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#286688</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--ok)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">ok</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#336B47</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--warn)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">warn</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#7F5A0D</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--danger)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">danger</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#A1382F</span>
+            </div>
+          
+        </div>
+      </section>
+    
+      <section data-theme="pergament" style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 8px; background: var(--bg-0); color: var(--text); border: 1px solid var(--line)">
+        <div style="display: flex; flex-direction: column; gap: 2px">
+          <div style="display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2)">
+            <h2 style="margin: 0; font-size: var(--fs-xl); font-weight: 600">Пергамент</h2>
+            <span class="mono" style="font-size: var(--fs-xs); color: var(--text-faint)">светлая</span>
+          </div>
+          <span style="font-size: var(--fs-ui); color: var(--text-dim)">Сепия, мягкий свет. Для долгого чтения.</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av" style="border-color: var(--leaf); color: var(--leaf)">2</span><span style="flex: 1; font-weight: 500">Codex</span><span class="chip" style="color: var(--leaf)">⠹ думает</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av">1</span><span style="flex: 1; font-weight: 500">Claude</span><span class="chip" style="color: var(--rain)">✓ согласен</span></div>
+          <div style="display: flex; align-items: center; gap: var(--sp-2)"><span class="av">3</span><span style="flex: 1; font-weight: 500">Llama</span><span class="chip" style="color: var(--danger)">× возражает</span></div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap"><span class="chip" style="color: var(--warn)">! согласия нет</span><span class="chip" style="color: var(--ok)">✓ доступен</span></div>
+          <span style="font-size: var(--fs-ui); color: var(--text-dim)">Платит отдел, помесячно: «Старт» — 990 ₽.</span>
+          <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">круг 3 из 4 · 31.2k tok</span>
+          <div style="display: flex; gap: 6px; padding-top: var(--sp-1)">
+            <span style="display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); background: var(--leaf); color: var(--text-on-accent); font-size: var(--fs-ui); font-weight: 500">Начать</span>
+            <span style="display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--sp-3); border-radius: var(--r-md); border: 1px solid var(--line-strong); font-size: var(--fs-ui)">Отмена</span>
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 5px">
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-0)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-0</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#EFE4D0</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-2)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-2</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#F6EDDC</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--bg-3)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">bg-3</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#E4D6BF</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--line)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">line</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#DCCBB0</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#33281C</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text-dim)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text-dim</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#5A4A38</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--text-faint)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">text-faint</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#695845</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--leaf)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">leaf</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#9A4218</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--rain)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">rain</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#2E5F78</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--ok)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">ok</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#3E6634</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--warn)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">warn</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#7A530B</span>
+            </div>
+          
+            <div style="display: flex; align-items: center; gap: var(--sp-2)">
+              <span style="width: 18px; height: 18px; flex: none; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--danger)"></span>
+              <span class="mono" style="flex: 1; font-size: var(--fs-sm); color: var(--text-dim)">danger</span>
+              <span class="mono" style="font-size: var(--fs-sm); color: var(--text-faint)">#9C3328</span>
+            </div>
+          
+        </div>
+      </section>
+    
+  </div>
+</div>
+</body>
+</html>

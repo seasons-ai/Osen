@@ -1,1 +1,6 @@
-[]
+[
+  { "page": "themes", "value": "#EDE4D8", "reason": "themes.html is a comparison sheet: its frame outside the theme sections is dark on purpose and does not follow the theme" },
+  { "page": "themes", "value": "#B3A797", "reason": "themes.html is a comparison sheet: its frame outside the theme sections is dark on purpose and does not follow the theme" },
+  { "page": "themes", "value": "#8E8273", "reason": "themes.html is a comparison sheet: its frame outside the theme sections is dark on purpose and does not follow the theme" },
+  { "page": "themes", "value": "#8E8273", "selector": "body > div > div:first-child", "reason": "the sheet header (title, lead, caption) is part of the frame and keeps its dark colors under recoloring" }
+]
