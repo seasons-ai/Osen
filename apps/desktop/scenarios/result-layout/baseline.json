@@ -1,0 +1,642 @@
+{
+ "mockup:consensus:en:short:900": {
+  ".result-hero": [
+   32,
+   69,
+   737,
+   80.3
+  ],
+  ".result-main": [
+   32,
+   173.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   926.5,
+   380,
+   604.8
+  ]
+ },
+ "mockup:consensus:en:short:1100": {
+  ".result-hero": [
+   32,
+   69,
+   937,
+   80.3
+  ],
+  ".result-main": [
+   32,
+   173.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   173.3,
+   300.1,
+   666.3
+  ]
+ },
+ "mockup:consensus:en:long:900": {
+  ".result-hero": [
+   32,
+   69,
+   737,
+   80.3
+  ],
+  ".result-main": [
+   32,
+   173.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   926.5,
+   380,
+   604.8
+  ]
+ },
+ "mockup:consensus:en:long:1100": {
+  ".result-hero": [
+   32,
+   69,
+   937,
+   80.3
+  ],
+  ".result-main": [
+   32,
+   173.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   173.3,
+   300.1,
+   666.3
+  ]
+ },
+ "mockup:no-consensus:en:short:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   902.5,
+   380,
+   745.3
+  ]
+ },
+ "mockup:no-consensus:en:short:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   149.3,
+   300.1,
+   848.8
+  ]
+ },
+ "mockup:no-consensus:en:long:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   902.5,
+   380,
+   745.3
+  ]
+ },
+ "mockup:no-consensus:en:long:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   149.3,
+   300.1,
+   848.8
+  ]
+ },
+ "mockup:cap-stopped:en:short:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   902.5,
+   380,
+   782.3
+  ]
+ },
+ "mockup:cap-stopped:en:short:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   149.3,
+   300.1,
+   885.8
+  ]
+ },
+ "mockup:cap-stopped:en:long:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   902.5,
+   380,
+   782.3
+  ]
+ },
+ "mockup:cap-stopped:en:long:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   149.3,
+   300.1,
+   885.8
+  ]
+ },
+ "mockup:resume:en:short:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   578.8,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   1332,
+   380,
+   745.3
+  ]
+ },
+ "mockup:resume:en:short:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   578.8,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   578.8,
+   300.1,
+   848.8
+  ]
+ },
+ "mockup:resume:en:long:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   578.8,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   1332,
+   380,
+   745.3
+  ]
+ },
+ "mockup:resume:en:long:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   578.8,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   578.8,
+   300.1,
+   848.8
+  ]
+ },
+ "mockup:consensus:ru:short:900": {
+  ".result-hero": [
+   32,
+   69,
+   737,
+   80.3
+  ],
+  ".result-main": [
+   32,
+   173.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   926.5,
+   380,
+   604.8
+  ]
+ },
+ "mockup:consensus:ru:short:1100": {
+  ".result-hero": [
+   32,
+   69,
+   937,
+   80.3
+  ],
+  ".result-main": [
+   32,
+   173.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   173.3,
+   300.1,
+   666.3
+  ]
+ },
+ "mockup:consensus:ru:long:900": {
+  ".result-hero": [
+   32,
+   69,
+   737,
+   80.3
+  ],
+  ".result-main": [
+   32,
+   173.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   926.5,
+   380,
+   604.8
+  ]
+ },
+ "mockup:consensus:ru:long:1100": {
+  ".result-hero": [
+   32,
+   69,
+   937,
+   80.3
+  ],
+  ".result-main": [
+   32,
+   173.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   173.3,
+   300.1,
+   666.3
+  ]
+ },
+ "mockup:no-consensus:ru:short:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   902.5,
+   380,
+   745.3
+  ]
+ },
+ "mockup:no-consensus:ru:short:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   149.3,
+   300.1,
+   848.8
+  ]
+ },
+ "mockup:no-consensus:ru:long:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   902.5,
+   380,
+   745.3
+  ]
+ },
+ "mockup:no-consensus:ru:long:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   149.3,
+   300.1,
+   848.8
+  ]
+ },
+ "mockup:cap-stopped:ru:short:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   902.5,
+   380,
+   782.3
+  ]
+ },
+ "mockup:cap-stopped:ru:short:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   149.3,
+   300.1,
+   885.8
+  ]
+ },
+ "mockup:cap-stopped:ru:long:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   902.5,
+   380,
+   782.3
+  ]
+ },
+ "mockup:cap-stopped:ru:long:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   149.3,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   149.3,
+   300.1,
+   885.8
+  ]
+ },
+ "mockup:resume:ru:short:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   578.8,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   1332,
+   380,
+   745.3
+  ]
+ },
+ "mockup:resume:ru:short:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   578.8,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   578.8,
+   300.1,
+   848.8
+  ]
+ },
+ "mockup:resume:ru:long:900": {
+  ".result-hero": [
+   32,
+   24,
+   737,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   578.8,
+   737,
+   733.3
+  ],
+  ".result-side": [
+   32,
+   1332,
+   380,
+   745.3
+  ]
+ },
+ "mockup:resume:ru:long:1100": {
+  ".result-hero": [
+   32,
+   24,
+   937,
+   101.3
+  ],
+  ".result-main": [
+   32,
+   578.8,
+   616.9,
+   733.3
+  ],
+  ".result-side": [
+   668.9,
+   578.8,
+   300.1,
+   848.8
+  ]
+ }
+}
