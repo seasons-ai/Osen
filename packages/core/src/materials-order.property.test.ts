@@ -107,7 +107,7 @@ describe("Attached folder snapshot: the position of an explicit file does not ch
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 180_000); // CPU-bound: the ceiling only guards against a hang, a busy machine slows it several times
 
   it("permutations moving only explicit files do not change the initial set under a tight limit", () => {
     const tmp = realpathSync(mkdtempSync(join(tmpdir(), "mat-order-")));
@@ -138,5 +138,5 @@ describe("Attached folder snapshot: the position of an explicit file does not ch
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 180_000); // CPU-bound: the ceiling only guards against a hang, a busy machine slows it several times
 });

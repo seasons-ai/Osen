@@ -67,7 +67,7 @@ export function selfContainedLine(contents: string): Line {
 }
 
 /** osen-mcp over stdio: only JSON-RPC lines on stdout, the tools of the server registry, exit 0 when stdin closes. */
-export async function mcpLine(contents: string, work: string, timeoutMs = 30000): Promise<Line> {
+export async function mcpLine(contents: string, work: string, timeoutMs = 30000, exitTimeoutMs = timeoutMs): Promise<Line> {
   const { env } = dirs(work, "mcp");
   const expected = TOOLS.map((t) => t.name).sort();
   const label = `MCP server osen-mcp: ${expected.length} tools as in the server registry, clean stdout, exit 0 on stdin close`;
@@ -100,7 +100,7 @@ export async function mcpLine(contents: string, work: string, timeoutMs = 30000)
   try {
     if ((await Promise.race([toolsReply, timer(timeoutMs)])) === "timeout") return fail("no tools/list reply in time");
     child.stdin.end();
-    const code = await Promise.race([exited, timer(timeoutMs)]);
+    const code = await Promise.race([exited, timer(exitTimeoutMs)]);
     if (code === "timeout") return fail("did not exit after stdin closed");
     if (spawnError) return fail(`cannot start: ${spawnError}`);
     const messages: { id?: number; result?: { tools?: { name: string }[] } }[] = [];

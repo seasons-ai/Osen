@@ -22,10 +22,10 @@ async function tmp(): Promise<string> {
   roots.push(r);
   return r;
 }
-async function stub(body: string): Promise<{ path: string; root: string }> {
+async function stub(body: string, interpreter = "/usr/bin/env node"): Promise<{ path: string; root: string }> {
   const root = await tmp();
   const path = join(root, "fake-claude");
-  await writeFile(path, `#!/usr/bin/env node\n${body}\n`, "utf8");
+  await writeFile(path, `#!${interpreter}\n${body}\n`, "utf8");
   await chmod(path, 0o755);
   return { path, root };
 }
@@ -141,28 +141,33 @@ setInterval(() => {}, 1000);`);
     expect(await exists(seen.cwd)).toBe(false);
   });
 
+  // The deadline runs from spawn: on a busy machine a silent stub can be killed before its first line;
+  // such a run proves nothing and is repeated with a doubled deadline. Returns the file the stub wrote.
+  async function silentRun(body: string, marker: string): Promise<string> {
+    for (let ms = 1500; ms <= 12_000; ms *= 2) {
+      const { path, root } = await stub(body, "/bin/sh");
+      await expect(claudeInitialize(path, { PATH: process.env.PATH }, ARGS, ms)).rejects.toThrow("не ответил");
+      if (await exists(join(root, marker))) return readFile(join(root, marker), "utf8");
+    }
+    throw new Error("the stub never started before the deadline");
+  }
+
   test("silent stub: refused by timeout, process ended", async () => {
-    const { path, root } = await stub(`require('node:fs').writeFileSync(require('node:path').join(__dirname, 'pid'), String(process.pid));\nsetInterval(() => {}, 1000);`);
-    await expect(claudeInitialize(path, { PATH: process.env.PATH }, ARGS, 1500)).rejects.toThrow("не ответил");
-    const pid = Number(await readFile(join(root, "pid"), "utf8"));
+    const pid = Number(await silentRun(`echo $$ > "$(dirname "$0")/pid"\nexec sleep 300`, "pid"));
     const alive = (): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
-    await expect.poll(alive, { timeout: 3000 }).toBe(false);
-  });
+    await expect.poll(alive, { timeout: 10_000 }).toBe(false);
+  }, 60_000);
 
   test("descendant processes end together with the group", async () => {
-    const { path, root } = await stub(`const fs = require('node:fs'), p = require('node:path');
-const sl = require('node:child_process').spawn('sleep', ['300'], { stdio: 'ignore' });
-fs.writeFileSync(p.join(__dirname, 'pids'), process.pid + ' ' + sl.pid);
-setInterval(() => {}, 1000);`);
-    await expect(claudeInitialize(path, { PATH: process.env.PATH }, ARGS, 1500)).rejects.toThrow("не ответил");
-    const pids = (await readFile(join(root, "pids"), "utf8")).split(" ").map(Number);
+    const pids = (await silentRun(`sleep 300 &\necho "$$ $!" > "$(dirname "$0")/pids"\nwait`, "pids")).split(" ").map(Number);
     const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
-    for (const pid of pids) await expect.poll(() => alive(pid), { timeout: 3000 }).toBe(false);
-  });
+    for (const pid of pids) await expect.poll(() => alive(pid), { timeout: 10_000 }).toBe(false);
+  }, 60_000);
 
   test("arguments on real help 2.1.288", async () => {
-    const { path, root } = await stub("require('node:fs').writeFileSync(require('node:path').join(__dirname, 'argv.json'), JSON.stringify(process.argv.slice(2)));\nsetInterval(() => {}, 1000);");
-    await listModels("claude", { path, env: { PATH: process.env.PATH }, help: await claudeHelp(), deps: { claudeInitialize: (p, e, a) => claudeInitialize(p, e, a, 1500) } });
+    // the stub exits after writing its arguments, so the deadline only has to outlast a slow start
+    const { path, root } = await stub("require('node:fs').writeFileSync(require('node:path').join(__dirname, 'argv.json'), JSON.stringify(process.argv.slice(2)));");
+    await listModels("claude", { path, env: { PATH: process.env.PATH }, help: await claudeHelp(), deps: { claudeInitialize: (p, e, a) => claudeInitialize(p, e, a, 20_000) } });
     expect(JSON.parse(await readFile(join(root, "argv.json"), "utf8"))).toEqual([
       "--print", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
       "--strict-mcp-config", "--setting-sources", "", "--tools", "", "--disable-slash-commands",

@@ -106,10 +106,11 @@ describe("headless entry points in the image", () => {
     const fs = await import("node:fs");
     const p = join(contents, "Resources/app.asar.unpacked/out/main/osen-mcp.mjs");
     fs.writeFileSync(p, fs.readFileSync(p, "utf8").replace("process.exit(0)", "setInterval(() => {}, 1000)"));
-    const r = await mcpLine(contents, work, 3000);
+    // a slow start must not pass for a missing exit: only the exit wait is short
+    const r = await mcpLine(contents, work, 30_000, 3000);
     expect(r.ok).toBe(false);
     expect(r.text).toContain("did not exit");
-  }, 20000);
+  }, 45_000);
 
   it("wrong tool set: FAIL listing both", async () => {
     const { contents, work } = bundle();

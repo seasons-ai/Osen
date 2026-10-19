@@ -1,11 +1,19 @@
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { checkConnection, SERVER_TOOLS } from "./check.ts";
 
 const stub = { command: process.execPath, args: [resolve(import.meta.dirname, "testdata/stub-server.mjs")] };
 const mode = (STUB_MODE: string) => ({ extraEnv: { STUB_MODE } });
+// Own temp folder: other test files run connection checks in the shared one at the same time.
+const sharedTmp = tmpdir();
+const ownTmp = mkdtempSync(join(sharedTmp, "connect-check-test-"));
+process.env.TMPDIR = ownTmp;
+afterAll(() => {
+  process.env.TMPDIR = sharedTmp;
+  rmSync(ownTmp, { recursive: true, force: true });
+});
 const checkDirs = () => readdirSync(tmpdir()).filter((n) => n.startsWith("osen-check-"));
 
 describe("Бесплатная проверка соединения", () => {
