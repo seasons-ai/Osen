@@ -16,8 +16,11 @@ export default defineConfig({
           "pdf-extract": resolve("../../packages/core/src/pdf/pdf-extract.ts"),
           "pdf-worker": resolve("../../packages/core/src/pdf/pdf-worker.ts"),
           "html-worker": resolve("../../packages/core/src/url/html-worker.ts"),
+          // headless entries started by the bin/ wrappers; same folder as the workers (change 138 relies on it)
+          "osen-mcp": resolve("src/headless/osen-mcp.ts"),
+          council: resolve("src/headless/council.ts"),
         },
-        output: { entryFileNames: (chunk) => (/^(pdf-|html-worker)/.test(chunk.name) ? "[name].mjs" : "[name].js") },
+        output: { entryFileNames: (chunk) => (/^(pdf-|html-worker$|osen-mcp$|council$)/.test(chunk.name) ? "[name].mjs" : "[name].js") },
       },
     },
   },

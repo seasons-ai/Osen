@@ -35,7 +35,7 @@ function fakeTransport(table: Record<string, Reply>) {
   return t;
 }
 
-async function run(argv: string[], over: { home?: string; t?: ReturnType<typeof fakeTransport> } = {}) {
+async function run(argv: string[], over: { home?: string; t?: ReturnType<typeof fakeTransport>; urlWorker?: string } = {}) {
   const home = over.home ?? tmp();
   const out: string[] = [], err: string[] = [];
   const code = await main(argv, {
@@ -43,6 +43,7 @@ async function run(argv: string[], over: { home?: string; t?: ReturnType<typeof 
     env: { COUNCIL_HOME: home, COUNCIL_DEV: "1" },
     inspectDeps: { locate: async (agent) => ({ agent, found: false, searchPath: "", reason: `Команда ${agent} не найдена` }) },
     ...(over.t ? { urlTransport: over.t.transport } : {}),
+    ...(over.urlWorker ? { urlWorker: over.urlWorker } : {}),
   });
   return { code, out: out.join("\n"), err: err.join("\n"), home };
 }
@@ -65,6 +66,13 @@ describe("council --url / --preview-materials / --prepared-materials", () => {
     const id = setId(r.out);
     expect(ls(join(r.home, "sessions"))).toEqual([]);
     expect(ls(join(preparedMaterialsDir(r.home), id)).sort()).toEqual(["set.json", "set.sha256", "sources.json"]);
+  });
+
+  it("1a. urlWorker: the given worker file is used instead of the default one", async () => {
+    const t = fakeTransport({ "/page": { body: HTML } });
+    const r = await run(["--url", PAGE, "--preview-materials"], { t, urlWorker: join(tmp(), "no-such-worker.mjs") });
+    expect(r.out).not.toContain("Первый абзац текста.");
+    expect(r.out + r.err).toContain("не удалось разобрать HTML");
   });
 
   it("2. secret from query and fragment appears nowhere", async () => {

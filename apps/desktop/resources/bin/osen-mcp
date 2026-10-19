@@ -1,0 +1,16 @@
+#!/bin/sh
+# Starts the packaged entry with the app binary as Node. Uses only sh builtins and /usr/bin/readlink: no PATH, no install location.
+self=$0
+case $self in */*) ;; *) self=$(command -v -- "$0") ;; esac
+n=0
+while [ -h "$self" ]; do
+  n=$((n + 1))
+  [ "$n" -le 40 ] || exit 1
+  target=$(/usr/bin/readlink -- "$self") || exit 1
+  case $target in /*) self=$target ;; *) self=${self%/*}/$target ;; esac
+done
+contents=$(CDPATH= cd -P -- "${self%/*}/../.." && pwd -P) || exit 1
+unset NODE_OPTIONS
+ELECTRON_RUN_AS_NODE=1
+export ELECTRON_RUN_AS_NODE
+exec "$contents/MacOS/Osen" "$contents/Resources/app.asar.unpacked/out/main/osen-mcp.mjs" "$@"
