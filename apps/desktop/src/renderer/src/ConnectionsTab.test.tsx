@@ -21,7 +21,13 @@ const three = (): ConnectionsView => mk([
 const loaded = (view: ConnectionsView): ConnectionsState => reduceConnections(initialConnections(), { type: "view", view });
 const html = (s: ConnectionsState) => renderToStaticMarkup(<ConnectionsPanel state={s} on={noop} />);
 const noop = { ask() {}, cancel() {}, accept() {}, check() {}, dismiss() {}, copy() {} };
-const btns = (h: string) => [...h.matchAll(/<button[^>]*>((?:(?!<\/button>).)*)<\/button>/g)].map((m) => m[1]!.replace(/<[^>]+>/g, "").trim());
+// tags are removed until none is left, so no partial tag survives a single pass
+const stripTags = (h: string, sep = ""): string => {
+  let prev: string;
+  do { prev = h; h = h.replace(/<[^>]*>/g, sep); } while (h !== prev);
+  return h;
+};
+const btns = (h: string) => [...h.matchAll(/<button[^>]*>((?:(?!<\/button>).)*)<\/button>/g)].map((m) => stripTags(m[1]!).trim());
 const card = (h: string, name: string) => h.split("<article").find((a) => a.includes(`>${name}<`)) ?? "";
 
 function harness(api: Partial<ConnectionsApi>, view: ConnectionsView | null = three()) {
@@ -153,7 +159,7 @@ describe("ConnectionsPanel rendering", () => {
       ], { state: "not_in_path", link: "/l", target: "/t", hint: { file: "~/.zprofile", line: "x" } })), { type: "ask", confirm: { kind: "disconnect", id: "claude-code" } }),
       { type: "copied" },
     );
-    const text = html(s).replace(/<[^>]+>/g, " ");
+    const text = stripTags(html(s), " ");
     expect(text).toContain("Check connection");
     expect(text).toContain("Disconnect Claude Code?");
     expect(text).not.toMatch(/[А-Яа-яЁё]/);
