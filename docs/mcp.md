@@ -107,13 +107,17 @@ The skill source is `skill/osen/SKILL.md`; the trigger test phrases are in `skil
 
 ### Where agents keep skills and servers
 
-| | Claude Code | Codex |
-|---|---|---|
-| Skills folder | `~/.claude/skills/<name>/SKILL.md` | `~/.codex/skills/<name>/SKILL.md` |
-| Where servers are recorded | `~/.claude.json`, key `mcpServers` (scope `user`) | `~/.codex/config.toml`, table `[mcp_servers.<name>]` |
-| Registration command | `claude mcp add --scope user osen -- node <repository>/packages/mcp/src/main.ts` | `codex mcp add osen -- node <repository>/packages/mcp/src/main.ts` |
-| Removal command | `claude mcp remove --scope user osen` | `codex mcp remove osen` |
-| Peculiarity | does not overwrite an existing entry with the same name | silently overwrites an existing entry, so the installation first checks it with `codex mcp get osen --json` |
+| | Claude Code | Codex | Claude Desktop |
+|---|---|---|---|
+| Skills folder | `~/.claude/skills/<name>/SKILL.md` | `~/.codex/skills/<name>/SKILL.md` | none: skill support is not confirmed, the agent gets the rules from the MCP server instructions |
+| Where servers are recorded | `~/.claude.json`, key `mcpServers` (scope `user`) | `~/.codex/config.toml`, table `[mcp_servers.<name>]`; the Codex app (ChatGPT.app) reads the same file, so one entry serves both | `~/Library/Application Support/Claude/claude_desktop_config.json`, key `mcpServers.<name>` |
+| Registration | `claude mcp add --scope user osen -- node <repository>/packages/mcp/src/main.ts` | `codex mcp add osen -- node <repository>/packages/mcp/src/main.ts` | the installer writes `{"command": "<absolute node path>", "args": ["<repository>/packages/mcp/src/main.ts"]}` into the file: an app started from Finder does not see the shell `PATH` |
+| Removal | `claude mcp remove --scope user osen` | `codex mcp remove osen` | the installer deletes `mcpServers.osen` from the file |
+| Counts as installed | `claude` is on `PATH` | `codex` is on `PATH` | the settings file or `/Applications/Claude.app` (or `~/Applications/Claude.app`) exists |
+| After a change | restart: whether a running session picks up the entry is not verified | restart | quit Claude Desktop completely and start it again |
+| Peculiarity | does not overwrite an existing entry with the same name | silently overwrites an existing entry, so the installation first checks it with `codex mcp get osen --json` | the file is rewritten whole and atomically; other keys and servers keep their values and order, indentation becomes 2 spaces |
+
+Where these facts come from (client versions, dates, documentation links): [docs/clients.md](clients.md).
 
 ### Installation
 
@@ -125,18 +129,18 @@ Installation writes to the agents' global settings (Node 22.18+, run from the re
 node skill/install.ts --dry-run
 ```
 
-2. Installation: for each agent found, copies the skill into its skills folder (next to it, puts a `.osen-install` marker file with the repository path) and registers the server with the agent's own command. An agent that is not on the machine is skipped with a message. Then it removes the former `model-council` entries created by an installation from this repository before the rename: the `model-council` skill folder with the `.model-council-install` marker (this repository's path) and `name: model-council` in `SKILL.md`, and the `model-council` server that runs this repository's `packages/mcp/src/main.ts`. An agent's former entries are removed only if `osen` was set up for it without mismatches.
+2. Installation: for each agent found, copies the skill into its skills folder (Claude Code and Codex only) (next to it, puts a `.osen-install` marker file with the repository path) and registers the server with the agent's own command. An agent that is not on the machine is skipped with a message. Then it removes the former `model-council` entries created by an installation from this repository before the rename: the `model-council` skill folder with the `.model-council-install` marker (this repository's path) and `name: model-council` in `SKILL.md`, and the `model-council` server that runs this repository's `packages/mcp/src/main.ts`. An agent's former entries are removed only if `osen` was set up for it without mismatches.
 
 ```bash
 node skill/install.ts
 ```
 
-3. Restart Claude Code and Codex.
+3. Restart the clients the output names: Claude Code and Codex; Claude Desktop — quit it completely and start it again.
 4. Check in Claude Code: `/mcp` shows the `osen` server (and does not show `model-council`) and seven tools; then the phrase "собери совет моделей по вопросу …" ("convene a council of models on the question …") triggers the skill.
 
 Codex asks for confirmation to call the server's tools; in a run without a window (`codex exec`) confirmations are forbidden, and the council will not start.
 
-Output lines: `<Agent> · skill · <action> · <path>` and `<Agent> · server · <action> · <settings file> · node <main.ts path>` (in Russian, "скилл", "сервер"); removal of the former server is the line `<Agent> · server model-council · <action> · …`, of the former folder, a skill line with the path `…/skills/model-council`. Exit codes: 0 — success, 1 — mismatch or agent CLI error, 2 — argument error.
+Output lines: `<Agent> · skill · <action> · <path>` and `<Agent> · server · <action> · <settings file> · node <main.ts path>` (in Russian, "скилл", "сервер"); for Claude Desktop `Claude Desktop · skill · no skill: …` and `Claude Desktop · server · <action> · <claude_desktop_config.json path> · mcpServers.osen · <node path> <main.ts path>`; after a real change, a line `<Agent> · <what to do in the client>` (restart, or "not verified" when `docs/clients.md` has no confirmation); removal of the former server is the line `<Agent> · server model-council · <action> · …`, of the former folder, a skill line with the path `…/skills/model-council`. Exit codes: 0 — success, 1 — mismatch or agent CLI error, 2 — argument error.
 
 ### Removal
 
@@ -151,11 +155,27 @@ node skill/install.ts --uninstall
 
 - A repeat installation changes nothing and reports "Everything is already installed." ("Всё уже установлено." in Russian); a skill changed in the repository it updates.
 - Other people's things are not touched: an `osen` folder without a marker or with the marker of another copy of the repository (the output names the path from the marker) and an `osen` server with a different path are not overwritten; a former `model-council` folder without the `.model-council-install` marker, with a different path in the marker or a different `name`, and a `model-council` server with a different path are not removed. The script reports the mismatch and exits with code 1. Other skills, servers and settings are not changed.
+- A damaged settings file (not JSON, not a JSON object, `mcpServers` not an object, or unreadable) is not changed: the line names the file and the reason, the other agents are still installed, exit code 1.
+- An `osen` entry of our form (`…/packages/mcp/src/main.ts` or `…/bin/osen-mcp`) whose file no longer exists is reported as a mismatch and is neither updated nor removed by the installer; the connection module's "update" action replaces it (see below).
+- Claude Desktop gets the absolute path of the `node` that ran the installer (with Homebrew, a versioned `…/Cellar/node/<version>/bin/node`): after Node is upgraded the entry turns into a stale one, which the installer reports and does not touch; delete `mcpServers.osen` from the file by hand and install again, or use the app's "Update" (change 142).
 - The server is registered by the absolute path of this repository: if the repository folder is moved, the installation must be repeated (first `--uninstall` from the old location, or delete the entry with the agent's command).
+
+### Connection module
+
+The installer and the app (Settings → Connections, change 142) share one module, `packages/connect` (`@model-council/connect`). It depends only on Node: no Electron, no MCP SDK, no `packages/mcp`. It returns codes; the texts belong to the callers.
+
+- Clients: `claude-desktop`, `claude-code`, `codex` (the Codex app shares the Codex entry).
+- The server command is a parameter `{ command, args }` and goes into the client entry exactly as given: from the repository `node …/packages/mcp/src/main.ts`, from the app the wrapper `Osen.app/Contents/Resources/bin/osen-mcp` with no `node`.
+- States: `not_installed`, `not_connected`, `connected` (the entry equals the current command), `foreign` (another server, or an existing `main.ts` of another copy of the repository), `stale_path` (our server form, but its file is gone, or the same server file with another launcher), `corrupt` (the file cannot be read or parsed, or has an unexpected shape). Reading a state changes nothing.
+- Actions `connect`, `update` (only from `stale_path`), `disconnect` (only our own entry, `connected` or `stale_path`), each with a `dryRun` mode that writes nothing and calls no `add`/`remove`. A repeat is a no-op; connect then disconnect returns the file to its original content by value. `foreign` and `corrupt` are refusals with no change; a failed CLI call, a failed write or an entry that does not match after re-reading is a `failed` refusal with the reason and the re-read state.
+- A successful change also says what the owner has to do in the client: `restart_client` (Claude Desktop, Codex), `unverified` (Claude Code: `docs/clients.md` does not confirm it), `confirm_in_client`, or `none` for a no-op.
+- Free connection check `checkConnection(entry)`: it starts the command recorded in the client with a temporary `COUNCIL_HOME` (the owner's data folder is not created or touched, `COUNCIL_DEV` is not passed on), sends `initialize` and `tools/list` and succeeds only if all seven `council_*` tools come back and stdout carries nothing but protocol frames. Failure reasons: `no_entry`, `spawn_failed`, `timeout` (20 seconds by default), `missing_tools`, `stray_stdout`. No model is called.
+
+The stand `COUNCIL_DEV=1 node skill/scenarios/connection/check.ts` runs every client through these states and actions on a substituted `HOME` with fake `claude` and `codex`, then runs the real installer and the connection check; the owner's settings are not touched.
 
 ### Trial run without changing settings
 
-Both agents and the script respect `HOME`, so with a substituted `HOME` everything is written to a temporary folder and the real settings do not change.
+Both agents and the script respect `HOME`, so with a substituted `HOME` everything is written to a temporary folder and the real settings do not change. Claude Desktop counts as installed when `/Applications/Claude.app` exists, so its settings file is then created inside the temporary `HOME` as well.
 
 ```bash
 HOME=$(mktemp -d) node skill/install.ts
