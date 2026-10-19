@@ -4,11 +4,25 @@
 
 The `osen` server lets an agent (Claude Code, Codex) start a discussion, follow it and stop it, pass the owner's messages and answers into it, and release the owner wait, without leaving the chat. The transport is stdio, the entry point is `packages/mcp/src/main.ts`.
 
-No build is needed: `npm install` is enough (Node 22.18+ runs TypeScript itself).
+From the repository no build is needed: `npm install` is enough (Node 22.18+ runs TypeScript itself).
 
 The server provides instructions, tool descriptions and response texts in the interface language: `COUNCIL_LANG`, then `preferences.json` in the data folder, then English. The language is read once at startup, so after changing the language in the app the agent needs a server restart (a new agent session). Tool and field names, error codes and status values do not depend on the language; the agent replies to the owner in the owner's language. A check without cost is `packages/mcp/scenarios/language/check.ts`.
 
 Connecting in this project: [README](../README.md#connecting-in-this-project).
+
+### From the installed app
+
+From the first release after 0.10.0 the installed app carries its own server and needs neither Node nor the repository (0.10.0 and earlier have no wrappers: use the repository and the installer below): the server command is the wrapper `/Applications/Osen.app/Contents/Resources/bin/osen-mcp` with no arguments. It starts the app binary as Node, finds the app relative to itself (a copy of `Osen.app` in another folder works the same way) and needs no `PATH`. Like every wrapper, it works only after the app has been opened once and allowed by Gatekeeper ([docs/deploy.md, "Command-line entry points"](deploy.md#command-line-entry-points)).
+
+1. Open "Settings" → "Connections". Each client found on this Mac (Claude Desktop, Claude Code, Codex; the Codex app shares the Codex entry) shows its state, the settings file and the "Server command".
+2. Press "Connect" and confirm in the dialog. Osen writes only its own `osen` entry with the wrapper path; other servers and keys stay as they were, and a foreign `osen` entry is never overwritten.
+3. Press "Check connection": it starts the recorded command with a temporary data folder and expects seven tools and nothing but protocol frames on stdout. No model is called.
+4. Restart the client as the tab says: quit Claude Desktop completely and start it again; restart Codex; Claude Code reads the entry in a new session.
+5. "Disconnect" removes only Osen's own entry.
+
+The same tab installs the `council` command (["The `council` command in the terminal"](deploy.md#the-council-command-in-the-terminal)). Without the app, from the repository, use the installer below.
+
+Checked on the built image on 2026-10-19 with a substituted `HOME` and the real `claude` 2.1.302 and `codex` 0.159.2, 0 model calls (change 143): connect, state, connection check and disconnect for all three clients; a foreign `osen` entry and a foreign `council` file were refused and left byte-for-byte unchanged. A real discussion through each client has not been run yet: [docs/clients.md](clients.md).
 
 ### Tools
 
@@ -167,7 +181,7 @@ The installer and the app (Settings → Connections, change 142) share one modul
 - Clients: `claude-desktop`, `claude-code`, `codex` (the Codex app shares the Codex entry).
 - The server command is a parameter `{ command, args }` and goes into the client entry exactly as given: from the repository `node …/packages/mcp/src/main.ts`, from the app the wrapper `Osen.app/Contents/Resources/bin/osen-mcp` with no `node`.
 - States: `not_installed`, `not_connected`, `connected` (the entry equals the current command), `foreign` (another server, or an existing `main.ts` of another copy of the repository), `stale_path` (our server form, but its file is gone, or the same server file with another launcher), `corrupt` (the file cannot be read or parsed, or has an unexpected shape). Reading a state changes nothing.
-- Actions `connect`, `update` (only from `stale_path`), `disconnect` (only our own entry, `connected` or `stale_path`), each with a `dryRun` mode that writes nothing and calls no `add`/`remove`. A repeat is a no-op; connect then disconnect returns the file to its original content by value. `foreign` and `corrupt` are refusals with no change; a failed CLI call, a failed write or an entry that does not match after re-reading is a `failed` refusal with the reason and the re-read state.
+- Actions `connect`, `update` (only from `stale_path`), `disconnect` (only our own entry, `connected` or `stale_path`), each with a `dryRun` mode that writes nothing and calls no `add`/`remove`. A repeat is a no-op; connect then disconnect returns the file to its original content by value. For Claude Code the file belongs to `claude` itself: on a `HOME` where it never ran before, `claude mcp add` also writes its own start-up keys (`firstStartTime`, `userID` and others), which stay after disconnect; `mcpServers` and the other keys return to their original values (checked with `claude` 2.1.302 in change 143). `foreign` and `corrupt` are refusals with no change; a failed CLI call, a failed write or an entry that does not match after re-reading is a `failed` refusal with the reason and the re-read state.
 - A successful change also says what the owner has to do in the client: `restart_client` (Claude Desktop, Codex), `unverified` (Claude Code: `docs/clients.md` does not confirm it), `confirm_in_client`, or `none` for a no-op.
 - Free connection check `checkConnection(entry)`: it starts the command recorded in the client with a temporary `COUNCIL_HOME` (the owner's data folder is not created or touched, `COUNCIL_DEV` is not passed on), sends `initialize` and `tools/list` and succeeds only if all seven `council_*` tools come back and stdout carries nothing but protocol frames. Failure reasons: `no_entry`, `spawn_failed`, `timeout` (20 seconds by default), `missing_tools`, `stray_stdout`. No model is called.
 
