@@ -18,17 +18,18 @@ export const cliMessages = defineMessages({
           [--pause-after-round] [--wait-for-owner] [--owner-wait-sec <N>] [--lineup <id>]
           [--drafts [--synthesizer <pN>]]
   council --preview-materials [--attach <path>]… [--include <path>]… [--no-ignore] [--url <address>]… [--materials-chars <n>]
-  council providers
-  council templates
-  council lineups
+  council providers [--json]
+  council templates [--json]
+  council lineups [--json]
   council lineups save <name> --from-session <id>
-  council list
-  council show <id>
+  council list [--json]
+  council show <id> [--json]
   council stop <id>
   council say <id> [--answer <qN>] <text>
-  council status <id>
+  council status <id> [--json]
   council continue <id>
   council resume <id> [--rounds <n>] [--max-tokens <n> | --no-max-tokens] [--replace <pN>=<entry>]…
+  council doctor [--json]
   council home
   council --help
 
@@ -44,6 +45,7 @@ Subcommands:
   status <id>  session state and the current owner wait
   continue <id>  release the current owner wait of a running session (from another terminal)
   resume <id>  continue a saved session (interrupted, no_consensus, stopped; failed — only after the "fewer than two active participants" failure and with --replace)
+  doctor     diagnostics: binary, version, runtime, data folder, config, providers; no model calls
   home       data folder path
 
 Flags:
@@ -77,6 +79,7 @@ Flags:
                            (without the flag — the rest of the previous limit)
   --replace <pN>=<entry>   only for resume, repeatable: replace the dropped or unavailable participant pN; the entry is as for --participant;
                            the new participant gets the next identifier, the place and role of the previous one, agreements are reset
+  --json                   print one JSON document to stdout (status, list, show, providers, templates, lineups, doctor)
   --help                   this help
 
 Participant entry: [name=]<provider>[:<model>]
@@ -247,6 +250,16 @@ Example:
     answerOnlySay: "The --answer flag applies only to the say command.",
     unknownCommand: (cmd: string) => `Unknown command «${cmd}».`,
     noArgs: (cmd: string) => `Command ${cmd} takes no arguments.`,
+    unknown: "unknown",
+    doctorBinary: (exec: string, entry: string) => `Binary: ${exec} (${entry})`,
+    doctorVersion: (v: string) => `Version: ${v}`,
+    doctorRuntimeNode: (v: string) => `Runtime: node ${v}`,
+    doctorRuntimePackaged: (v: string) => `Runtime: packaged app (Node ${v})`,
+    doctorLanguage: (l: string) => `Language: ${l}`,
+    doctorDataDir: (p: string, existed: boolean, writable: boolean) => `Data folder: ${p} — ${existed ? "existed" : "created"}, ${writable ? "writable" : "not writable"}`,
+    doctorConfig: (p: string, created: boolean) => `Config: ${p}${created ? " (created now)" : ""}`,
+    doctorProviders: (n: number) => `Providers: ${n}`,
+    jsonNotSupported: (cmd: string) => `The --json flag is not supported by the command ${cmd}.`,
     lineupsUsage: "Command lineups: without arguments — the list of lineups; save <name> --from-session <id> — saving.",
     lineupsSaveNeedsSession: "Command lineups save requires --from-session <id>.",
     sayArgs: "Command say takes two arguments: <id> and <text>.",
@@ -349,17 +362,18 @@ Example:
           [--pause-after-round] [--wait-for-owner] [--owner-wait-sec <N>] [--lineup <id>]
           [--drafts [--synthesizer <pN>]]
   council --preview-materials [--attach <путь>]… [--include <путь>]… [--no-ignore] [--url <адрес>]… [--materials-chars <n>]
-  council providers
-  council templates
-  council lineups
+  council providers [--json]
+  council templates [--json]
+  council lineups [--json]
   council lineups save <название> --from-session <id>
-  council list
-  council show <id>
+  council list [--json]
+  council show <id> [--json]
   council stop <id>
   council say <id> [--answer <qN>] <текст>
-  council status <id>
+  council status <id> [--json]
   council continue <id>
   council resume <id> [--rounds <n>] [--max-tokens <n> | --no-max-tokens] [--replace <pN>=<запись>]…
+  council doctor [--json]
   council home
   council --help
 
@@ -375,6 +389,7 @@ Example:
   status <id>  состояние сессии и текущее ожидание владельца
   continue <id>  снять текущее ожидание владельца у идущей сессии (из другого терминала)
   resume <id>  продолжить сохранённую сессию (interrupted, no_consensus, stopped; failed — только при сбое «меньше двух активных участников» и с --replace)
+  doctor     диагностика: бинарь, версия, рантайм, папка данных, конфиг, провайдеры; без вызовов моделей
   home       путь папки данных
 
 Флаги:
@@ -408,6 +423,7 @@ Example:
                            (без флага — остаток прежнего лимита)
   --replace <pN>=<запись>  только для resume, повторяется: заменить выбывшего или недоступного участника pN; запись как у --participant;
                            новый участник получает следующий идентификатор, место и роль прежнего, согласия сбрасываются
+  --json                   напечатать в stdout один JSON-документ (status, list, show, providers, templates, lineups, doctor)
   --help                   эта справка
 
 Запись участника: [имя=]<провайдер>[:<модель>]
@@ -571,6 +587,16 @@ history-pins.json в ней — закрепления экрана «Истор
     answerOnlySay: "Флаг --answer относится только к команде say.",
     unknownCommand: (cmd: string) => `Неизвестная команда «${cmd}».`,
     noArgs: (cmd: string) => `Команда ${cmd} не принимает аргументов.`,
+    unknown: "неизвестно",
+    doctorBinary: (exec: string, entry: string) => `Бинарь: ${exec} (${entry})`,
+    doctorVersion: (v: string) => `Версия: ${v}`,
+    doctorRuntimeNode: (v: string) => `Рантайм: node ${v}`,
+    doctorRuntimePackaged: (v: string) => `Рантайм: упакованное приложение (Node ${v})`,
+    doctorLanguage: (l: string) => `Язык: ${l}`,
+    doctorDataDir: (p: string, existed: boolean, writable: boolean) => `Папка данных: ${p} — ${existed ? "существовала" : "создана"}, ${writable ? "доступна для записи" : "недоступна для записи"}`,
+    doctorConfig: (p: string, created: boolean) => `Конфиг: ${p}${created ? " (создан сейчас)" : ""}`,
+    doctorProviders: (n: number) => `Провайдеров: ${n}`,
+    jsonNotSupported: (cmd: string) => `Флаг --json не поддерживается командой ${cmd}.`,
     lineupsUsage: "Команда lineups: без аргументов — список составов; save <название> --from-session <id> — сохранение.",
     lineupsSaveNeedsSession: "Команда lineups save требует --from-session <id>.",
     sayArgs: "Команда say принимает два аргумента: <id> и <текст>.",
