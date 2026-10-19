@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { BrowserWindow } from "electron";
-import { guardClose, hardenWindow, isAllowedRequest, isExternalLink, rendererFile, revealWindow, windowOptions, APP_URL, DEV_ICON } from "./window.ts";
+import { guardClose, hardenWindow, isAllowedRequest, isExternalLink, rendererFile, revealWindow, windowOptions, APP_URL, DEV_ICON, THEME_ARG } from "./window.ts";
+import { themeFromArgv } from "../shared/theme-arg.ts";
 import { existsSync } from "node:fs";
 
 const DEV = "http://localhost:5173/";
@@ -25,22 +26,31 @@ function fakeWindow(appUrl = DEV) {
 
 describe("windowOptions", () => {
   it("enables isolation", () => {
-    const o = windowOptions("/p.cjs", true);
+    const o = windowOptions("/p.cjs", true, "osen");
     expect(o).toMatchObject({ width: 1100, height: 700, minWidth: 900, minHeight: 600, show: false });
-    expect(o.webPreferences).toEqual({ preload: "/p.cjs", contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: false });
+    expect(o.webPreferences).toEqual({ preload: "/p.cjs", contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: false, additionalArguments: ["--osen-theme=osen"] });
+    expect(o.backgroundColor).toBe("#17130F");
+  });
+
+  it("carries the theme background and argument for a light theme; themeFromArgv round-trips", () => {
+    const o = windowOptions("/p.cjs", true, "pergament");
+    expect(o.backgroundColor).toBe("#EFE4D0");
+    expect(o.webPreferences?.additionalArguments).toEqual([`${THEME_ARG}pergament`]);
+    for (const t of ["osen", "tuman", "len", "inei", "pergament"] as const) expect(themeFromArgv(["x", `${THEME_ARG}${t}`])).toBe(t);
+    for (const bad of [[], ["--osen-theme="], ["--osen-theme=sakura"], ["--other=len"]]) expect(themeFromArgv(bad)).toBe("osen");
   });
 });
 
 describe("window icon", () => {
   it("in development — icon.png from design/mockup-osen/brand/app-icon, the file exists", () => {
-    const icon = windowOptions("/p.cjs", false).icon;
+    const icon = windowOptions("/p.cjs", false, "osen").icon;
     expect(icon).toBe(DEV_ICON);
     expect(DEV_ICON).toMatch(/design\/mockup-osen\/brand\/app-icon\/icon\.png$/);
     expect(existsSync(DEV_ICON)).toBe(true);
   });
 
   it("in the built app icon is not set (the package icon is icon.icns)", () => {
-    expect(windowOptions("/p.cjs", true)).not.toHaveProperty("icon");
+    expect(windowOptions("/p.cjs", true, "osen")).not.toHaveProperty("icon");
   });
 });
 

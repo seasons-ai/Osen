@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { BRIDGE_ACTIONS, CALL_CHANNEL, EVENT_CHANNEL } from "../shared/bridge.ts";
 import type { Bridge, BridgeEvent } from "../shared/bridge.ts";
+import { themeFromArgv } from "../shared/theme-arg.ts";
 import { droppedPaths } from "./dropped.ts";
 
 type Result = { ok: true; value: unknown } | { ok: false; error: string };
@@ -22,3 +23,4 @@ const bridge = {
 } as Bridge;
 
 contextBridge.exposeInMainWorld("council", bridge);
+contextBridge.exposeInMainWorld("osenInitial", { theme: themeFromArgv(process.argv) });

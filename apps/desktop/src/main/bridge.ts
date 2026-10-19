@@ -6,6 +6,8 @@ import { UnknownClientError } from "./connections.ts";
 import type { ConnectionsApi } from "./connections.ts";
 import { LanguageRejectedError } from "./language.ts";
 import type { LanguageState } from "./language.ts";
+import { AppearanceRejectedError } from "./appearance.ts";
+import type { AppearanceState } from "./appearance.ts";
 import type { OwnerSelection, UsageSummary } from "@model-council/core/protocol";
 import type { BridgeActions, BridgeEvent, DraftView, LiveText, ResumeReplacement, ResumeView } from "../shared/bridge.ts";
 import type { MaterialsDraft } from "./materials.ts";
@@ -44,6 +46,7 @@ export interface BridgeDeps {
   exportSession(id: string): Promise<{ path: string } | null>;
   setPinned(id: string, pinned: boolean): void;
   language: LanguageState;
+  appearance: AppearanceState;
   connections: ConnectionsApi;
   settings: SettingsApi;
   templates: TemplateEditorApi;
@@ -162,6 +165,15 @@ export function createBridge(deps: BridgeDeps): {
         return deps.language.set(language);
       } catch (e) {
         if (e instanceof LanguageRejectedError) throw new ActionError(e.message);
+        throw e;
+      }
+    },
+    appearance: () => deps.appearance.view(),
+    setAppearance: ([input]) => {
+      try {
+        return deps.appearance.set(input);
+      } catch (e) {
+        if (e instanceof AppearanceRejectedError) throw new ActionError(e.message);
         throw e;
       }
     },

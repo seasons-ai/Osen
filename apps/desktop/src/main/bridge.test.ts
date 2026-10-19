@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { getProcessLanguage, setProcessLanguage } from "@model-council/core/i18n";
 import { LanguageRejectedError } from "./language.ts";
+import { createAppearanceState } from "./appearance.ts";
 import { OwnerMessageRejectedError, OwnerReleaseRejectedError, OwnerSelectionRejectedError, ResumeRejectedError, StopRejectedError } from "@model-council/core";
 import type { SessionEvent, UrlResponse, UrlTransport } from "@model-council/core";
 import type { UsageSummary } from "@model-council/core/protocol";
@@ -13,7 +14,7 @@ import { PreviewError } from "./materials-preview.ts";
 import { RerunError } from "./rerun.ts";
 import { SettingsError } from "./settings.ts";
 import { createMaterialsDraft } from "./materials.ts";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -52,6 +53,7 @@ function setup(over: Partial<BridgeDeps> = {}) {
     exportSession: vi.fn(async () => ({ path: "/x.md" })),
     setPinned: vi.fn(),
     language: { view: vi.fn(() => ({ language: "ru" as const, source: "default" as const, locked: false })), set: vi.fn((l: unknown) => ({ language: l as "en", source: "file" as const, locked: false })), invalidNotice: vi.fn(() => null) },
+    appearance: { view: vi.fn(() => ({ mode: "dark" as const, lightTheme: "tuman" as const, theme: "osen" as const })), set: vi.fn((i: unknown) => ({ mode: "light" as const, lightTheme: (i as { lightTheme: "len" }).lightTheme, theme: (i as { lightTheme: "len" }).lightTheme })), systemChanged: vi.fn(), background: vi.fn(() => "#17130F") },
     settings: {
       view: vi.fn(async () => "view" as never),
       recheck: vi.fn(async () => "recheck" as never),
@@ -750,6 +752,30 @@ describe("bridge: language and refusal texts", () => {
   it("a language change refusal arrives as a bridge error with the refusal text", async () => {
     const { bridge } = setup({ language: { view: vi.fn(), invalidNotice: vi.fn(() => null), set: vi.fn(() => { throw new LanguageRejectedError("заперто"); }) } as never });
     expect(await bridge.call("setLanguage", ["en"])).toEqual({ ok: false, error: "заперто" });
+  });
+
+  it("appearance and setAppearance go through the dependency", async () => {
+    const { deps, bridge } = setup();
+    expect(await bridge.call("appearance", [])).toEqual({ ok: true, value: { mode: "dark", lightTheme: "tuman", theme: "osen" } });
+    expect(await bridge.call("setAppearance", [{ mode: "light", lightTheme: "len" }])).toMatchObject({ ok: true, value: { theme: "len" } });
+    expect(deps.appearance.set).toHaveBeenCalledWith({ mode: "light", lightTheme: "len" });
+  });
+
+  it("an unknown theme is refused with the shell text and appearance.json is not created", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "osen-appearance-"));
+    try {
+      const sent: unknown[] = [];
+      const appearance = createAppearanceState({ dataDir: dir, systemDark: () => false, send: (e) => sent.push(e), logger: { info() {}, error() {} } as never });
+      const { bridge } = setup({ appearance });
+      expect(await bridge.call("setAppearance", [{ lightTheme: "sakura" }])).toEqual({ ok: false, error: "Неизвестная настройка темы." });
+      expect(existsSync(join(dir, "appearance.json"))).toBe(false);
+      expect(sent).toEqual([]);
+      expect(await bridge.call("setAppearance", [{ lightTheme: "len" }])).toMatchObject({ ok: true });
+      expect(existsSync(join(dir, "appearance.json"))).toBe(true);
+      expect(sent).toHaveLength(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("notices returns the dependency list unchanged (the language notice is added by main)", async () => {

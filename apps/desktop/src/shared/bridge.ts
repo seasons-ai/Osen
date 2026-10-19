@@ -49,6 +49,14 @@ export interface DraftView { draftId: string; participantId: string; attempts: n
 /** Interface language: locked — set by the COUNCIL_LANG environment variable, a change is rejected. */
 export interface LanguageView { language: Language; source: "env" | "file" | "default"; locked: boolean }
 
+/** Theme: the stored choice (mode and light theme are independent) and the effective theme derived from it. */
+export type ThemeMode = "dark" | "light" | "system";
+export type LightTheme = "tuman" | "len" | "inei" | "pergament";
+export type ThemeId = "osen" | LightTheme;
+/** Initial theme of the window, handed to the renderer by preload as window.osenInitial. */
+export interface OsenInitial { theme: ThemeId }
+export interface AppearanceView { mode: ThemeMode; lightTheme: LightTheme; theme: ThemeId }
+
 export interface LiveText { turn: number; attempt: number; text: string }
 
 export interface BridgeActions {
@@ -96,6 +104,7 @@ export interface BridgeActions {
   saveTemplate(id: string, draft: TemplateDraft): TemplateSaveResult;
   removeTemplate(id: string, mode: TemplateRemoveMode): void;
   language(): LanguageView;
+  appearance(): AppearanceView;
   connections(): ConnectionsView; // clients and the council command as the modules report them; writes nothing
   connectClient(id: string): ClientActionReply; // only the client id: the entry comes from main's own server command
   updateClient(id: string): ClientActionReply;
@@ -105,9 +114,10 @@ export interface BridgeActions {
   removeCommand(): CommandActionReply<RemoveResult>;
   copyZprofileLine(): void; // the line comes from main, not from the window
   setLanguage(language: Language): LanguageView; // a refusal on locked and on a write error; the language event goes to all subscribers
+  setAppearance(input: { mode?: ThemeMode; lightTheme?: LightTheme }): AppearanceView; // a refusal on an unknown value and on a write error; the appearance event goes to all subscribers
 }
 
-export const BRIDGE_ACTIONS = ["listSessions", "openSession", "closeSession", "sessionDrafts", "notices", "listTemplates", "registry", "lineups", "saveLineup", "startSession", "lastParticipants", "stopSession", "sendOwnerMessage", "continueWait", "copyText", "exportSession", "setPinned", "usageSummary", "settings", "recheckProviders", "saveProvider", "deleteProvider", "saveModels", "refreshModels", "testProvider", "saveDefaults", "materials", "pickMaterials", "attachMaterials", "addUrl", "removeMaterial", "clearMaterials", "returnIgnored", "excludeIgnored", "previewMaterials", "prepareRerun", "resumeOptions", "resumeSession", "acceptVersion", "templateEditor", "createTemplate", "saveTemplate", "removeTemplate", "language", "setLanguage", "connections", "connectClient", "updateClient", "disconnectClient", "checkClient", "installCommand", "removeCommand", "copyZprofileLine"] as const satisfies readonly (keyof BridgeActions)[];
+export const BRIDGE_ACTIONS = ["listSessions", "openSession", "closeSession", "sessionDrafts", "notices", "listTemplates", "registry", "lineups", "saveLineup", "startSession", "lastParticipants", "stopSession", "sendOwnerMessage", "continueWait", "copyText", "exportSession", "setPinned", "usageSummary", "settings", "recheckProviders", "saveProvider", "deleteProvider", "saveModels", "refreshModels", "testProvider", "saveDefaults", "materials", "pickMaterials", "attachMaterials", "addUrl", "removeMaterial", "clearMaterials", "returnIgnored", "excludeIgnored", "previewMaterials", "prepareRerun", "resumeOptions", "resumeSession", "acceptVersion", "templateEditor", "createTemplate", "saveTemplate", "removeTemplate", "language", "setLanguage", "appearance", "setAppearance", "connections", "connectClient", "updateClient", "disconnectClient", "checkClient", "installCommand", "removeCommand", "copyZprofileLine"] as const satisfies readonly (keyof BridgeActions)[];
 
 export type BridgeEvent =
   | { type: "sessions"; sessions: HistoryItem[] }
@@ -116,6 +126,7 @@ export type BridgeEvent =
   | { type: "turn-text"; id: string; turn: number; attempt: number; offset: number; text: string }
   | { type: "error"; message: string }
   | { type: "language"; view: LanguageView }
+  | { type: "appearance"; view: AppearanceView }
   | { type: "open-result"; id: string }
   | { type: "open-session"; id: string }; // open the session screen without requesting "Result": a running session shows "Discussion"
 

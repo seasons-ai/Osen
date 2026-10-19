@@ -6,13 +6,14 @@ import {
   applyProcessLanguage, OwnerReleaseRejectedError, OwnerSelectionRejectedError, readUsageSummary, requestOwnerMessage, setPdfExtractorRuntime, requestOwnerRelease, requestStop, selectOwnerVersion, prepareDataDir, userTemplatesDir, builtinTemplateIds, watchSession,
 } from "@model-council/core";
 import { readFile, writeFile } from "node:fs/promises";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, protocol, shell } from "electron";
+import { app, BrowserWindow, nativeTheme, clipboard, dialog, ipcMain, Notification, protocol, shell } from "electron";
 import { CALL_CHANNEL, EVENT_CHANNEL } from "../shared/bridge.ts";
 import type { BridgeEvent } from "../shared/bridge.ts";
 import { createBridge } from "./bridge.ts";
 import { createConnections } from "./connections.ts";
 import { headlessBinPath } from "./headless-paths.ts";
 import { closeWarningText, createLanguageState } from "./language.ts";
+import { createAppearanceState } from "./appearance.ts";
 import { shell as shellMessages } from "../shared/messages/shell.ts";
 import { launch as launchMessages } from "../shared/messages/launch.ts";
 import { exportSession } from "./export.ts";
@@ -97,6 +98,18 @@ async function start(): Promise<void> {
   }
   const logger = createLogger(dataDir, "desktop", env);
   const language = createLanguageState({ env, dataDir, send: (event) => send(event), logger });
+  // main follows its own appearance events: the native theme source and the window background change in one place
+  const appearance = createAppearanceState({
+    dataDir,
+    systemDark: () => nativeTheme.shouldUseDarkColors,
+    applyMode: (mode) => void (nativeTheme.themeSource = mode),
+    send: (event) => {
+      if (win && !win.isDestroyed()) win.setBackgroundColor(appearance.background());
+      send(event);
+    },
+    logger,
+  });
+  nativeTheme.on("updated", () => appearance.systemChanged());
   const loggedUsageSkips = new Set<string>();
   const loggedTariffWarnings = new Set<string>();
   // its own handler disables the Electron error window, so we show the window ourselves; the app is not closed — a session may be running in it
@@ -145,7 +158,7 @@ async function start(): Promise<void> {
   if (!devUrl) protocol.handle(APP_SCHEME, serveRenderer(join(import.meta.dirname, "../renderer")));
   const appUrl = devUrl ?? APP_URL;
   if (!app.isPackaged) app.dock?.setIcon(DEV_ICON);
-  const window = (win = new BrowserWindow(windowOptions(join(import.meta.dirname, "../preload/index.cjs"), app.isPackaged)));
+  const window = (win = new BrowserWindow(windowOptions(join(import.meta.dirname, "../preload/index.cjs"), app.isPackaged, appearance.view().theme)));
 
   window.webContents.on("render-process-gone", (_e, details) => logger.error(`Window process gone: ${details.reason}`));
 
@@ -222,6 +235,7 @@ async function start(): Promise<void> {
   });
   const bridge = createBridge({
     language,
+    appearance,
     connections,
     settings,
     templates: createTemplateEditor({ dirs: templateDirs, logger, sessionFraming: (id) => (isValidSessionId(id) ? readSession(dataDir, id)?.state.session?.framing ?? null : null) }),

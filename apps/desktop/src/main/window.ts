@@ -1,10 +1,15 @@
 import { join } from "node:path";
 import type { BrowserWindowConstructorOptions, BrowserWindow } from "electron";
+import type { ThemeId } from "../shared/bridge.ts";
+import { THEME_ARG } from "../shared/theme-arg.ts";
+import { WINDOW_BACKGROUNDS } from "./appearance.ts";
+
+export { THEME_ARG };
 
 // The development window icon from sources (src/main and out/main at the same depth); the built app takes the package icon.icns.
 export const DEV_ICON = join(import.meta.dirname, "../../../../design/mockup-osen/brand/app-icon/icon.png");
 
-export function windowOptions(preloadPath: string, packaged: boolean): BrowserWindowConstructorOptions {
+export function windowOptions(preloadPath: string, packaged: boolean, theme: ThemeId): BrowserWindowConstructorOptions {
   return {
     ...(!packaged && { icon: DEV_ICON }),
     width: 1100,
@@ -12,7 +17,8 @@ export function windowOptions(preloadPath: string, packaged: boolean): BrowserWi
     minWidth: 900,
     minHeight: 600,
     show: false,
-    webPreferences: { preload: preloadPath, contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: false },
+    backgroundColor: WINDOW_BACKGROUNDS[theme],
+    webPreferences: { preload: preloadPath, contextIsolation: true, sandbox: true, nodeIntegration: false, webviewTag: false, additionalArguments: [`${THEME_ARG}${theme}`] },
   };
 }
 
