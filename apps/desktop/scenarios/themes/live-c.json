@@ -1,0 +1,6 @@
+{
+  "steps": [
+    { "response": { "stance": "object", "reasoning": "Таблица не покажет причин, нужен ещё текстовый вывод.", "solution": null, "answers": [], "questions": [] } },
+    { "delayMs": 3600000, "response": { "stance": "agree", "reasoning": "Теперь согласен.", "solution": null, "answers": [], "questions": [] } }
+  ]
+}
