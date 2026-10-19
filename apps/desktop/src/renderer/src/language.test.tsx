@@ -20,14 +20,14 @@ describe("shell by language", () => {
     const h = shellHtml(v("en"), "1.0.0");
     for (const l of ["New", "History", "Settings"]) expect(h).toContain(`<span>${l}</span>`);
     expect(h).toContain('aria-label="Close"');
-    expect(h).toMatch(/aria-hidden="true"><img src="[^"]*osen-mark-small\.svg" alt=""/);
+    expect(h).toMatch(/<div class="rail__brand" aria-hidden="true"><svg [^>]*aria-hidden="true" focusable="false">/);
     expect(h).toContain('title="App version"');
   });
   it("ru: previous labels, mark instead of a letter", () => {
     const h = shellHtml(v("ru"), "1.0.0");
     for (const l of ["Новое", "История", "Настройки"]) expect(h).toContain(`<span>${l}</span>`);
     expect(h).toContain('aria-label="Закрыть"');
-    expect(h).toMatch(/aria-hidden="true"><img src="[^"]*osen-mark-small\.svg" alt=""/);
+    expect(h).toMatch(/<div class="rail__brand" aria-hidden="true"><svg [^>]*aria-hidden="true" focusable="false">/);
   });
 });
 

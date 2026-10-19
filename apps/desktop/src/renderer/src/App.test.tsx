@@ -172,11 +172,16 @@ describe("Shell: rerun", () => {
 describe("mark in the rail", () => {
   const brand = (h: string) => /<div class="rail__brand"[^>]*>(.*?)<\/div>/.exec(h);
 
-  it.each(["en", "ru"] as const)("%s: in .rail__brand the osen-mark-small 32×32 mark with an empty alt, no letter", (language) => {
+  it.each(["en", "ru"] as const)("%s: in .rail__brand an inline 32×32 svg on theme tokens, no veins, no img, no letter", (language) => {
     const h = renderToStaticMarkup(<Shell state={initialUi()} dispatch={() => {}} language={language} />);
     const m = brand(h)!;
     expect(m[0]).toContain('aria-hidden="true"');
-    expect(m[1]).toMatch(/^<img src="[^"]*osen-mark-small\.svg" alt="" width="32" height="32"\/>$/);
+    expect(m[1]).toMatch(/^<svg [^>]*width="32" height="32" aria-hidden="true" focusable="false">.*<\/svg>$/);
+    expect(m[1]).toContain("fill:var(--leaf)");
+    expect(m[1]).toContain("var(--rain)");
+    expect(m[1]!.match(/<line /g)).toHaveLength(1);
+    expect(h).not.toContain("<img");
+    expect(h).not.toContain("osen-mark-small.svg");
   });
 
   it("the design/mockup/shell.js mockup puts the same mark in the rail", () => {
