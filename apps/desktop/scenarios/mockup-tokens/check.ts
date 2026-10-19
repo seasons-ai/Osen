@@ -114,7 +114,8 @@ for (const m of rootBlock.matchAll(/--([\w-]+)\s*:\s*([^;]+);/g)) {
 }
 // Hex colors of a [data-theme="<id>"] block.
 const themeColors = (id: string) => {
-  const block = new RegExp(`\\[data-theme="${id}"\\]\\s*\\{([\\s\\S]*?)\\n\\}`).exec(tokensCss)?.[1] ?? "";
+  const at = tokensCss.indexOf(`[data-theme="${id}"] {`);
+  const block = at < 0 ? "" : tokensCss.slice(at, tokensCss.indexOf("\n}", at));
   return new Map([...block.matchAll(/--([\w-]+)\s*:\s*(#[0-9a-f]{6})\s*;/gi)].map((m) => [m[1]!, m[2]!.toLowerCase()]));
 };
 const varList = (names: string[]) => names.map((n) => `var(--${n})`).join(" or ");
