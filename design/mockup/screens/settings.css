@@ -34,3 +34,13 @@
 .settings-tabs .tab{min-height:38px;padding:0 var(--sp-3);font-size:var(--fs-md);color:var(--text-faint)}
 .settings-tabs .tab:hover{color:var(--text)}
 .settings-tabs .tab[aria-selected="true"]{color:var(--text);border-bottom:var(--bar-w) solid var(--text)}
+/* connections tab: client cards reuse .settings-card; no shadows, tokens only */
+.settings-card__note{margin:0}
+.conn-result{display:flex;align-items:center;gap:var(--sp-2);color:var(--ok);font-size:var(--fs-sm)}
+.conn-line{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2);padding:var(--sp-2) var(--sp-3);background:var(--bg-inset);border:var(--border-w) solid var(--line);border-radius:var(--r-md)}
+.conn-line__text{flex:1;min-width:0;overflow-wrap:anywhere;font-size:var(--fs-sm)}
+.conn-scrim{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:var(--sp-4);background:transparent}
+.conn-dialog{width:100%;max-width:480px;padding:var(--sp-4);background:var(--bg-2);border:var(--border-w) solid var(--line-strong);border-radius:var(--r-lg);box-shadow:none;display:flex;flex-direction:column;gap:var(--sp-3)}
+.conn-dialog__title{margin:0;font-size:var(--fs-lg);font-weight:var(--fw-bold);line-height:var(--lh-tight)}
+.conn-dialog__text{margin:0;color:var(--text-dim);overflow-wrap:anywhere}
+.settings-card__name--wrap{white-space:normal}

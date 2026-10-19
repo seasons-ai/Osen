@@ -7,7 +7,7 @@ const { version } = JSON.parse(readFileSync(resolve(import.meta.dirname, "packag
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ exclude: ["@model-council/core"] })],
+    plugins: [externalizeDepsPlugin({ exclude: ["@model-council/connect", "@model-council/core"] })],
     build: {
       rollupOptions: {
         // PDF text extraction runs in a child process: two self-contained files next to index.js
@@ -25,7 +25,7 @@ export default defineConfig({
     },
   },
   preload: {
-    plugins: [externalizeDepsPlugin({ exclude: ["@model-council/core"] })],
+    plugins: [externalizeDepsPlugin({ exclude: ["@model-council/connect", "@model-council/core"] })],
     build: {
       rollupOptions: {
         input: resolve("src/preload/index.ts"),

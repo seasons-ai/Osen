@@ -1,6 +1,7 @@
 import type { JournalPartial, Session, SessionEvent, StoredStatus } from "@model-council/core";
 import type { Language } from "@model-council/core/i18n";
 import type { OwnerSelection, UsageSummary } from "@model-council/core/protocol";
+import type { CheckResult, ClientActionReply, CommandActionReply, ConnectionsView, InstallResult, RemoveResult } from "./connections.ts";
 import type { DefaultsValues, ProviderInput, SettingsProvider, SettingsView, TestResult } from "./settings.ts";
 import type { Billing, LineupSaveInput, LineupSaveResult, LineupsView, MaterialsKind, MaterialsPreviewView, MaterialsView, ProviderOption, RegistryView, RerunView, RosterEntry, StartInput, StartResult, TemplateDraft, TemplateEditorData, TemplateEditorRequest, TemplateRemoveMode, TemplateSaveResult, TemplatesView } from "./setup.ts";
 
@@ -95,10 +96,18 @@ export interface BridgeActions {
   saveTemplate(id: string, draft: TemplateDraft): TemplateSaveResult;
   removeTemplate(id: string, mode: TemplateRemoveMode): void;
   language(): LanguageView;
+  connections(): ConnectionsView; // clients and the council command as the modules report them; writes nothing
+  connectClient(id: string): ClientActionReply; // only the client id: the entry comes from main's own server command
+  updateClient(id: string): ClientActionReply;
+  disconnectClient(id: string): ClientActionReply;
+  checkClient(id: string): CheckResult; // free check of the recorded command: initialize + tools/list, no models
+  installCommand(): CommandActionReply<InstallResult>;
+  removeCommand(): CommandActionReply<RemoveResult>;
+  copyZprofileLine(): void; // the line comes from main, not from the window
   setLanguage(language: Language): LanguageView; // a refusal on locked and on a write error; the language event goes to all subscribers
 }
 
-export const BRIDGE_ACTIONS = ["listSessions", "openSession", "closeSession", "sessionDrafts", "notices", "listTemplates", "registry", "lineups", "saveLineup", "startSession", "lastParticipants", "stopSession", "sendOwnerMessage", "continueWait", "copyText", "exportSession", "setPinned", "usageSummary", "settings", "recheckProviders", "saveProvider", "deleteProvider", "saveModels", "refreshModels", "testProvider", "saveDefaults", "materials", "pickMaterials", "attachMaterials", "addUrl", "removeMaterial", "clearMaterials", "returnIgnored", "excludeIgnored", "previewMaterials", "prepareRerun", "resumeOptions", "resumeSession", "acceptVersion", "templateEditor", "createTemplate", "saveTemplate", "removeTemplate", "language", "setLanguage"] as const satisfies readonly (keyof BridgeActions)[];
+export const BRIDGE_ACTIONS = ["listSessions", "openSession", "closeSession", "sessionDrafts", "notices", "listTemplates", "registry", "lineups", "saveLineup", "startSession", "lastParticipants", "stopSession", "sendOwnerMessage", "continueWait", "copyText", "exportSession", "setPinned", "usageSummary", "settings", "recheckProviders", "saveProvider", "deleteProvider", "saveModels", "refreshModels", "testProvider", "saveDefaults", "materials", "pickMaterials", "attachMaterials", "addUrl", "removeMaterial", "clearMaterials", "returnIgnored", "excludeIgnored", "previewMaterials", "prepareRerun", "resumeOptions", "resumeSession", "acceptVersion", "templateEditor", "createTemplate", "saveTemplate", "removeTemplate", "language", "setLanguage", "connections", "connectClient", "updateClient", "disconnectClient", "checkClient", "installCommand", "removeCommand", "copyZprofileLine"] as const satisfies readonly (keyof BridgeActions)[];
 
 export type BridgeEvent =
   | { type: "sessions"; sessions: HistoryItem[] }

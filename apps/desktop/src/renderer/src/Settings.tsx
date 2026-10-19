@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef } from "react";
 import type { ReactNode } from "react";
 import type { DefaultsValues, ProviderInput, SettingsProvider, SettingsView } from "../../shared/settings.ts";
+import { ConnectionsTab } from "./ConnectionsTab.tsx";
 import { DefaultsPanel } from "./DefaultsPanel.tsx";
 import { settings } from "../../shared/messages/settings.ts";
 import { shell } from "../../shared/messages/shell.ts";
@@ -16,7 +17,7 @@ import type { TestAction, TestState } from "./ProviderTest.tsx";
 export interface SettingsState {
   view: SettingsView | null;
   loadError: string | null;
-  tab: "providers" | "defaults";
+  tab: "providers" | "defaults" | "connections";
   rechecking: boolean;
   busy: Record<string, boolean>;
   drafts: Record<string, string>;
@@ -163,41 +164,50 @@ function RecheckButton({ rechecking, onRecheck }: { rechecking: boolean; onReche
 function Body({ state, now, on }: { state: SettingsState; now: Date; on: SettingsHandlers }): ReactNode {
   const t = useMessages(settings);
   const { view, loadError, rechecking } = state;
-  if (loadError !== null) {
-    return (
-      <div className="alert" data-tone="danger" role="alert">
-        <Icon name="i-alert" />
-        <div>
-          <div className="alert__title">{t.loadFailedTitle}</div>
-          <div className="alert__text">{loadError}</div>
-        </div>
-        <div className="alert__actions">
-          <button type="button" className="btn btn--sm" disabled={rechecking} onClick={on.onRecheck}>{t.recheck}</button>
-        </div>
-      </div>
-    );
-  }
-  if (view === null) return <p className="muted">{t.loading}</p>;
-  if (view.registryError !== null) {
-    return (
-      <div className="alert" data-tone="danger" role="alert">
-        <Icon name="i-alert" />
-        <div>
-          <div className="alert__title">{t.configErrorTitle}</div>
-          <div className="alert__text">{view.registryError}</div>
-          <div className="alert__text">{t.fileLabel} <span className="mono">{view.configPath}</span></div>
-          <div className="alert__text">{t.configErrorHelp}</div>
-        </div>
-        <div className="alert__actions"><RecheckButton rechecking={rechecking} onRecheck={on.onRecheck} /></div>
-      </div>
-    );
-  }
   const tabs = (
     <div className="tabs settings-tabs" role="tablist">
       <button type="button" className="tab" role="tab" aria-selected={state.tab === "providers"} onClick={() => on.onTab("providers")}>{t.tabProviders}</button>
       <button type="button" className="tab" role="tab" aria-selected={state.tab === "defaults"} onClick={() => on.onTab("defaults")}>{t.tabDefaults}</button>
+      <button type="button" className="tab" role="tab" aria-selected={state.tab === "connections"} onClick={() => on.onTab("connections")}>{t.tabConnections}</button>
     </div>
   );
+  // Client settings do not live in config.json: this tab works while the registry is broken or still loading.
+  if (state.tab === "connections") return <>{tabs}<ConnectionsTab /></>;
+  if (loadError !== null) {
+    return (
+      <>
+        {tabs}
+        <div className="alert" data-tone="danger" role="alert">
+          <Icon name="i-alert" />
+          <div>
+            <div className="alert__title">{t.loadFailedTitle}</div>
+            <div className="alert__text">{loadError}</div>
+          </div>
+          <div className="alert__actions">
+            <button type="button" className="btn btn--sm" disabled={rechecking} onClick={on.onRecheck}>{t.recheck}</button>
+          </div>
+        </div>
+      </>
+    );
+  }
+  if (view === null) return <>{tabs}<p className="muted">{t.loading}</p></>;
+  if (view.registryError !== null) {
+    return (
+      <>
+        {tabs}
+        <div className="alert" data-tone="danger" role="alert">
+          <Icon name="i-alert" />
+          <div>
+            <div className="alert__title">{t.configErrorTitle}</div>
+            <div className="alert__text">{view.registryError}</div>
+            <div className="alert__text">{t.fileLabel} <span className="mono">{view.configPath}</span></div>
+            <div className="alert__text">{t.configErrorHelp}</div>
+          </div>
+          <div className="alert__actions"><RecheckButton rechecking={rechecking} onRecheck={on.onRecheck} /></div>
+        </div>
+      </>
+    );
+  }
   if (state.tab === "defaults") {
     return (
       <>

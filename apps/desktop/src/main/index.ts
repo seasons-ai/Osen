@@ -1,4 +1,6 @@
-import { extname, join } from "node:path";
+import { accessSync, constants } from "node:fs";
+import { homedir } from "node:os";
+import { delimiter, extname, join } from "node:path";
 import {
   CLI_AGENTS, DataDirError, createLogger, ensureDataDir, ensureRegistry, envFilePath, inspectProviders, loadEnv, locateCli, isValidSessionId, loadTemplates, logRegistryLoaded, readRegistry, readSession,
   applyProcessLanguage, OwnerReleaseRejectedError, OwnerSelectionRejectedError, readUsageSummary, requestOwnerMessage, setPdfExtractorRuntime, requestOwnerRelease, requestStop, selectOwnerVersion, prepareDataDir, userTemplatesDir, builtinTemplateIds, watchSession,
@@ -8,6 +10,8 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, Notification, protocol,
 import { CALL_CHANNEL, EVENT_CHANNEL } from "../shared/bridge.ts";
 import type { BridgeEvent } from "../shared/bridge.ts";
 import { createBridge } from "./bridge.ts";
+import { createConnections } from "./connections.ts";
+import { headlessBinPath } from "./headless-paths.ts";
 import { closeWarningText, createLanguageState } from "./language.ts";
 import { shell as shellMessages } from "../shared/messages/shell.ts";
 import { launch as launchMessages } from "../shared/messages/launch.ts";
@@ -196,8 +200,29 @@ async function start(): Promise<void> {
     const found = await inspectProviders(reg, { env, keyFile: envFilePath(dataDir) });
     return { reg, statuses: found.map((f) => f.status) };
   };
+  // Packaged: the wrappers inside Osen.app, null when missing. Development: the server from the repo with an absolute node
+  // (a client may have no node in its PATH); the council link exists only when the dev stand provides a fake wrapper.
+  const packagedBin = (name: "osen-mcp" | "council") => headlessBinPath(name, { packaged: true, resourcesPath: process.resourcesPath });
+  const absoluteNode = (): string => {
+    for (const d of (env["PATH"] ?? "").split(delimiter)) {
+      try { accessSync(join(d, "node"), constants.X_OK); return join(d, "node"); } catch { /* next */ }
+    }
+    return "node";
+  };
+  const serverBin = app.isPackaged ? packagedBin("osen-mcp") : null;
+  const connections = createConnections({
+    home: homedir(),
+    env,
+    logger,
+    language: () => language.view().language,
+    serverCommand: app.isPackaged
+      ? (serverBin ? { command: serverBin, args: [] } : null)
+      : { command: absoluteNode(), args: [join(app.getAppPath(), "../../packages/mcp/src/main.ts")] },
+    councilWrapper: app.isPackaged ? packagedBin("council") : env["COUNCIL_DEV"] === "1" ? env["COUNCIL_COMMAND_WRAPPER"] ?? null : null,
+  });
   const bridge = createBridge({
     language,
+    connections,
     settings,
     templates: createTemplateEditor({ dirs: templateDirs, logger, sessionFraming: (id) => (isValidSessionId(id) ? readSession(dataDir, id)?.state.session?.framing ?? null : null) }),
     materials,

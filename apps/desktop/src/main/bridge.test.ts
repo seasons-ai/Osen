@@ -8,6 +8,7 @@ import type { RegistryView } from "../shared/setup.ts";
 import { LaunchError } from "./launcher.ts";
 import { createBridge } from "./bridge.ts";
 import type { BridgeDeps } from "./bridge.ts";
+import { UnknownClientError } from "./connections.ts";
 import { PreviewError } from "./materials-preview.ts";
 import { RerunError } from "./rerun.ts";
 import { SettingsError } from "./settings.ts";
@@ -69,6 +70,16 @@ function setup(over: Partial<BridgeDeps> = {}) {
     },
     materials: createMaterialsDraft({ limits: () => ({ materialsChars: 1000, materialsIgnore: ["node_modules"] }) }),
     pickMaterials: vi.fn(async () => null),
+    connections: {
+      view: vi.fn(async () => "view" as never),
+      connect: vi.fn(async () => "connect" as never),
+      update: vi.fn(async () => "update" as never),
+      disconnect: vi.fn(async () => "disconnect" as never),
+      check: vi.fn(async () => "check" as never),
+      installCommand: vi.fn(async () => "installCommand" as never),
+      removeCommand: vi.fn(async () => "removeCommand" as never),
+      zprofileLine: vi.fn(() => "LINE"),
+    },
     send: vi.fn(),
     logger: { info: vi.fn(), error: vi.fn() },
     ...over,
@@ -763,5 +774,33 @@ describe("bridge: startSession", () => {
   it("LaunchError without a code: an ordinary refusal", async () => {
     const { bridge } = setup({ startSession: vi.fn(async () => { throw new LaunchError("Nope"); }) });
     expect(await bridge.call("startSession", [{}])).toEqual({ ok: false, error: "Nope" });
+  });
+});
+
+describe("bridge: connections", () => {
+  it("routes the actions and passes only the client id", async () => {
+    const { deps, bridge } = setup();
+    expect(await bridge.call("connections", [])).toEqual({ ok: true, value: "view" });
+    expect(await bridge.call("connectClient", ["codex", { command: "/evil" }, "/path"])).toEqual({ ok: true, value: "connect" });
+    await bridge.call("updateClient", ["codex", "x"]);
+    await bridge.call("disconnectClient", ["codex", "x"]);
+    await bridge.call("checkClient", ["codex", "x"]);
+    expect(await bridge.call("installCommand", ["/evil"])).toEqual({ ok: true, value: "installCommand" });
+    expect(await bridge.call("removeCommand", [])).toEqual({ ok: true, value: "removeCommand" });
+    for (const f of ["connect", "update", "disconnect", "check"] as const) expect(deps.connections[f]).toHaveBeenCalledWith("codex");
+    expect(deps.connections.installCommand).toHaveBeenCalledWith();
+  });
+
+  it("copyZprofileLine copies main's own line, ignoring window text", async () => {
+    const { deps, bridge } = setup();
+    expect(await bridge.call("copyZprofileLine", ["rm -rf ~"])).toEqual({ ok: true, value: null });
+    expect(deps.copyText).toHaveBeenCalledWith("LINE");
+  });
+
+  it("an unknown client becomes { ok: false } and the bridge adds no log line", async () => {
+    const connect = vi.fn(async () => { throw new UnknownClientError("Неизвестный клиент"); });
+    const { deps, bridge } = setup({ connections: { ...setup().deps.connections, connect } });
+    expect(await bridge.call("connectClient", ["nope"])).toEqual({ ok: false, error: "Неизвестный клиент" });
+    expect(deps.logger.error).not.toHaveBeenCalled();
   });
 });

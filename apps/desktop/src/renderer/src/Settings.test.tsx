@@ -44,7 +44,7 @@ describe("SettingsScreen", () => {
     expect(h).toContain("/cfg/config.json");
     expect(h).toContain("Приложение не исправляет этот файл само");
     expect(h).toContain("Проверить заново");
-    expect(h).not.toContain('role="tab"');
+    expect(h).toContain(">Подключения<");
     expect(h).not.toContain("settings-card");
   });
   it("all available: cards, no banner", () => {
@@ -299,3 +299,35 @@ describe("SettingsScreen: language", () => {
     expect(en(() => html(loaded({ providers: [http({ available: false, keySet: false })] })))).toContain("— key not set.");
   });
 });
+
+describe("Connections tab in SettingsScreen", () => {
+  const withLang = (s: SettingsState) => renderToStaticMarkup(
+    <LanguageProvider initial={{ language: "ru", source: "file", locked: false }}>
+      <SettingsScreen state={s} now={new Date("2026-01-01T12:00:00")} />
+    </LanguageProvider>);
+  it("tab button is third and selecting it renders the tab", () => {
+    const h = html(loaded({}, { tab: "connections" }));
+    expect(h).toContain('aria-selected="true">Подключения');
+    expect(h.indexOf(">Провайдеры<")).toBeLessThan(h.indexOf(">По умолчанию<"));
+    expect(h.indexOf(">По умолчанию<")).toBeLessThan(h.indexOf(">Подключения<"));
+  });
+  it("tab works with a registry error, providers tab keeps the alert", () => {
+    const bad = { registryError: "поле providers: не массив", providers: [], defaults: null };
+    const on = withLang(loaded(bad, { tab: "connections" }));
+    expect(on).toContain('role="tab"');
+    expect(on).not.toContain("Ошибка в файле настроек");
+    expect(on).toContain("Язык интерфейса");
+    const off = withLang(loaded(bad));
+    expect(off).toContain("Ошибка в файле настроек");
+    expect(off).toContain("Подключения");
+  });
+  it("tab works with a load error, language block stays", () => {
+    const s = { ...run(initialSettings(), { type: "loadFailed", message: "сбой моста" }), tab: "connections" as const };
+    const on = withLang(s);
+    expect(on).toContain('role="tab"');
+    expect(on).not.toContain("Не удалось открыть настройки");
+    expect(on).toContain("Язык интерфейса");
+    expect(withLang({ ...s, tab: "providers" })).toContain("Не удалось открыть настройки");
+  });
+});
+
