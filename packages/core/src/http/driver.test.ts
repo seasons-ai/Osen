@@ -108,8 +108,11 @@ describe("HTTP driver: errors", () => {
   it("fake-hang and abort", async () => {
     const s = await start();
     const ctl = new AbortController();
-    setTimeout(() => ctl.abort(), 100);
-    const e = await fails(createHttpDriver(rt(s.url)).call(req("fake-hang", { signal: ctl.signal })));
+    const call = fails(createHttpDriver(rt(s.url)).call(req("fake-hang", { signal: ctl.signal })));
+    // abort only once the server has the request, otherwise there is nothing to count
+    await vi.waitFor(() => expect(s.requests).toHaveLength(1));
+    ctl.abort();
+    const e = await call;
     expect(e.kind).toBe("timeout");
     expect(e.message).toBe("Запрос к эндпоинту прерван");
     await vi.waitFor(() => expect(s.closedEarly).toBe(1));
