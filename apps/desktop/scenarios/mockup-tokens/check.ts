@@ -1,8 +1,13 @@
-// Token stand of the osen mockup: the seven pages design/mockup-osen/*.html take colors, fonts and sizes from brand/tokens.css.
-//   node apps/desktop/scenarios/mockup-tokens/check.ts                       static check (token literals) + token recoloring; no snapshots
+// Token stand of the osen mockup: the eight pages design/mockup-osen/*.html take colors, fonts and sizes from brand/tokens.css.
+//   node apps/desktop/scenarios/mockup-tokens/check.ts                       static check (token literals) + token recoloring + light themes; no snapshots
 //   node apps/desktop/scenarios/mockup-tokens/check.ts --snapshot <folder>    PNG snapshots and JSON computed style: <folder>/<net|offline>/<page>-<width>.{png,json}
 //   node apps/desktop/scenarios/mockup-tokens/check.ts --compare <folder>     the same snapshots in memory against <folder>; PNG byte by byte, JSON structurally
 //   --pages index,setup   narrow the set of pages (in all modes)     --verbose  do not truncate the list of violations
+//   --themes len,inei     narrow the set of light themes
+// Light themes: every page except themes.html is opened as <page>.html#theme=<id> for tuman, len, inei, pergament; <html> gets
+// data-theme=<id>, the body background equals --bg-0 of the theme, and no visible element keeps a color of the dark theme.
+// settings.html in «Осень» also checks the nested theme: the «Лён» preview has the background --bg-0 of len.
+// themes.html is the comparison sheet: its sections take colors from the variables, the sheet frame stays dark on purpose.
 // Snapshot conditions: net — regular Chrome (Google fonts must load), offline — fonts.googleapis.com and fonts.gstatic.com are unavailable.
 // Exceptions — allow.json, an array of objects:
 //   { "page": "styleguide", "value": "#8E8273", "reason": "…" }          static literal: a hex color or declaration text without spaces around ":",
@@ -20,8 +25,9 @@ const root = resolve(here, "../../../..");
 const osen = join(root, "design/mockup-osen");
 const argv = process.argv.slice(2);
 const arg = (name: string) => (argv.includes(name) ? argv[argv.indexOf(name) + 1]! : undefined);
-const ALL_PAGES = ["index", "setup", "session", "result", "history", "settings", "styleguide"];
+const ALL_PAGES = ["index", "setup", "session", "result", "history", "settings", "styleguide", "themes"];
 const pages = arg("--pages")?.split(",") ?? ALL_PAGES;
+const themes = arg("--themes")?.split(",") ?? ["tuman", "len", "inei", "pergament"];
 const verbose = argv.includes("--verbose");
 const WIDTHS = [1100, 900];
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -87,10 +93,10 @@ async function withChrome<T>(extra: string[], run: (cdp: Cdp) => Promise<T>): Pr
   }
 }
 const sleep = (cdp: Cdp, ms: number) => evaluate(cdp, `new Promise((r) => setTimeout(r, ${ms}))`);
-async function open(cdp: Cdp, page: string, width: number, height = 800) {
+async function open(cdp: Cdp, page: string, width: number, height = 800, hash = "") {
   await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
   await cdp.send("Page.navigate", { url: "about:blank" });
-  await cdp.send("Page.navigate", { url: pathToFileURL(join(osen, `${page}.html`)).href });
+  await cdp.send("Page.navigate", { url: pathToFileURL(join(osen, `${page}.html`)).href + hash });
   const ready = "Promise.race([new Promise((r) => { const f = () => document.readyState === 'complete' ? document.fonts.ready.then(() => r(true)) : setTimeout(f, 20); f(); }), new Promise((r) => setTimeout(() => r(false), 30000))])";
   if (!(await evaluate(cdp, ready))) throw new Error(`${page}: the page did not load within 30 s`);
 }
@@ -106,6 +112,11 @@ for (const m of rootBlock.matchAll(/--([\w-]+)\s*:\s*([^;]+);/g)) {
   const pm = /^(\d+)px$/.exec(val), kind = /^(fs|sp|r)-/.exec(name)?.[1] as "fs" | "sp" | "r" | undefined;
   if (pm && kind) { const n = Number(pm[1]); px[kind].set(n, [...(px[kind].get(n) ?? []), name]); }
 }
+// Hex colors of a [data-theme="<id>"] block.
+const themeColors = (id: string) => {
+  const block = new RegExp(`\\[data-theme="${id}"\\]\\s*\\{([\\s\\S]*?)\\n\\}`).exec(tokensCss)?.[1] ?? "";
+  return new Map([...block.matchAll(/--([\w-]+)\s*:\s*(#[0-9a-f]{6})\s*;/gi)].map((m) => [m[1]!, m[2]!.toLowerCase()]));
+};
 const varList = (names: string[]) => names.map((n) => `var(--${n})`).join(" or ");
 const hexNames = (hex: string) => [...colorTokens].filter(([, v]) => v === hex.toLowerCase()).map(([n]) => n);
 
@@ -186,12 +197,50 @@ async function recolorCheck() {
         if (!hex) { found.push(`${t}: not in tokens.css`); continue; }
         await open(cdp, page, 1100);
         const same = hexNames(hex).filter((n) => `--${n}` !== t);
-        const inject = `:root{${t}:#00FF00 !important;${same.map((n) => `--${n}:#00FF01 !important`).join(";")}}`;
+        const inject = `:root,[data-theme]{${t}:#00FF00 !important;${same.map((n) => `--${n}:#00FF01 !important`).join(";")}}`;
         const skip = allow.filter((a) => norm(a.page) === page && a.selector).map((a) => a.selector!);
         const r = await evaluate(cdp, `(${inRecolor.toString()})(${JSON.stringify(inject)}, ${JSON.stringify(toRgb(hex))}, ${JSON.stringify(t)}, ${JSON.stringify(skip)}, ${JSON.stringify(t === "--leaf" && (page === "index" || page === "setup") ? page : "")})`);
         found.push(...r.failures.map((f: string) => `${page}: ${f}`), ...r.extras.map((f: string) => `${page}: ${f}`));
       }
       failList(found, `recoloring ${page}`);
+    }
+  });
+}
+
+// ---------- light themes ----------
+function inTheme(theme: string, bg0: string, dark: string[]) {
+  const failures: string[] = [];
+  const path = (el: Element) => { const p: string[] = []; for (let e: Element | null = el; e && e !== document.documentElement; e = e.parentElement) { const i = e.parentElement ? [...e.parentElement.children].indexOf(e) + 1 : 1; p.unshift(`${e.localName}${e.id ? "#" + e.id : ""}:nth-child(${i})`); } return p.join(" > ") || "html"; };
+  const attr = document.documentElement.getAttribute("data-theme");
+  if (attr !== theme) failures.push(`<html> data-theme=${attr}, expected ${theme}`);
+  const body = getComputedStyle(document.body).backgroundColor;
+  if (body !== bg0) failures.push(`body background-color ${body}, expected ${bg0}`);
+  for (const el of document.querySelectorAll("body, body *")) {
+    const s = getComputedStyle(el);
+    if (!el.getClientRects().length || s.visibility !== "visible") continue;
+    const props: [string, string][] = [["color", s.color], ["background-color", s.backgroundColor]];
+    for (const side of ["top", "right", "bottom", "left"]) if (parseFloat((s as any)[`border-${side}-width`]) > 0 && (s as any)[`border-${side}-style`] !== "none") props.push([`border-${side}-color`, (s as any)[`border-${side}-color`]]);
+    for (const [p, v] of props) if (dark.includes(v)) failures.push(`${path(el)} ${p} ${v} is a color of the dark theme`);
+  }
+  return failures;
+}
+async function themeCheck() {
+  await withChrome([`--host-resolver-rules=${OFFLINE_RULES}`], async (cdp) => {
+    for (const page of pages.filter((p) => p !== "themes")) for (const id of themes) {
+      const colors = themeColors(id);
+      if (!colors.size) { failList([`no [data-theme="${id}"] block in tokens.css`], `theme ${page} ${id}`); continue; }
+      // a dark color that the light theme happens to share is not a leftover
+      const mine = new Set(colors.values());
+      const dark = [...new Set(colorTokens.values())].filter((hex) => !mine.has(hex)).map(toRgb);
+      await open(cdp, page, 1100, 800, `#theme=${id}`);
+      const found: string[] = await evaluate(cdp, `(${inTheme.toString()})(${JSON.stringify(id)}, ${JSON.stringify(toRgb(colors.get("bg-0")!))}, ${JSON.stringify(dark)})`);
+      failList(found.map((f) => `${page} ${id}: ${f}`), `theme ${page} ${id}`);
+    }
+    if (pages.includes("settings")) {
+      const want = toRgb(themeColors("len").get("bg-0")!);
+      await open(cdp, "settings", 1100, 800, "#theme=osen");
+      const got = await evaluate(cdp, `(() => { const el = document.querySelector('.theme-prev[data-theme="len"]'); return el ? getComputedStyle(el).backgroundColor : "not found"; })()`);
+      failList(got === want ? [] : [`settings osen: .theme-prev[data-theme="len"] background-color ${got}, expected ${want}`], "nested theme settings len");
     }
   });
 }
@@ -272,6 +321,7 @@ if (arg("--snapshot")) {
 } else {
   for (const page of pages) failList(staticCheck(page), `static ${page}`);
   await recolorCheck();
+  await themeCheck();
 }
 console.log(fails ? `\nRESULT: FAIL (${fails})` : "\nRESULT: OK");
 process.exit(fails ? 1 : 0);

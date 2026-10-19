@@ -87,3 +87,154 @@
   --fs-brand: 18px;
   --control-h: 36px;      /* высота кнопок и однострочных полей */
 }
+
+/* ── themes ─────────────────────────────────────────────────────────────
+ * The :root block above is the dark theme «Осень» (osen) and stays the default.
+ * A theme is switched by an attribute on <html>: <html data-theme="len">.
+ * The attribute also works on any nested element — that is how the theme
+ * previews in Settings → «Оформление» are drawn.
+ * Every light theme keeps text and semantic colours at ≥ 4.5:1 on all of its
+ * surfaces (--bg-0 … --bg-3, --bg-inset); see SPEC.md, section 12.
+ * Aliases (--accent, --info, --p1…--p8) are repeated per theme so nested
+ * previews resolve them against their own colours.
+ */
+
+/* Осень (osen) — dark, default */
+[data-theme="osen"] {
+  color-scheme: dark;
+  --bg-0: #17130F;
+  --bg-1: #14110D;
+  --bg-2: #211B16;
+  --bg-3: #2A221B;
+  --bg-inset: #1B1612;
+  --line: #2E261F;
+  --line-strong: #3A3028;
+  --text: #EDE4D8;
+  --text-dim: #B3A797;
+  --text-faint: #8E8273;
+  --text-decor: #5C5146;
+  --leaf: #EE9A62;
+  --leaf-hover: #F2AC7B;
+  --text-on-accent: #17130F;
+  --link-hover: #F4B88E;
+  --rain: #9EBFD3;
+  --ok: #A7CC96;
+  --warn: #E8C66E;
+  --danger: #EC8A7A;
+  --accent: var(--leaf);
+  --info: var(--rain);
+  --p1: var(--text-dim); --p2: var(--text-dim); --p3: var(--text-dim); --p4: var(--text-dim);
+  --p5: var(--text-dim); --p6: var(--text-dim); --p7: var(--text-dim); --p8: var(--text-dim);
+}
+
+/* Туман (tuman) — warm paper; default light theme */
+[data-theme="tuman"] {
+  color-scheme: light;
+  --bg-0: #F6F1EA;
+  --bg-1: #EEE6DB;
+  --bg-2: #FDFAF6;
+  --bg-3: #ECE4D9;
+  --bg-inset: #F3EDE5;
+  --line: #E4DACD;
+  --line-strong: #D3C6B6;
+  --text: #2D251F;
+  --text-dim: #574B41;
+  --text-faint: #6E6154;
+  --text-decor: #B8A999;
+  --leaf: #A44A1C;
+  --leaf-hover: #984318;
+  --text-on-accent: #FFFFFF;
+  --link-hover: #8A3C16;
+  --rain: #2E6888;
+  --ok: #3A6D42;
+  --warn: #835A0C;
+  --danger: #A3392F;
+  --accent: var(--leaf);
+  --info: var(--rain);
+  --p1: var(--text-dim); --p2: var(--text-dim); --p3: var(--text-dim); --p4: var(--text-dim);
+  --p5: var(--text-dim); --p6: var(--text-dim); --p7: var(--text-dim); --p8: var(--text-dim);
+}
+
+/* Лён (len) — neutral, near white; highest contrast */
+[data-theme="len"] {
+  color-scheme: light;
+  --bg-0: #F5F5F2;
+  --bg-1: #ECECE8;
+  --bg-2: #FFFFFF;
+  --bg-3: #EAE9E4;
+  --bg-inset: #F1F1ED;
+  --line: #E1E0DA;
+  --line-strong: #CDCBC3;
+  --text: #1D1C1A;
+  --text-dim: #4A4843;
+  --text-faint: #66635C;
+  --text-decor: #AEABA3;
+  --leaf: #A84A1C;
+  --leaf-hover: #8F3F17;
+  --text-on-accent: #FFFFFF;
+  --link-hover: #853A15;
+  --rain: #2A6383;
+  --ok: #356A40;
+  --warn: #7C570E;
+  --danger: #9F352C;
+  --accent: var(--leaf);
+  --info: var(--rain);
+  --p1: var(--text-dim); --p2: var(--text-dim); --p3: var(--text-dim); --p4: var(--text-dim);
+  --p5: var(--text-dim); --p6: var(--text-dim); --p7: var(--text-dim); --p8: var(--text-dim);
+}
+
+/* Иней (inei) — cool blue-grey */
+[data-theme="inei"] {
+  color-scheme: light;
+  --bg-0: #F1F4F6;
+  --bg-1: #E7EBEE;
+  --bg-2: #FBFCFD;
+  --bg-3: #E3E8EC;
+  --bg-inset: #EDF1F4;
+  --line: #DAE0E5;
+  --line-strong: #C6CED5;
+  --text: #1C2328;
+  --text-dim: #455059;
+  --text-faint: #5C6770;
+  --text-decor: #A5B0B8;
+  --leaf: #A54A1F;
+  --leaf-hover: #94431C;
+  --text-on-accent: #FFFFFF;
+  --link-hover: #8A3E19;
+  --rain: #286688;
+  --ok: #336B47;
+  --warn: #7F5A0D;
+  --danger: #A1382F;
+  --accent: var(--leaf);
+  --info: var(--rain);
+  --p1: var(--text-dim); --p2: var(--text-dim); --p3: var(--text-dim); --p4: var(--text-dim);
+  --p5: var(--text-dim); --p6: var(--text-dim); --p7: var(--text-dim); --p8: var(--text-dim);
+}
+
+/* Пергамент (pergament) — soft sepia; for long reading */
+[data-theme="pergament"] {
+  color-scheme: light;
+  --bg-0: #EFE4D0;
+  --bg-1: #E6D9C2;
+  --bg-2: #F6EDDC;
+  --bg-3: #E4D6BF;
+  --bg-inset: #EADFCA;
+  --line: #DCCBB0;
+  --line-strong: #CBB797;
+  --text: #33281C;
+  --text-dim: #5A4A38;
+  --text-faint: #695845;
+  --text-decor: #B29D80;
+  --leaf: #9A4218;
+  --leaf-hover: #8A3B15;
+  --text-on-accent: #FFF8EE;
+  --link-hover: #7F3612;
+  --rain: #2E5F78;
+  --ok: #3E6634;
+  --warn: #7A530B;
+  --danger: #9C3328;
+  --accent: var(--leaf);
+  --info: var(--rain);
+  --p1: var(--text-dim); --p2: var(--text-dim); --p3: var(--text-dim); --p4: var(--text-dim);
+  --p5: var(--text-dim); --p6: var(--text-dim); --p7: var(--text-dim); --p8: var(--text-dim);
+}

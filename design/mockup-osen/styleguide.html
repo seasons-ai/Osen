@@ -7,9 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="brand/tokens.css">
+<script src="brand/theme.js"></script>
 <style>
 :root{color-scheme:normal}
-body{margin:0}
+body{margin:0;background:var(--bg-0)}
 a{color:var(--leaf)}a:hover{color:var(--link-hover)}
 </style>
 </head>
@@ -128,73 +129,73 @@ a{color:var(--leaf)}a:hover{color:var(--link-hover)}
   </div>
 
   <div style="display: flex; flex-direction: column; gap: 14px">
-    <div style="font-size: var(--fs-ui); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint)">Тема tuman — светлая, аналог washi</div>
+    <div style="font-size: var(--fs-ui); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint)">Тема Туман — светлая по умолчанию · все пять тем: themes.html</div>
     <div style="display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 10px">
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #F8F3EC"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #F6F1EA"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">bg</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#F8F3EC</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#F6F1EA</div>
         </div>
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #EFE7DC"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #FDFAF6"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">panel</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#EFE7DC</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#FDFAF6</div>
         </div>
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #E2D6C7"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #E4DACD"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">rule</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#E2D6C7</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#E4DACD</div>
         </div>
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #352B23"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #2D251F"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">text</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#352B23</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#2D251F</div>
         </div>
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #6F6256"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #6E6154"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">muted</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#6F6256</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#6E6154</div>
         </div>
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #C5B6A5"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #B8A999"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">faint</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#C5B6A5</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#B8A999</div>
         </div>
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #B4532A"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #A44A1C"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">leaf</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#B4532A</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#A44A1C</div>
         </div>
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #33698A"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #2E6888"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">rain</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#33698A</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#2E6888</div>
         </div>
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #3F7247"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #3A6D42"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">ok</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#3F7247</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#3A6D42</div>
         </div>
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #8A5F12"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #835A0C"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">warn</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#8A5F12</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#835A0C</div>
         </div>
       
         <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
-          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #A93A32"></div>
+          <div style="height: 72px; border-radius: 8px; border: 1px solid var(--line-strong); background: #A3392F"></div>
           <div style="font-family: var(--font-mono); font-size: var(--fs-ui); color: var(--text)">error</div>
-          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#A93A32</div>
+          <div style="font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-faint)">#A3392F</div>
         </div>
       
     </div>

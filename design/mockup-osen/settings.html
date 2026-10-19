@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="brand/tokens.css">
+<script src="brand/theme.js"></script>
 <style>
 :root{color-scheme:normal}
 body{margin:0;background:var(--bg-0)}
@@ -22,6 +23,29 @@ a{color:var(--leaf)}a:hover{color:var(--link-hover)}
 .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .rail-item{display:flex;flex-direction:column;align-items:center;gap:var(--sp-1);width:68px;padding:9px 0;border-radius:var(--r-lg);color:var(--text-faint);font-size:var(--fs-xs);text-decoration:none}
 .rail-item:hover{background:var(--bg-2);color:var(--text)}
+.seg{min-height:32px;padding:0 14px;border-radius:var(--r-pill);border:1px solid var(--line-strong);background:transparent;color:var(--text-dim);font:inherit;font-size:var(--fs-ui);cursor:pointer}
+.seg:hover{color:var(--text)}
+.seg[aria-checked="true"]{border-color:var(--text);color:var(--text)}
+.theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--sp-3)}
+.theme-card{display:flex;flex-direction:column;padding:0;overflow:hidden;text-align:left;border:1px solid var(--line-strong);border-radius:var(--r-lg);background:var(--bg-2);color:var(--text);font:inherit;cursor:pointer}
+.theme-card:hover{border-color:var(--text-decor)}
+.theme-card[aria-checked="true"]{border-color:var(--leaf);box-shadow:0 0 0 1px var(--leaf)}
+.theme-card__body{display:flex;flex-direction:column;gap:2px;padding:10px var(--sp-3) var(--sp-3)}
+.theme-card__head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-2)}
+.theme-card__name{font-size:var(--fs-md);font-weight:600}
+.theme-card__check{display:none;font-size:var(--fs-sm);color:var(--leaf)}
+.theme-card[aria-checked="true"] .theme-card__check{display:inline}
+.theme-card__desc{font-size:var(--fs-sm);color:var(--text-faint)}
+.theme-prev{display:flex;height:92px;background:var(--bg-0);border-bottom:1px solid var(--line);color:var(--text)}
+.theme-prev__rail{flex:none;width:18px;display:flex;justify-content:center;padding-top:var(--sp-2);background:var(--bg-1);border-right:1px solid var(--line)}
+.theme-prev__dot{width:7px;height:7px;border-radius:50%;background:var(--leaf)}
+.theme-prev__main{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;padding:9px 10px}
+.theme-prev__title{width:52%;height:6px;border-radius:var(--r-sm);background:var(--text)}
+.theme-prev__card{display:flex;gap:var(--sp-1);padding:5px 6px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--bg-2)}
+.theme-prev__chip{padding:0 5px;border:1px solid currentColor;border-radius:var(--r-pill);font-size:9px;line-height:13px;white-space:nowrap}
+.theme-prev__row{display:flex;align-items:center;gap:6px}
+.theme-prev__btn{padding:0 7px;border-radius:var(--r-sm);background:var(--leaf);color:var(--text-on-accent);font-size:9px;line-height:15px}
+.theme-prev__line{flex:1;height:4px;border-radius:2px;background:var(--text-faint)}
 @media (max-width:720px){.shell{flex-direction:column}.rail{flex-direction:row !important;width:auto !important;border-right:none !important;border-bottom:1px solid var(--line)}}
 </style>
 </head>
@@ -60,6 +84,101 @@ a{color:var(--leaf)}a:hover{color:var(--link-hover)}
           <button type="button" role="radio" aria-checked="true" class="btn" style="border-color: var(--text)">Русский <span style="font-size: var(--fs-sm); color: var(--rain)">✓ действующий</span></button>
         </div>
         <span style="font-size: var(--fs-ui); color: var(--text-faint)">Применяется сразу, без перезапуска. Действует также на команду <span class="mono">council</span> и MCP-сервер при их следующем запуске.</span>
+      </section>
+
+      <section aria-labelledby="appearance-title" style="display: flex; flex-direction: column; gap: 18px; padding: 18px 20px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--bg-2)">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap">
+          <h2 id="appearance-title" style="margin: 0; font-size: var(--fs-lg); font-weight: 600">Оформление</h2>
+          <span style="font-size: var(--fs-sm); color: var(--text-faint)">сейчас: <span class="mono" data-current-theme style="color: var(--text)">Осень</span></span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <span id="mode-label" style="font-size: var(--fs-ui); font-weight: 500">Режим</span>
+          <div role="radiogroup" aria-labelledby="mode-label" style="display: flex; gap: 6px; flex-wrap: wrap">
+            <button type="button" role="radio" class="seg" aria-checked="true" data-mode="dark">Тёмная</button>
+            <button type="button" role="radio" class="seg" aria-checked="false" data-mode="light">Светлая</button>
+            <button type="button" role="radio" class="seg" aria-checked="false" data-mode="system">Как в системе</button>
+          </div>
+          <span data-mode-hint style="font-size: var(--fs-sm); color: var(--text-faint)">Тёмная тема «Осень». Если выбрать светлую тему ниже, режим переключится сам.</span>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: var(--sp-2)">
+          <span id="variant-label" style="font-size: var(--fs-ui); font-weight: 500">Светлая тема</span>
+          <div role="radiogroup" aria-labelledby="variant-label" class="theme-grid">
+            <button type="button" role="radio" class="theme-card" aria-checked="true" data-variant="tuman">
+              <span class="theme-prev" data-theme="tuman" aria-hidden="true">
+                <span class="theme-prev__rail"><span class="theme-prev__dot"></span></span>
+                <span class="theme-prev__main">
+                  <span class="theme-prev__title"></span>
+                  <span class="theme-prev__card">
+                    <span class="theme-prev__chip" style="color: var(--leaf)">● идёт</span>
+                    <span class="theme-prev__chip" style="color: var(--rain)">✓ согласен</span>
+                    <span class="theme-prev__chip" style="color: var(--danger)">× нет</span>
+                  </span>
+                  <span class="theme-prev__row"><span class="theme-prev__btn">Начать</span><span class="theme-prev__line"></span></span>
+                </span>
+              </span>
+              <span class="theme-card__body">
+                <span class="theme-card__head"><span class="theme-card__name">Туман</span><span class="theme-card__check">✓ выбрана</span></span>
+                <span class="theme-card__desc">Тёплая бумага. По умолчанию.</span>
+              </span>
+            </button>
+            <button type="button" role="radio" class="theme-card" aria-checked="false" data-variant="len">
+              <span class="theme-prev" data-theme="len" aria-hidden="true">
+                <span class="theme-prev__rail"><span class="theme-prev__dot"></span></span>
+                <span class="theme-prev__main">
+                  <span class="theme-prev__title"></span>
+                  <span class="theme-prev__card">
+                    <span class="theme-prev__chip" style="color: var(--leaf)">● идёт</span>
+                    <span class="theme-prev__chip" style="color: var(--rain)">✓ согласен</span>
+                    <span class="theme-prev__chip" style="color: var(--danger)">× нет</span>
+                  </span>
+                  <span class="theme-prev__row"><span class="theme-prev__btn">Начать</span><span class="theme-prev__line"></span></span>
+                </span>
+              </span>
+              <span class="theme-card__body">
+                <span class="theme-card__head"><span class="theme-card__name">Лён</span><span class="theme-card__check">✓ выбрана</span></span>
+                <span class="theme-card__desc">Нейтральная, почти белая. Самый контрастный.</span>
+              </span>
+            </button>
+            <button type="button" role="radio" class="theme-card" aria-checked="false" data-variant="inei">
+              <span class="theme-prev" data-theme="inei" aria-hidden="true">
+                <span class="theme-prev__rail"><span class="theme-prev__dot"></span></span>
+                <span class="theme-prev__main">
+                  <span class="theme-prev__title"></span>
+                  <span class="theme-prev__card">
+                    <span class="theme-prev__chip" style="color: var(--leaf)">● идёт</span>
+                    <span class="theme-prev__chip" style="color: var(--rain)">✓ согласен</span>
+                    <span class="theme-prev__chip" style="color: var(--danger)">× нет</span>
+                  </span>
+                  <span class="theme-prev__row"><span class="theme-prev__btn">Начать</span><span class="theme-prev__line"></span></span>
+                </span>
+              </span>
+              <span class="theme-card__body">
+                <span class="theme-card__head"><span class="theme-card__name">Иней</span><span class="theme-card__check">✓ выбрана</span></span>
+                <span class="theme-card__desc">Холодная, серо-голубая.</span>
+              </span>
+            </button>
+            <button type="button" role="radio" class="theme-card" aria-checked="false" data-variant="pergament">
+              <span class="theme-prev" data-theme="pergament" aria-hidden="true">
+                <span class="theme-prev__rail"><span class="theme-prev__dot"></span></span>
+                <span class="theme-prev__main">
+                  <span class="theme-prev__title"></span>
+                  <span class="theme-prev__card">
+                    <span class="theme-prev__chip" style="color: var(--leaf)">● идёт</span>
+                    <span class="theme-prev__chip" style="color: var(--rain)">✓ согласен</span>
+                    <span class="theme-prev__chip" style="color: var(--danger)">× нет</span>
+                  </span>
+                  <span class="theme-prev__row"><span class="theme-prev__btn">Начать</span><span class="theme-prev__line"></span></span>
+                </span>
+              </span>
+              <span class="theme-card__body">
+                <span class="theme-card__head"><span class="theme-card__name">Пергамент</span><span class="theme-card__check">✓ выбрана</span></span>
+                <span class="theme-card__desc">Сепия, мягкий свет. Для долгого чтения.</span>
+              </span>
+            </button>
+          </div>
+        </div>
       </section>
 
       <div role="tablist" aria-label="Разделы настроек" style="display: flex; gap: var(--sp-1); border-bottom: 1px solid var(--line)">

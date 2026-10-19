@@ -4,7 +4,7 @@ To open it, double-click `index.html`. No build or server is needed. The page ta
 
 This is a styling variant made in the style of Vesna (`seasons-ai/vesna`): flat surfaces, thin borders, monospace technical details. The screens and data are taken from `design/mockup`; that one is also on the osen tokens, and the pages of this folder use the same `brand/tokens.css` tokens.
 
-How to carry the style into the app is described in `SPEC.md`. The logo in all sizes, the app icon, `tokens.css` and the `components-osen.css` layer are in `brand/`. All logo variants on one sheet: `brand/preview.png`.
+How to carry the style into the app is described in `SPEC.md`. The logo in all sizes, the app icon, `tokens.css`, the `components-osen.css` layer, the theme switcher `theme.js` and the `OsenMark.tsx` component are in `brand/`. All logo variants on one sheet: `brand/preview.png`.
 
 ## Screens
 
@@ -17,6 +17,7 @@ How to carry the style into the app is described in `SPEC.md`. The logo in all s
 | History | `history.html` |
 | Settings | `settings.html` |
 | Mark, palette, states | `styleguide.html` |
+| All five themes side by side | `themes.html` |
 
 The screens are linked to each other. The demo path: `index.html` → a template card → `setup.html` → "Начать" (Start) → `session.html` → "К итогу" (To the result) → `result.html`, then the rail → "История" (History).
 
@@ -42,7 +43,21 @@ Color always comes with an icon and a label.
 | warn | `#E8C66E` | no consensus, dropped out |
 | error | `#EC8A7A` | objects, failure |
 
-The light theme `tuman`: bg `#F8F3EC`, panel `#EFE7DC`, rule `#E2D6C7`, text `#352B23`, muted `#6F6256`, faint `#C5B6A5`, leaf `#B4532A`, rain `#33698A`, ok `#3F7247`, warn `#8A5F12`, error `#A93A32`. It is not used in the screens yet.
+## Themes
+
+One dark theme and four light ones:
+
+| id | Name | Character |
+|---|---|---|
+| `osen` | Осень | dark, the default |
+| `tuman` | Туман | warm paper; the default light theme |
+| `len` | Лён | neutral, near white; highest contrast |
+| `inei` | Иней | cool blue-grey |
+| `pergament` | Пергамент | soft sepia; for long reading |
+
+Switch them in `settings.html` → «Оформление»: the mode (dark / light / match system) and the light theme. The choice is remembered in the browser and applies to every page of the mockup. To open a page in a given theme right away: `session.html#theme=len` (also `osen`, `tuman`, `inei`, `pergament`).
+
+The themes live in `brand/tokens.css` as `[data-theme="…"]` blocks; `brand/theme.js` sets the attribute on `<html>`. Values, contrast and how to wire it into the app: `SPEC.md`, section 12.
 
 ## What is not here
 
