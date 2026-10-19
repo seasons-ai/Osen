@@ -14,6 +14,9 @@ extraResources:
     to: templates
   - from: ../../packages/core/scenarios
     to: scenarios
+  # wrappers that start the headless entries with the app binary as Node
+  - from: resources/bin
+    to: bin
   # MIT requires the licence text in every copy of the program
   - from: ../../LICENSE
     to: LICENSE
@@ -22,6 +25,8 @@ asar: true
 asarUnpack:
   - out/main/pdf-*.mjs
   - out/main/html-worker.mjs
+  - out/main/osen-mcp.mjs
+  - out/main/council.mjs
   - out/main/chunks/*.js
 npmRebuild: false
 # The UI loads over its own app:// protocol, file: rights are not needed. runAsNode is left alone:

@@ -93,6 +93,16 @@ open "/Applications/Osen.app"
 tail -n 20 "$HOME/Library/Application Support/osen/logs/app.log"
 ```
 
+### Command-line entry points
+
+7. The wrappers start the app binary as Node and need no `PATH`:
+
+```bash
+env -i /Applications/Osen.app/Contents/Resources/bin/council --help
+```
+
+The exit code is 0 and the help text is printed. `Resources/bin/osen-mcp` starts the MCP server the same way. The wrappers work only after the app has been opened once and allowed by Gatekeeper ("Open Anyway", see "First launch of an unsigned app"); before that macOS blocks them and may move the app to the Trash.
+
 ## Update
 
 1. Complete the two-stage release procedure in [docs/releases.md, "Versions and releases"](releases.md#versions-and-releases): `npm run release` prepares the version and CHANGELOG on a release branch; push it, squash merge its PR after CI, synchronize `main`, then run `npm run release -- publish` to publish its annotated tag. GitHub Actions builds and checks a DMG and creates a draft release. Review and publish that draft separately. App installation still requires the owner's approval.

@@ -58,6 +58,7 @@ export interface CliIo {
   inspectDeps?: Partial<InspectDeps>; // for tests: replacement of the CLI search and inspection
   builtinTemplatesDir?: string; // for tests and packaging: the folder of built-in templates
   urlTransport?: UrlTransport; // for the stand and tests: replacement of DNS and of the connection
+  urlWorker?: string; // for packaging: path of the HTML text extraction worker
 }
 
 export const help = (): string => cliMessages().help;
@@ -723,7 +724,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       }
 
       const reg = registry!;
-      const urlOptions = { ...(io.urlTransport ? { transport: io.urlTransport } : {}) };
+      const urlOptions = { ...(io.urlTransport ? { transport: io.urlTransport } : {}), ...(io.urlWorker ? { worker: io.urlWorker } : {}) };
       const collectOptions = (materialsChars: number) => ({
         materialsChars, materialsIgnore: reg.defaults.materialsIgnore,
         ...(values["no-ignore"] ? { gitignore: false } : {}),

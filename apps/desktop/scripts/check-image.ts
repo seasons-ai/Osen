@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { reportHeadlessLines } from "./headless-in-image.ts";
 import { appIconLine, bundleIdentityLine, FONT_FILES, fuseLine, htmlWorkerLine, missingFontFiles, missingTemplateFiles } from "./templates-in-image.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -104,6 +105,15 @@ try {
 
   const noFonts = missingFontFiles(appRoot);
   report(noFonts.length === 0, `IBM Plex Sans and JetBrains Mono fonts in app.asar: .woff2 ${FONT_FILES.length - noFonts.length} of ${FONT_FILES.length}${noFonts.length ? `, missing: ${noFonts.join(", ")}` : ""}`);
+
+  // the image is read-only: run the entry points on a copy inside the project (no quarantine attribute: Gatekeeper would ask the owner)
+  const copyDir = mkdtempSync(join(root, ".council-data", "headless-image-"));
+  try {
+    execFileSync("ditto", [join(mnt, appName), join(copyDir, appName)], { stdio: "pipe" });
+    await reportHeadlessLines(join(copyDir, appName, "Contents"), copyDir, report);
+  } finally {
+    rmSync(copyDir, { recursive: true, force: true });
+  }
 
   const bad = (re: (s: string) => boolean) => all.filter((f) => re(basename(f.shown))).map((f) => f.shown);
   const list = (a: string[]) => (a.length ? `: ${a.slice(0, 5).join(", ")}` : "");
