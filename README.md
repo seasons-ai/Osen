@@ -25,7 +25,7 @@ Claude, Codex and any OpenAI-compatible model take turns on your problem. Each t
 
 ## Download
 
-You need macOS on Apple Silicon and at least one participant: the `claude` or `codex` CLI signed in, or an OpenAI-compatible endpoint. Node is not needed.
+You need macOS on Apple Silicon and at least one participant: the `claude` or `codex` CLI signed in, or an OpenAI-compatible endpoint. Node is not needed for the app. From the first release after 0.10.0 the `osen` MCP server and the `council` command also run from the app bundle without Node; in 0.10.0 and earlier they need a clone of the repository. Running from a clone of the repository still needs Node 22.18+ (see "From source").
 
 1. Download `osen-<version>-arm64.dmg` from the [latest release](https://github.com/seasons-ai/Osen/releases/latest).
 2. Open the image and drag `Osen` to "Applications".
@@ -73,7 +73,9 @@ Agreed: p1, p2
 |---|---|---|
 | The app | `npm run desktop` | [docs/desktop.md](docs/desktop.md) |
 | The terminal | `npx council --topic "…" --participant claude:haiku --participant codex --max-rounds 2` | [docs/cli.md](docs/cli.md) |
-| Claude Code or Codex | the `osen` MCP server and skill — below | [docs/mcp.md](docs/mcp.md) |
+| Claude Code, Codex or Claude Desktop | the `osen` MCP server and skill — below | [docs/mcp.md](docs/mcp.md) |
+
+With the installed app (releases after 0.10.0), "Settings" → "Connections" connects Claude Desktop, Claude Code and Codex to the server inside the app and installs the `council` command into `~/.local/bin`; no Node and no repository are needed ([docs/mcp.md, "From the installed app"](docs/mcp.md#from-the-installed-app)). What is proven for each client, and what is not yet: [docs/clients.md](docs/clients.md).
 
 Real participants spend your subscription or money. Through MCP, an agent must show you the topic, participants and call bound before a start, and wait for your consent.
 
@@ -93,7 +95,8 @@ The `osen` server is already listed in `.mcp.json`. Start `claude` in the reposi
 ## Limits
 
 - macOS on Apple Silicon only. No web version, no auto-update.
-- No ready-made download yet, and the image is not signed by Apple: build it with `npm run dist`; a copy from another Mac needs ["Open Anyway"](docs/deploy.md#first-launch-of-an-unsigned-app).
+- The image is not signed by Apple: the first launch needs ["Open Anyway"](docs/deploy.md#first-launch-of-an-unsigned-app).
+- The MCP server and the `council` command from the app are checked on scripted participants only; a real discussion through each agent client has not been run yet ([docs/clients.md](docs/clients.md)).
 - A token ceiling, not a money ceiling: providers do not always report usage, so a total in dollars would be a guess.
 - No memory between sessions.
 
