@@ -86,7 +86,12 @@ describe("fake server", () => {
 
   it("fake-hang: client disconnect counts as closedEarly", async () => {
     const s = await start();
-    await expect(post(s, "fake-hang", { signal: AbortSignal.timeout(100) })).rejects.toThrow();
+    const ac = new AbortController();
+    const res = post(s, "fake-hang", { signal: ac.signal });
+    // abort only once the server has the request, otherwise there is nothing to count
+    await vi.waitFor(() => expect(s.requests).toHaveLength(1));
+    ac.abort();
+    await expect(res).rejects.toThrow();
     await vi.waitFor(() => expect(s.closedEarly).toBe(1));
   });
 
