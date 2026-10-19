@@ -103,9 +103,16 @@ async function inspectCli(provider: CliProvider, { env, withModels = true, deps 
   return runtime ? { status, runtime } : { status };
 }
 
+// One backward scan instead of /\/+$/, which retries at every slash of a long run (CodeQL js/polynomial-redos).
+function trimTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47) end--;
+  return url.slice(0, end);
+}
+
 async function inspectHttp(provider: HttpProvider, { env, withModels = true, deps, keyFile = registryMessages().keyFileDefault }: Options): Promise<ProviderInspection> {
   const d = { ...realDeps, ...deps };
-  const baseUrl = provider.baseUrl.replace(/\/+$/, "");
+  const baseUrl = trimTrailingSlashes(provider.baseUrl);
   const apiKeyEnv = provider.apiKeyEnv || undefined;
   const apiKey = apiKeyEnv ? env[apiKeyEnv] || undefined : undefined;
   const status: ProviderStatus = { id: provider.id, kind: "openai-http", label: provider.label, available: false, models: provider.models, modelsConfirmed: false, baseUrl };

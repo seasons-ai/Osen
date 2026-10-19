@@ -1,6 +1,9 @@
+import { execFile } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliLocation } from "../cli-agents/discovery.ts";
 import { FAKE_MODELS, startFakeServer } from "../http/fake-server.ts";
@@ -253,4 +256,18 @@ describe("ensureRegistry", () => {
     expect(readFileSync(configPath(dir), "utf8")).toBe("мусор");
     expect(locate).not.toHaveBeenCalled();
   });
+});
+
+// The attack runs only in a child with a finite watchdog: a vitest timeout cannot interrupt synchronous regex work.
+describe("Bounded provider base URL normalization", () => {
+  it("child probe: 1,048,576 slashes before 'x' have median <= 1,000 ms and finish before the 5,000 ms watchdog", async () => {
+    const probe = fileURLToPath(new URL("../../scenarios/security-provider-url/probe.ts", import.meta.url));
+    const providers = fileURLToPath(new URL("./providers.ts", import.meta.url));
+    const pending = promisify(execFile)(process.execPath, [probe, providers, String(1 << 20)], { timeout: 5_000, maxBuffer: 4 * 1024 * 1024 });
+    pending.child.stdin?.end();
+    const result = JSON.parse((await pending).stdout) as { n: number; samples: number[]; median: number };
+    expect(result.n).toBe(1_048_576);
+    expect(result.samples).toHaveLength(3);
+    expect(result.median).toBeLessThanOrEqual(1_000);
+  }, 15_000);
 });
