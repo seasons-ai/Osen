@@ -15,7 +15,9 @@ The reply comes in the same private advisory. A fix is released as a patch, and 
 - A key from the data folder's `.env` reaching git, the session journal, logs or MCP responses.
 - The renderer process reading keys or files on disk.
 - A participant getting tools, MCP servers, user instructions or access to your disk, or reading a file beyond the text the engine sends it.
-- The app, the `council` CLI or the MCP server deleting or overwriting an existing session, or writing to agents' global settings without `node skill/install.ts` being run.
+- The app, the `council` CLI or the MCP server deleting or overwriting an existing session.
+- Writing to an agent client's settings (Claude Desktop, Claude Code, Codex) or creating the `council` link without an explicit action by the owner. The only ways are: the installer (`node skill/install.ts`), a button on the app's **Settings → Connections** tab after its confirmation, or a connection command the owner runs themselves (for example `claude mcp add`). Opening the app or the tab, refreshing the list and the free connection check write nothing.
+- Any of those ways changing a foreign entry (an `osen` entry this installation did not create, other servers or keys in the client's settings) or a foreign `council` file.
 
 ## What does not
 

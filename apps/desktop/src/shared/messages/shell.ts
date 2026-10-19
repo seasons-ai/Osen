@@ -57,6 +57,7 @@ export const shell = defineMessages({
     languageWriteFailed: (code: string | null): string => `Language not saved: cannot write preferences.json${code ? ` (${code})` : ""}`,
     languageFileNotice: (reason: "unreadable" | "not_json" | "no_language" | "unknown_language", code: string | null): string =>
       `The language file preferences.json ${reasonEn(reason, code)}. English is in use and the file is unchanged; choose a language in Settings to fix it.`,
+    connectionClientUnknown: (id: string): string => `Unknown client: ${id}. Nothing was changed.`,
   },
   ru: {
     appName: "Osen",
@@ -111,5 +112,6 @@ export const shell = defineMessages({
       }[reason];
       return `Файл языка preferences.json ${why}. Действует English, файл не изменён; выберите язык в «Настройках», чтобы исправить.`;
     },
+    connectionClientUnknown: (id: string): string => `Неизвестный клиент: ${id}. Ничего не изменено.`,
   },
 });

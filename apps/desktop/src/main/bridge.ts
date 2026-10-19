@@ -2,6 +2,8 @@ import { OwnerMessageRejectedError, OwnerReleaseRejectedError, OwnerSelectionRej
 import type { Logger, SessionEvent, StreamChunk } from "@model-council/core";
 import { BRIDGE_ACTIONS } from "../shared/bridge.ts";
 import { shell } from "../shared/messages/shell.ts";
+import { UnknownClientError } from "./connections.ts";
+import type { ConnectionsApi } from "./connections.ts";
 import { LanguageRejectedError } from "./language.ts";
 import type { LanguageState } from "./language.ts";
 import type { OwnerSelection, UsageSummary } from "@model-council/core/protocol";
@@ -42,6 +44,7 @@ export interface BridgeDeps {
   exportSession(id: string): Promise<{ path: string } | null>;
   setPinned(id: string, pinned: boolean): void;
   language: LanguageState;
+  connections: ConnectionsApi;
   settings: SettingsApi;
   templates: TemplateEditorApi;
   materials: MaterialsDraft;
@@ -162,6 +165,15 @@ export function createBridge(deps: BridgeDeps): {
         throw e;
       }
     },
+    // client actions take only the id: entries and paths come from main's own server command
+    connections: () => deps.connections.view(),
+    connectClient: ([id]) => deps.connections.connect(id),
+    updateClient: ([id]) => deps.connections.update(id),
+    disconnectClient: ([id]) => deps.connections.disconnect(id),
+    checkClient: ([id]) => deps.connections.check(id),
+    installCommand: () => deps.connections.installCommand(),
+    removeCommand: () => deps.connections.removeCommand(),
+    copyZprofileLine: () => deps.copyText(deps.connections.zprofileLine()),
     settings: () => deps.settings.view(),
     recheckProviders: () => deps.settings.recheck(),
     saveProvider: ([input]) => deps.settings.saveProvider(input),
@@ -289,6 +301,7 @@ export function createBridge(deps: BridgeDeps): {
         return { ok: true, value: (await actions[action as keyof typeof actions](Array.isArray(args) ? args : [])) ?? null };
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
+        if (e instanceof UnknownClientError) return { ok: false, error }; // the connections module has logged the refusal itself
         deps.logger.error(`Action ${action} failed: ${error}`, e instanceof ActionError ? undefined : e);
         return { ok: false, error };
       }
