@@ -81,7 +81,7 @@ COUNCIL_DEV=1 node packages/core/scenarios/newer-version/check.ts
 
 ## Machine output (--json)
 
-For agents and scripts: `status <id>`, `list`, `show <id>`, `providers`, `templates`, `lineups` and `doctor` accept `--json`. Stdout then carries exactly one JSON document on one line, ended with a newline, and nothing else; warnings, diagnostics and errors go to stderr, and on an error stdout is empty. Exit codes are the same as for the text output (see the table in ["The `council` command"](#the-council-command) above). Other commands (a plain launch, `resume`, `say`, `stop`, `continue`, `home`, `lineups save`) reject `--json` with a reason and help, code 2, and do nothing: no session is created, no journal changes.
+For agents and scripts: `status <id>`, `list`, `show <id>`, `providers`, `templates`, `lineups`, `doctor` and `cli candidates` accept `--json`. Stdout then carries exactly one JSON document on one line, ended with a newline, and nothing else; warnings, diagnostics and errors go to stderr, and on an error stdout is empty. Exit codes are the same as for the text output (see the table in ["The `council` command"](#the-council-command) above). Other commands (a plain launch, `resume`, `say`, `stop`, `continue`, `home`, `lineups save`) reject `--json` with a reason and help, code 2, and do nothing: no session is created, no journal changes.
 
 ```bash
 COUNCIL_HOME=.council-data npx council list --json
@@ -413,6 +413,21 @@ COUNCIL_HOME=.council-data npx council cli rollback claude
 - Environment of a pinned child: claude gets `CLAUDE_CONFIG_DIR=<version dir>/config`, `DISABLE_AUTOUPDATER=1`, `DISABLE_UPDATES=1`; codex gets `CODEX_HOME=<version dir>/config` and `-c check_for_update_on_startup=false`; a pinned codex whose help does not declare `--config` is not launched, because its self-update could not be turned off. The install-time `--version` check already runs with this environment.
 - A pinned install has its own config dir, so the owner logs in to it once: `CLAUDE_CONFIG_DIR=<version dir>/config claude` and then `/login`; `CODEX_HOME=<version dir>/config codex login`.
 - Switching versions never rewrites session journals.
+
+## CLI candidates
+
+`council cli candidates [--agent <claude|codex>] [--json]` finds `claude` / `codex` versions newer than the base one and checks each in a temporary install. It makes no model calls and runs only on this explicit command (or from the app).
+
+```bash
+COUNCIL_HOME=.council-data npx council cli candidates [--agent claude] [--json]
+```
+
+- Base version per agent: the active pin; without one, the highest version among the built-in verified record and the local `real` entries. Local `interface` entries written by this check do not move the base. An agent with neither is refused (`no_base`, exit 2) and nothing is installed for it; the other agent is checked as usual.
+- Candidates: at most the 5 newest versions newer than the base (pre-releases are skipped; versions already in the record count toward the 5 and are shown as "already recorded"). The release source is the npm registry (`npm view <package> versions --json`). Each candidate is installed through the same npm source as `cli install`, into `<data folder>/cli-candidates/<agent>-<version>-<suffix>/`, and removed afterwards (also on error and interrupt). The `cli/` folder is not created or changed.
+- The check runs only `--version`, the help and `codex features list`. It compares declared flags and feature names with what a launch needs (the same plan as for a pinned version), not help text, so rewording the help is not a violation.
+- A candidate without violations is recorded in `<data folder>/cli-verified.json` with level `interface` (date, OS, Osen version, sha256; no model calls). A candidate with violations is printed with each violation and not recorded. An unreadable `cli-verified.json` is never overwritten: every checked agent fails with `record_failed` before anything is installed. `pins.json`, the active version and the global install are never changed.
+- `--json` prints one document `{schemaVersion: 1, candidates: [{agent, version, status, violations, recorded}], failures: [{agent, code}]}`, the same in every language. `status`: `ok`, `violates`, `already_recorded`. A violation is `{code, name}` with `code` one of `missing_flag`, `missing_feature`, `features_unread`, `help_unread`, `version_unparsed`. A failure `code` is one of `source_unavailable`, `install_failed`, `record_failed`, `no_base`; the reasons go to stderr.
+- Exit codes: 0 — the check ran (also with violations and with no candidates); 1 — source, install or record failure, or the check was interrupted (stderr says so, stdout is empty); 2 — wrong arguments or an agent without a base. With several outcomes the highest code wins. With `--json` the document is printed also on exit 1 and 2 (except an interruption), so the per-agent `failures` stay readable.
 
 ## CLI adapter contract and fixtures
 

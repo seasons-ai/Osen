@@ -34,6 +34,7 @@ export const cliMessages = defineMessages({
   council cli list
   council cli use <agent> <version>
   council cli rollback <agent>
+  council cli candidates [--agent <agent>] [--json]
   council home
   council --help
 
@@ -267,11 +268,19 @@ Example:
     launchExpired: (deadline: string) => `Launch file is stale: its deadline ${deadline} has passed.`,
     launchUsage: "council run-prepared <launch-file>",
     noArgs: (cmd: string) => `Command ${cmd} takes no arguments.`,
-    cliUsage: "Command cli: install <agent> [--version <X>] [--candidate] | list | use <agent> <version> | rollback <agent>.",
-    cliUnknownSub: (sub: string) => `Unknown cli subcommand «${sub}». Expected: install, list, use, rollback.`,
+    cliUsage: "Command cli: install <agent> [--version <X>] [--candidate] | list | use <agent> <version> | rollback <agent> | candidates [--agent <agent>] [--json].",
+    cliUnknownSub: (sub: string) => `Unknown cli subcommand «${sub}». Expected: install, list, use, rollback, candidates.`,
     cliWrongArgs: (sub: string, usage: string) => `Command cli ${sub} takes: ${usage}.`,
     cliFlagNotAllowed: (flag: string, sub: string) => `The ${flag} flag is not allowed for cli ${sub}.`,
     cliFlagOnlyCli: (flag: string) => `The ${flag} flag applies only to the command cli install.`,
+    agentOnlyCandidates: "The --agent flag applies only to the command cli candidates.",
+    candidatesInterrupted: "The check was interrupted; temporary installs were removed, nothing was recorded.",
+    candidatesHeader: (agent: string, base: string) => `${agent} (base ${base})`,
+    candidatesNone: "no newer versions",
+    candidatesFits: "fits",
+    candidatesViolates: "violates the contract",
+    candidatesAlreadyRecorded: "already recorded",
+    candidatesNotRecorded: "not recorded",
     cliUnknownAgent: (agent: string, known: string) => `Unknown agent «${agent}». Expected: ${known}.`,
     unknown: "unknown",
     doctorBinary: (exec: string, entry: string) => `Binary: ${exec} (${entry})`,
@@ -406,6 +415,7 @@ Example:
   council cli list
   council cli use <agent> <version>
   council cli rollback <agent>
+  council cli candidates [--agent <agent>] [--json]
   council home
   council --help
 
@@ -632,11 +642,19 @@ history-pins.json в ней — закрепления экрана «Истор
     launchExpired: (deadline: string) => `Файл запуска устарел: срок ${deadline} прошёл.`,
     launchUsage: "council run-prepared <launch-file>",
     noArgs: (cmd: string) => `Команда ${cmd} не принимает аргументов.`,
-    cliUsage: "Команда cli: install <agent> [--version <X>] [--candidate] | list | use <agent> <version> | rollback <agent>.",
-    cliUnknownSub: (sub: string) => `Неизвестная подкоманда cli «${sub}». Ожидается: install, list, use, rollback.`,
+    cliUsage: "Команда cli: install <agent> [--version <X>] [--candidate] | list | use <agent> <version> | rollback <agent> | candidates [--agent <agent>] [--json].",
+    cliUnknownSub: (sub: string) => `Неизвестная подкоманда cli «${sub}». Ожидается: install, list, use, rollback, candidates.`,
     cliWrongArgs: (sub: string, usage: string) => `Команда cli ${sub} принимает: ${usage}.`,
     cliFlagNotAllowed: (flag: string, sub: string) => `Флаг ${flag} не допускается у cli ${sub}.`,
     cliFlagOnlyCli: (flag: string) => `Флаг ${flag} относится только к команде cli install.`,
+    agentOnlyCandidates: "Флаг --agent применяется только у команды cli candidates.",
+    candidatesInterrupted: "Проверка прервана; временные установки удалены, ничего не записано.",
+    candidatesHeader: (agent: string, base: string) => `${agent} (база ${base})`,
+    candidatesNone: "версий новее нет",
+    candidatesFits: "подходит",
+    candidatesViolates: "нарушает контракт",
+    candidatesAlreadyRecorded: "уже записана",
+    candidatesNotRecorded: "не записана",
     cliUnknownAgent: (agent: string, known: string) => `Неизвестный агент «${agent}». Ожидается: ${known}.`,
     unknown: "неизвестно",
     doctorBinary: (exec: string, entry: string) => `Бинарь: ${exec} (${entry})`,

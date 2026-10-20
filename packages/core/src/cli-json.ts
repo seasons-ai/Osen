@@ -9,7 +9,7 @@ import type { TemplateCatalog } from "./templates/templates.ts";
 export const SCHEMA_VERSION = 1;
 
 // commands that accept --json; extend here
-export const JSON_COMMANDS: readonly string[] = ["status", "list", "show", "providers", "templates", "lineups", "doctor"];
+export const JSON_COMMANDS: readonly string[] = ["status", "list", "show", "providers", "templates", "lineups", "doctor", "cli candidates"];
 
 interface ListedSession { id: string; createdAt: string; status: StoredStatus; origin: string; topic: string; partial: JournalPartial | null }
 
