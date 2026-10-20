@@ -1,0 +1,86 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "A counter proposal.",
+        "solution": "Use the scripted version.",
+        "answers": [],
+        "questions": []
+      },
+      "delayMs": 400
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Agreed.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Agreed.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Agreed.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Agreed.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Agreed.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Agreed.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Agreed.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "agree",
+        "reasoning": "Agreed.",
+        "solution": null,
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

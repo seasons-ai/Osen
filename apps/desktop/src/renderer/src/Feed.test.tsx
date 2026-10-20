@@ -108,6 +108,21 @@ describe("FeedView: failures", () => {
   });
 });
 
+describe("Отказ хода из-за несовпадения закрепления: FeedView", () => {
+  const reason = "Закреплённый claude 9.1.0: контрольная сумма не совпала: у /d/cli/claude/9.1.0/bin/claude abc, ожидалась def; бинарник из PATH не используется";
+  it("Отказ хода из-за несовпадения закрепления: a guard reason is a failure of the participant, shown as is, without a retry line, then the departure", () => {
+    const h = view(fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), started(2, "p2"), done(2, "p2", "amend", 2), started(3, "p1", 2), failed(3, "p1", 1, "call_error", reason), { type: "participant_dropped", participantId: "p1", reason: `Ошибка вызова без повтора: ${reason}` }]), { running: false });
+    const rows = h.split('class="session-fail" ').slice(1);
+    expect(rows).toHaveLength(2); // the failure and the departure, nothing else
+    expect(rows[0]).toContain('data-tone="danger"');
+    expect(rows[0]).toContain(`Ход 3 · Имя1 · попытка 1 — ошибка вызова: ${reason}`);
+    expect(h).not.toContain("Повтор.");
+    expect(rows[1]).toContain("Имя1 выбыл: ");
+    expect(rows[1]).toContain("контрольная сумма не совпала");
+    expect(h.match(/попытка \d/g)).toHaveLength(1);
+  });
+});
+
 describe("FeedView: turn in preparation", () => {
   const s = fold([created(), started(1, "p1")]);
   const live = { turn: 1, attempt: 1, text: '{"stance":"amend","reasoning":"думаю вслух' };

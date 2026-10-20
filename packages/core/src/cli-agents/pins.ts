@@ -89,7 +89,7 @@ export function readPins(dataDir: string): PinsState {
 export const installedPath = (dataDir: string, agent: CliAgent, install: PinInstall): string =>
   join(versionDir(dataDir, agent, install.version), install.path);
 
-export type ActivePin = { state: "none" } | { state: "pin"; version: string; path: string; configDir: string } | { state: "rejected"; reason: string };
+export type ActivePin = { state: "none" } | { state: "pin"; version: string; path: string; configDir: string; sha256: string } | { state: "rejected"; reason: string };
 
 export function activePin(dataDir: string, agent: CliAgent): ActivePin {
   const s = readPins(dataDir);
@@ -97,7 +97,7 @@ export function activePin(dataDir: string, agent: CliAgent): ActivePin {
   const a = s.state === "loaded" ? s.pins.agents[agent] : undefined;
   const inst = a?.active ? a.installed.find((i) => i.version === a.active) : undefined;
   if (!a || !inst) return { state: "none" };
-  return { state: "pin", version: inst.version, path: installedPath(dataDir, agent, inst), configDir: pinConfigDir(dataDir, agent, inst.version) };
+  return { state: "pin", version: inst.version, path: installedPath(dataDir, agent, inst), configDir: pinConfigDir(dataDir, agent, inst.version), sha256: inst.sha256 };
 }
 
 /** Cache key part for discovery: changes when the pins file is rewritten, or its error code. */

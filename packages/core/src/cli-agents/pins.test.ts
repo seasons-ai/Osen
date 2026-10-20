@@ -280,7 +280,7 @@ describe("Файл закреплений pins.json", () => {
   it("activePin gives the absolute path and the per-install config dir", async () => {
     await install("claude", { version: "1.1.0" });
     const a = activePin(dir, "claude");
-    expect(a).toEqual({ state: "pin", version: "1.1.0", path: join(versionDir(dir, "claude", "1.1.0"), "node_modules/pkg/bin/claude"), configDir: pinConfigDir(dir, "claude", "1.1.0") });
+    expect(a).toEqual({ state: "pin", version: "1.1.0", path: join(versionDir(dir, "claude", "1.1.0"), "node_modules/pkg/bin/claude"), configDir: pinConfigDir(dir, "claude", "1.1.0"), sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
     expect(activePin(dir, "codex")).toEqual({ state: "none" });
   });
 

@@ -12,6 +12,28 @@ Every turn is a new CLI process in an empty temporary folder: no tools, MCP serv
 | timeout | one retry |
 | non-zero exit code | one retry |
 
+### Pinned install check before launch
+
+A provider whose CLI comes from an active pin (`council cli install`, see [Pinned CLIs](cli.md#pinned-clis)) is launched only if the file on disk is still the file that was installed. The check compares, in this order, and stops at the first mismatch:
+
+1. path: the path this provider would launch equals the path of the active install in `pins.json`;
+2. file: the pinned file exists and is executable;
+3. sha256: the checksum of the file equals the `sha256` recorded at install;
+4. record level: the verified-versions record ([Verified CLI versions](data.md#verified-cli-versions-cli-verifiedjson)) has `real` for this version; `interface` or no entry is a mismatch;
+5. version: `<binary> --version` prints the pinned version (an unreadable output is a mismatch too).
+
+The binary is never run before step 5: a missing file, a different checksum or a record without `real` is rejected without starting it, not even for `--version`.
+
+When it runs: at inspection (`council providers`, `council_options`, the provider list of the app, and the start of a session) and again before every turn, after re-reading `pins.json`. So a swap in the middle of a session is caught, and so is `council cli use` to another version: the turn is rejected before any process starts, the participant drops out by the usual rules with no retry, and no usage is written for the rejected turn.
+
+What the owner sees: the provider is unavailable and the reason names the pin, the path and the mismatching values (both checksums, both versions, or the record level). It is the same text in `council providers`, the refusal of `council` and `council_start`, `council_options`, the app, the session feed and `council_status` after a dropout, and it ends with the way out: `council cli install`, or `council cli use` / `council cli rollback`.
+
+There is no fallback: a failed check never launches the binary from `PATH`, another installed version, or another provider or model. An explicit `path` in `config.json` stays above the pin and is not checked; a provider without a pin keeps the earlier behavior (a warning about an unverified version, no refusal). A corrupted `pins.json` means "no active pin", with the warning described in [Pinned CLIs](cli.md#pinned-clis).
+
+Cost: the sha256 of the whole file is computed once and cached by file identity (path, size, mtime, inode); an unchanged file is not hashed again, and before a turn only `stat` and `--version` run. Limit: a rewrite that leaves size, mtime and inode as they were is not seen; hashing on every turn would close this at the price of reading the whole binary each time.
+
+A check without cost (stub CLIs, real `council` and MCP processes, no model calls): `COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the repository> node packages/core/scenarios/launch-guard/check.ts`. It prints one `ok -` line per step and exits non-zero if any step fails.
+
 ## HTTP participants
 
 Any model behind an endpoint compatible with OpenAI Chat Completions (OpenRouter, a local server and others). The provider is described in the data folder's `config.json`, the key in `.env`.

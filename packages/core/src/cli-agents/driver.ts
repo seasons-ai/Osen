@@ -7,6 +7,10 @@ import type { Usage } from "../protocol/schema.ts";
 import { planLaunch } from "./args.ts";
 import { classifyFailure, toCallError } from "./errors.ts";
 import { runProcess } from "./process.ts";
+import { verifiedRecordFor } from "./discovery.ts";
+import { checkPinnedLaunch } from "./launch-guard.ts";
+import type { GuardDeps } from "./launch-guard.ts";
+import { activePin } from "./pins.ts";
 import { providerMessages } from "../messages/providers.ts";
 import type { CliRuntime } from "./types.ts";
 
@@ -90,11 +94,19 @@ export function parseCodexOutput(stdout: string): CliOutput {
   return { ok: true, text, usage };
 }
 
-export function createCliDriver(runtime: CliRuntime): ParticipantDriver {
+export function createCliDriver(runtime: CliRuntime, deps: { guard?: Partial<GuardDeps> } = {}): ParticipantDriver {
   const { agent } = runtime;
   const parse = agent === "claude" ? parseClaudeOutput : parseCodexOutput;
   return {
     async call(request: TurnRequest): Promise<TurnResult> {
+      if (runtime.pinned && runtime.pinDataDir) {
+        // re-read pins.json: a `cli use` or a replaced binary after inspection must stop the turn before any process starts
+        const active = activePin(runtime.pinDataDir, agent);
+        if (active.state === "pin") {
+          const r = await checkPinnedLaunch({ agent, pin: active, launchPath: runtime.path, record: verifiedRecordFor(runtime.pinDataDir), env: runtime.env }, deps.guard);
+          if (!r.ok) throw new ParticipantCallError("call_error", r.reason, false);
+        }
+      }
       const dir = await mkdtemp(join(tmpdir(), "council-turn-"));
       try {
         const cwd = join(dir, "cwd");

@@ -2557,3 +2557,24 @@ describe("council resume --message", () => {
     expect(sh.out.indexOf("Учтите ещё бюджет")).toBeLessThan(sh.out.indexOf("── Ход 3 "));
   });
 });
+
+describe("Отказ хода из-за несовпадения закрепления: council show", () => {
+  it("Отказ хода из-за несовпадения закрепления: a guard reason is printed verbatim as a failed turn, with no retry and no completed turn after it", async () => {
+    const home = tmp();
+    const ts = "2026-01-01T00:00:00.000Z";
+    const reason = "Закреплённый claude 9.1.0: контрольная сумма не совпала: у /d/cli/claude/9.1.0/bin/claude abc, ожидалась def; бинарник из PATH не используется";
+    const id = "guard";
+    createSessionJournal(home, id);
+    const events = [
+      { type: "session_created", pid: 1, session: { id, createdAt: ts, origin: "cli", topic: "Тема", templateId: null, framing: "", participants: [1, 2].map((i) => ({ id: `p${i}`, name: `n${i}`, providerId: "scripted", model: "m", role: null })), limits: { maxRounds: 3, turnTimeoutSec: 60, contextChars: 1000 } } },
+      { type: "turn_started", turn: 1, round: 1, participantId: "p1" },
+      { type: "turn_failed", turn: 1, round: 1, participantId: "p1", attempt: 1, kind: "call_error", message: reason },
+      { type: "participant_dropped", participantId: "p1", reason: `Ошибка вызова без повтора: ${reason}` },
+    ];
+    events.forEach((e, i) => appendEvent(home, id, { seq: i + 1, ts, ...e } as SessionEvent));
+    const r = await run(["show", id], { env: { COUNCIL_HOME: home, COUNCIL_DEV: "1" } });
+    expect(r.outLines.filter((l) => l.startsWith("✗ Ход 1 · p1"))).toEqual([`✗ Ход 1 · p1 «n1» · попытка 1 · call_error: ${reason}`]);
+    expect(r.out).toContain("✗ p1 «n1» выбыл: Ошибка вызова без повтора: Закреплённый claude 9.1.0: контрольная сумма не совпала");
+    expect(r.out).not.toContain("попытка 2");
+  });
+});
