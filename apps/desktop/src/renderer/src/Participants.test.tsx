@@ -300,7 +300,7 @@ describe("ParticipantsPanel: participant replacement", () => {
 describe("ParticipantsPanel: en", () => {
   afterEach(() => setProcessLanguage("ru"));
   const en = <T,>(f: () => T): T => { setProcessLanguage("en"); return f(); };
-  const text = (h: string) => h.replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+  const reset = (m: string) => `<div class="session-meter__line"><svg class="icon icon--sm"><use href="#i-info"></use></svg> ${m}</div>`;
   const tags = (h: string) => [...h.matchAll(/<([a-z0-9]+)/g)].map((m) => m[1]).join(",");
 
   it("heading, roles, agreement, questions", () => {
@@ -326,10 +326,10 @@ describe("ParticipantsPanel: en", () => {
   it("replacement and both agreement resets", () => {
     const base: Body[] = [created(4), started(1, "p1"), done(1, "p1", "amend", 1), drop("p2"), finishedFail];
     const h = en(() => panel(fold([...base, resumeWith("p2")])));
-    expect(text(h)).toContain("replaced p2 “Имя2”");
-    expect(text(h)).toContain("agreements reset by participant replacement");
+    expect(card(h, 5)).toContain('<div class="muted session-p__replaces">replaced p2 “Имя2”</div>');
+    expect(h).toContain(reset("agreements reset by participant replacement"));
     const owner = { type: "owner_message", id: "o1", text: "Р", afterTurn: 2, requestId: "r1" } as unknown as Body;
-    expect(text(en(() => panel(fold([created(3), started(1, "p1"), done(1, "p1", "amend", 1), started(2, "p2"), owner]))))).toContain("agreement reset by the owner&#x27;s message");
+    expect(en(() => panel(fold([created(3), started(1, "p1"), done(1, "p1", "amend", 1), started(2, "p2"), owner])))).toContain(reset("agreement reset by the owner&#x27;s message"));
   });
   it("spending: with a ceiling, without, incomplete", () => {
     const tp = (bodies: Body[]) => en(() => panel(fold(bodies)));
