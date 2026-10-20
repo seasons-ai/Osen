@@ -21,6 +21,7 @@ import { previewMaterials } from "../../src/main/materials-preview.ts";
 import { prepareRerun } from "../../src/main/rerun.ts";
 import { createSettings } from "../../src/main/settings.ts";
 import { standTransport } from "../../src/main/url-stand.ts";
+import { assertNamesSource } from "./diagnostic.ts";
 import type { MaterialsPreviewView, MaterialsView, RerunView } from "../../src/shared/setup.ts";
 
 const home = process.env.COUNCIL_HOME;
@@ -158,7 +159,8 @@ const before3 = await good<MaterialsView>("materials");
 const e404 = await refuse("404", "https://docs.stand.test/missing?x=1", before3);
 check("404", () => {
   assert.match(e404, /404/);
-  assert.ok(e404.includes("https://docs.stand.test/missing") && !e404.includes("x=1"), `reason: ${e404}`);
+  assertNamesSource(e404, "https://docs.stand.test/missing");
+  assert.ok(!e404.includes("x=1"), `query in the reason: ${e404}`);
 });
 ok(`404 rejection: "${e404.replace(/\s+/g, " ")}", list and stamp unchanged`);
 
