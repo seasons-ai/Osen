@@ -22,13 +22,12 @@ const SEEDS = 300;
 // Recorded texts: Russian, English, mixed, empty, one character, very long, markup, matching catalog labels.
 const TEXTS = [
   "таймаут ответа", "connection reset by peer", "ошибка вызова: error 500", "", "я", "x", "ж".repeat(4000), "a".repeat(3000),
-  "<b>&\"'</b>", "причина не указана", "no reason given", "Согласия нет", "No consensus", "Ход 7", "Turn 7",
+  "<b>&\"'</b>", "<script", "&lt;b&gt;", "<i", "a < b > c", "причина не указана", "no reason given", "Согласия нет", "No consensus", "Ход 7", "Turn 7",
 ];
 const KINDS = ["timeout", "call_error", "invalid_response"] as const;
 const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
-const text = (h: string): string => h.replace(/<[^>]+>/g, "");
 
-// Labels that must not appear in the other language (not part of the recorded text pool).
+// Labels have no escapable characters, so esc(label) matches them in the raw markup. Labels that must not appear in the other language (not part of the recorded text pool).
 const LABELS: Record<Language, { own: string[]; other: string[] }> = {
   en: { own: ["dropped out:", "attempt 1", "Retried.", "Owner", "turn 1"], other: ["выбыл:", "попытка", "Повтор.", "Владелец", "ход 1"] },
   ru: { own: ["выбыл:", "попытка 1", "Повтор.", "Владелец", "ход 1"], other: ["dropped out:", "attempt 1", "Retried.", "Owner", "turn 1"] },
@@ -37,7 +36,7 @@ const LABELS: Record<Language, { own: string[]; other: string[] }> = {
 describe("„Discussion“ screen in the selected language: recorded text is not translated", () => {
   afterEach(() => setProcessLanguage("ru"));
 
-  it("feed contains recorded texts verbatim, surrounding labels only in the active language", () => {
+  it("Feed recorded text and active-language labels: recorded texts verbatim, surrounding labels only in the active language", () => {
     for (let seed = 1; seed <= SEEDS; seed++) {
       const rnd = mulberry32(seed);
       const pick = <T,>(xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)]!;
@@ -62,9 +61,8 @@ describe("„Discussion“ screen in the selected language: recorded text is not
         const where = `seed ${seed}, ${language}`;
         for (const t of [msg1, msg2, dr2, say]) if (t !== "") expect(h, `${where}: ${JSON.stringify(t.slice(0, 20))}`).toContain(esc(t));
         // Departure of p3 without a turn does not get into the feed, but the reason of p2 appears next to its label
-        const plain = text(h);
-        for (const l of LABELS[language].own) expect(plain, `${where}: подпись ${l}`).toContain(l);
-        for (const l of LABELS[language].other) expect(plain, `${where}: чужая подпись ${l}`).not.toContain(l);
+        for (const l of LABELS[language].own) expect(h, `${where}: подпись ${l}`).toContain(esc(l));
+        for (const l of LABELS[language].other) expect(h, `${where}: чужая подпись ${l}`).not.toContain(esc(l));
       }
     }
   });
