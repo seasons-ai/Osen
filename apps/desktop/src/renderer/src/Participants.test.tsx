@@ -106,36 +106,34 @@ describe("RoundCounter", () => {
 describe("RoundCounter: solution panel view per osen mockup", () => {
   const turns = (n: number, usage: { inputTokens?: number; outputTokens?: number }, complete = false): Body[] =>
     Array.from({ length: n }, (_, i) => [{ type: "turn_started", turn: i + 1, round: 3, participantId: "p1" } as Body, tok(i + 1, "p1", i === 0 || !complete ? (i === 0 ? usage : {}) : usage)]).flat();
-  const text = (h: string): string => h.replace(/<[^>]*>/g, "");
+  const counter = (t: string): string => `<span class="session-counter mono">${t}</span>`;
   const en = <T,>(f: () => T): T => { setProcessLanguage("en"); try { return f(); } finally { setProcessLanguage("ru"); } };
   it("ru: round · turns · tokens, mono, without icon", () => {
     const h = renderToStaticMarkup(<RoundCounter state={fold([created(2), ...turns(9, { inputTokens: 3466, outputTokens: 1 }, true)])} />);
-    expect(text(h)).toBe("круг 3 из 4 · 9 ходов · 31.2k tok");
+    expect(h).toBe(counter("круг 3 из 4 · 9 ходов · 31.2k tok"));
     expect(h).toContain("session-counter mono");
     expect(h).not.toContain("<svg");
   });
   it("en: round · turns · tok", () => {
     const s = fold([created(2), ...turns(9, { inputTokens: 3466, outputTokens: 1 }, true)]);
-    expect(text(en(() => renderToStaticMarkup(<RoundCounter state={s} />)))).toBe("round 3 of 4 · 9 turns · 31.2k tok");
+    expect(en(() => renderToStaticMarkup(<RoundCounter state={s} />))).toBe(counter("round 3 of 4 · 9 turns · 31.2k tok"));
   });
   it("forms of the turn count", () => {
-    const one = text(renderToStaticMarkup(<RoundCounter state={fold([created(2), ...turns(1, {})])} />));
-    expect(one).toBe("круг 3 из 4 · 1 ход");
-    expect(text(renderToStaticMarkup(<RoundCounter state={fold([created(2), ...turns(3, {})])} />))).toContain("3 хода");
+    expect(renderToStaticMarkup(<RoundCounter state={fold([created(2), ...turns(1, {})])} />)).toBe(counter("круг 3 из 4 · 1 ход"));
+    expect(renderToStaticMarkup(<RoundCounter state={fold([created(2), ...turns(3, {})])} />)).toBe(counter("круг 3 из 4 · 3 хода"));
   });
   it("no tokens — no «tok»", () => {
     expect(renderToStaticMarkup(<RoundCounter state={fold([created(2)])} />)).not.toContain("tok");
   });
   it("incomplete accounting — «≥»", () => {
-    expect(text(renderToStaticMarkup(<RoundCounter state={fold([created(2), ...turns(2, { inputTokens: 1000, outputTokens: 500 })])} />))).toContain("· ≥1.5k tok");
+    expect(renderToStaticMarkup(<RoundCounter state={fold([created(2), ...turns(2, { inputTokens: 1000, outputTokens: 500 })])} />)).toContain("· ≥1.5k tok</span>");
   });
   it("drafts: «drafts · 0 turns»", () => {
     const c = created(2) as Extract<Body, { type: "session_created" }>;
     const head: Body = { ...c, session: { ...c.session, drafts: { enabled: true, synthesizerId: "p2" } } };
     const dok: Body = { type: "draft_completed", draftId: "d1", participantId: "p1", attempts: 1, durationMs: 1, usage: {}, chars: 3, sha256: "a".repeat(64), reasoning: "r" };
     const head2 = [head, dok];
-    const t = text(renderToStaticMarkup(<RoundCounter state={fold(head2)} />));
-    expect(t.startsWith("черновики · 0 ходов")).toBe(true);
+    expect(renderToStaticMarkup(<RoundCounter state={fold(head2)} />).startsWith('<span class="session-counter mono">черновики · 0 ходов')).toBe(true);
   });
 });
 
