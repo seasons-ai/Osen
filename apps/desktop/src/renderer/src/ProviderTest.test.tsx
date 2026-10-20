@@ -116,7 +116,6 @@ describe("TestPanel", () => {
     expect(e).not.toContain("<b>");
   });
 });
-const text = (h: string) => h.replace(/<[^>]*>/g, "");
 const tags = (h: string) => [...h.matchAll(/<([a-z0-9]+)/g)].map((m) => m[1]);
 
 afterEach(() => setProcessLanguage("ru"));
@@ -134,9 +133,9 @@ describe("TestPanel: English", () => {
     for (const [ms, ru, en] of [[150, "0,1 с", "0.1 s"], [1150, "1,1 с", "1.1 s"]] as const) {
       const s = done({ ok: true, ms });
       setProcessLanguage("ru");
-      expect(text(html(prov(), s))).toContain(`время ответа ${ru}.`);
+      expect(html(prov(), s)).toContain(`<div class="alert__text">Модель <span class="tag">m1</span>, время ответа ${ru}.</div>`);
       setProcessLanguage("en");
-      expect(text(html(prov(), s))).toContain(`response time ${en}.`);
+      expect(html(prov(), s)).toContain(`<div class="alert__text">Model: <span class="tag">m1</span>, response time ${en}.</div>`);
     }
   });
   it.each([
@@ -147,7 +146,7 @@ describe("TestPanel: English", () => {
     setProcessLanguage("en");
     const h = html(prov({ billing }), confirm);
     expect(h).toContain(title);
-    expect(text(h)).toContain("The test call makes one call. Model: m1. The call has not started yet.");
+    expect(h).toContain('<div class="alert__text">The test call makes one call. Model: <span class="tag">m1</span>. The call has not started yet.');
     expect(h).toContain("Run call");
     expect(h).toContain("Cancel");
     expect(h).toContain('aria-label="Test model"');
@@ -158,16 +157,16 @@ describe("TestPanel: English", () => {
     setProcessLanguage("en");
     const h = html(cliOnlyDefault, { phase: "confirm", model: "dflt" });
     expect(h).toContain('<span class="tag">default</span>');
-    expect(text(h)).toContain("Model: default. The call has not started yet.");
+    expect(h).toContain('Model: <span class="tag">default</span>. The call has not started yet.</div>');
   });
   it("running, success, refusal", () => {
     setProcessLanguage("en");
     const r = html(prov(), { phase: "running", model: "m1" });
     expect(r).toContain("Test call in progress");
-    expect(text(r)).toContain("Model: m1. Waiting for the answer…");
+    expect(r).toContain('<div class="alert__text">Model: <span class="tag">m1</span>. Waiting for the answer…</div>');
     const ok = html(prov(), done({ ok: true, ms: 50 }));
     expect(ok).toContain("Provider answered");
-    expect(text(ok)).toContain("Model: m1, response time 0.1 s.");
+    expect(ok).toContain('<div class="alert__text">Model: <span class="tag">m1</span>, response time 0.1 s.</div>');
     expect(ok).toContain("Close");
     const bad = html(prov(), done({ ok: false, reason: "Отказ 401" }));
     expect(bad).toContain("Test failed");
