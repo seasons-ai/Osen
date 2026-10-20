@@ -7,6 +7,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { createServer } from "./server.ts";
+import { mcpMessages } from "./messages.ts";
 import { setProcessLanguage, saveLineup, configPath, createScriptedDriver, createSession, eventsPath, initialRegistry, listSessions, readEvents, readSession, requestStop, runStoredSession } from "@model-council/core";
 
 const root = join(import.meta.dirname, "../../..");
@@ -215,6 +216,26 @@ describe("MCP server osen", () => {
     const d = tools.find((t) => t.name === "council_resume")!;
     expect(d.description).toContain("replacements");
     expect(JSON.stringify(d.inputSchema)).toContain("replacements");
+  });
+
+  it("consensus is resumable only with message, in the owner's own words: instr9, resumeDesc and the schema, en and ru", async () => {
+    const rules = {
+      en: [/consensus is resumed only with message/, /owner's own words/, /only at the owner's request/, /agreementReset/, /stale_plan/],
+      ru: [/consensus продолжается только с message/, /словами/, /только по его просьбе/, /agreementReset/, /stale_plan/],
+    } as const;
+    for (const lang of ["en", "ru"] as const) {
+      const m = mcpMessages(lang);
+      for (const [name, text] of [["instr9", m.instr9], ["resumeDesc", m.resumeDesc]] as const) {
+        for (const re of rules[lang]) expect(text, `${lang} ${name} lacks ${re}`).toMatch(re);
+      }
+      expect(m.resumeFMessage.length).toBeGreaterThan(20);
+    }
+    const { client } = await connect(tmp());
+    const tool = (await client.listTools()).tools.find((t) => t.name === "council_resume")!;
+    const prop = (tool.inputSchema.properties as Record<string, { type?: string; description?: string }>).message;
+    expect(prop?.type).toBe("string");
+    expect(prop?.description).toBe(mcpMessages("ru").resumeFMessage);
+    expect(tool.inputSchema.required ?? []).not.toContain("message");
   });
 
   it("a discussion participant cannot resume a discussion: neither plan nor launch", async () => {

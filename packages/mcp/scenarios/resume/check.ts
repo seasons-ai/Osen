@@ -24,7 +24,7 @@ const root = join(here, "../../../..");
 const mainTs = join(root, "packages/mcp/src/main.ts");
 const councilTs = join(root, "packages/core/src/council.ts");
 
-const L_SAY = "МЕТКА-РЕПЛИКА-37a", L_KEY = "МЕТКА-КЛЮЧ-37c";
+const L_SAY = "МЕТКА-РЕПЛИКА-37a", L_KEY = "МЕТКА-КЛЮЧ-37c", L_MSG = "МЕТКА-ДОВОД-171";
 const baseEnv = { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", COUNCIL_LANG: "ru", COUNCIL_HOME: home, COUNCIL_DEV: "1", COUNCIL_FAKE_KEY: L_KEY };
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const TOPIC = "Как назвать кота";
@@ -136,14 +136,15 @@ async function check(n: number, title: string, fn: () => Promise<string | void>)
 function must(cond: unknown, msg: string): asserts cond { if (!cond) throw new Error(msg); }
 const eq = (a: unknown, b: unknown, what: string) => must(JSON.stringify(a) === JSON.stringify(b), `${what}: expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
 
-/** A council_resume refusal with the given code: the journal did not change, no lock. */
+/** A council_resume refusal with the given code: the journal and the lock state did not change. */
 async function refused(srv: Srv, id: string, args: Record<string, unknown>, code: string): Promise<string> {
   const before = bytes(id);
+  const lockBefore = existsSync(resumeLockPath(home, id)); // a running session holds its own executor lock
   const r = await call(srv, "council_resume", { sessionId: id, ...args });
   must(r.isError, `no isError, response: ${body(r).slice(0, 150)}`);
   must(body(r).startsWith(`${code}:`), `expected code ${code}:, got: ${body(r).slice(0, 150)}`);
   must(same(before, bytes(id)), "journal bytes changed");
-  must(!existsSync(resumeLockPath(home, id)), "resume.lock remained");
+  must(existsSync(resumeLockPath(home, id)) === lockBefore, lockBefore ? "resume.lock disappeared" : "resume.lock remained");
   return body(r);
 }
 
@@ -450,21 +451,42 @@ async function main() {
   });
 
   // 25
-  await check(25, "L. logs/: no message text, no planToken, no key", async () => {
+  await check(25, "M. consensus session with the owner's message: refusal without it, plan resets agreements, other text is stale_plan, owner_message right after session_resumed", async () => {
+    const msg = `Учти бюджет ${L_MSG}`;
+    await refused(A, CONS.id, { rounds: 1 }, "consensus");
+    await refused(A, CONS.id, { rounds: 1, message: "   " }, "consensus");
+    const lastTurn = of(CONS.id, "turn_completed").length;
+    const pl = await plan(A, CONS.id, { rounds: 1, message: msg });
+    eq([pl.status, pl.agreementReset, pl.mode], ["consensus", true, "plan"], "plan");
+    await refused(A, CONS.id, { rounds: 1, message: "Другой текст", execute: true, planToken: pl.planToken }, "stale_plan");
+    const r = json(await call(A, "council_resume", { sessionId: CONS.id, rounds: 1, message: msg, execute: true, planToken: pl.planToken }), "execute");
+    eq(r.accepted, true, "accepted");
+    const all = evs(CONS.id);
+    const i = all.findIndex((e) => e.type === "session_resumed");
+    must(i >= 0 && all[i + 1]?.type === "owner_message" && all[i + 1]!.text === msg, `event after session_resumed: ${JSON.stringify(all[i + 1])?.slice(0, 120)}`);
+    const st0 = await status(A, CONS.id);
+    eq(st0.ownerMessages.at(-1)?.afterTurn, lastTurn, "afterTurn of the new owner message");
+    const done = await statusUntilDone(A, CONS.id);
+    must(["consensus", "no_consensus", "stopped", "failed", "interrupted"].includes(done.status), `final status: ${done.status}`);
+    return `final ${done.status}, afterTurn ${lastTurn}`;
+  });
+
+  // 26
+  await check(26, "L. logs/: no message text, no planToken, no key", async () => {
     const dir = join(home, "logs");
     const files = readdirSync(dir);
     must(files.length > 0, "logs/ is empty");
     const bad: string[] = [];
     for (const f of files) {
       const text = readFileSync(join(dir, f), "utf8");
-      for (const n of [L_SAY, L_KEY, ...tokens]) if (text.includes(n)) bad.push(`${f}: «${n.slice(0, 20)}»`);
+      for (const n of [L_SAY, L_KEY, L_MSG, ...tokens]) if (text.includes(n)) bad.push(`${f}: «${n.slice(0, 20)}»`);
     }
     must(bad.length === 0, bad.join("; "));
     return `files ${files.length}, tokens checked ${tokens.size}`;
   });
 }
 
-const EXPECTED = 25;
+const EXPECTED = 26;
 const t0 = Date.now();
 try {
   await main();
