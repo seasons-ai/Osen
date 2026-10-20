@@ -30,10 +30,10 @@ const done = (
 const fold = (bodies: Body[]): SessionState => foldEvents(mk(bodies));
 const noop = () => {};
 import type { HistoryItem } from "../../shared/bridge.ts";
-import { SessionScreen, feedAtFinish, noStop, openedPanel, sessionStatus, stopFlags, stopMarks } from "./SessionScreen.tsx";
+import { SessionScreen, feedAtFinish, noStop, openedPanel, resumeAccepted, sessionStatus, stopFlags, stopMarks } from "./SessionScreen.tsx";
 import type { StopAction, StopMarks } from "./SessionScreen.tsx";
 import { Discussion } from "./Discussion.tsx";
-import { saveDraft } from "./OwnerComposer.tsx";
+import { hasOwnerDraft, readDraft, saveDraft } from "./OwnerComposer.tsx";
 import { WaitPanelView } from "./WaitPanel.tsx";
 import { openResume, submitChoice, submitResume } from "./Result.tsx";
 import type { ResumeView } from "../../shared/bridge.ts";
@@ -146,7 +146,7 @@ describe("SessionScreen: rerun", () => {
 describe("SessionScreen: continuation", () => {
   const stopped = fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), { type: "session_finished", status: "stopped", version: 1, agreed: [], objectors: [] } as unknown as Body]);
   const cliStopped = fold([created(3, "Цена", "cli"), { type: "session_finished", status: "stopped", version: null, agreed: [], objectors: [] } as unknown as Body]);
-  const rv = { allowed: true, reason: null, blocked: null, rounds: { min: 1, max: 20, remaining: 1, initial: 1 }, participants: [], replaceable: [], replacements: [], providers: [], agreementReset: false, tokenCap: { cap: null, spent: 0, exhausted: false }, draftCalls: 0 } as ResumeView;
+  const rv = { allowed: true, reason: null, blocked: null, messageRequired: false, rounds: { min: 1, max: 20, remaining: 1, initial: 1 }, participants: [], replaceable: [], replacements: [], providers: [], agreementReset: false, tokenCap: { cap: null, spent: 0, exhausted: false }, draftCalls: 0 } as ResumeView;
 
   it("the button is present for a stopped session, including one from the terminal (cli)", () => {
     expect(html(stopped)).toContain("Продолжить обсуждение");
@@ -388,5 +388,48 @@ describe("SessionScreen: unfinished owner message at the finish", () => {
     saveDraft("s1", { text: "Текст", answerTo: null });
     saveDraft("s1", null);
     expect(html(finished, item("consensus"))).toContain("Итоговое решение");
+  });
+});
+
+describe("SessionScreen: continue with the saved draft (173)", () => {
+  const id = "s1";
+  afterEach(() => saveDraft(id, null));
+  const consensus = fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), fin("consensus")]);
+  const failedOther = fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), { type: "session_finished", status: "failed", version: 1, agreed: [], objectors: [], reason: "сбой", reasonCode: "other" } as unknown as Body]);
+  const failedOk = fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), { type: "session_finished", status: "failed", version: 1, agreed: [], objectors: [], reason: "мало", reasonCode: "insufficient_active_participants" } as unknown as Body]);
+
+  it("a finished consensus with a draft opens on the feed with the button; the button starts nothing", () => {
+    saveDraft(id, { text: "Ещё учтите бюджет", answerTo: null });
+    const h = html(consensus);
+    expect(h).toContain('data-state="finished-draft"');
+    expect(h).toContain(">Продолжить с этой репликой<");
+    expect(readDraft(id)?.text).toBe("Ещё учтите бюджет");
+  });
+  it("an unrecoverable failure keeps Copy text and has no continue button; a recoverable one has it", () => {
+    saveDraft(id, { text: "Ещё учтите бюджет", answerTo: null });
+    const h = html(failedOther);
+    expect(h).toContain(">Скопировать текст<");
+    expect(h).not.toContain("Продолжить с этой репликой");
+    expect(html(failedOk)).toContain(">Продолжить с этой репликой<");
+  });
+  it("Discussion shows the button only when onResumeDraft is given", () => {
+    saveDraft(id, { text: "т", answerTo: null });
+    const d = (extra: object) => renderToStaticMarkup(<Discussion id={id} state={consensus} status="consensus" live={null} confirming={false} stopping={false} onStopAsk={noop} onStopCancel={noop} onStopConfirm={noop} onResult={noop} {...extra} />);
+    expect(d({})).not.toContain("Продолжить с этой репликой");
+    expect(d({ onResumeDraft: noop })).toContain("Продолжить с этой репликой");
+  });
+  it("an accepted resume with a message deletes the draft and opens the feed; dropped texts are kept", () => {
+    saveDraft(id, { text: "Ещё учтите бюджет", answerTo: null });
+    expect(hasOwnerDraft(id)).toBe(true);
+    expect(resumeAccepted(id, ["а"], true)).toEqual({ feed: true, dropped: ["а"] });
+    expect(hasOwnerDraft(id)).toBe(false);
+    expect(readDraft(id)).toBeNull();
+    expect(resumeAccepted(id, [], true)).toEqual({ feed: true, dropped: null });
+  });
+  it("an accepted resume without a message keeps the draft that did not go to the engine", () => {
+    saveDraft(id, { text: "Ещё учтите бюджет", answerTo: null });
+    expect(resumeAccepted(id, [], false)).toEqual({ feed: true, dropped: null });
+    expect(readDraft(id)?.text).toBe("Ещё учтите бюджет");
+    saveDraft(id, null);
   });
 });

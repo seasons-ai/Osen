@@ -69,7 +69,7 @@ function parseInput(raw: unknown): StartInput {
 
 export function createLauncher(deps: LauncherDeps): {
   start(input: unknown): Promise<{ id: string }>;
-  resume(id: string, rounds: number, maxTotalTokens?: number | null, replacements?: ResumeReplacement[]): Promise<{ droppedOwnerRequests: string[] }>;
+  resume(id: string, rounds: number, maxTotalTokens?: number | null, replacements?: ResumeReplacement[], message?: string): Promise<{ droppedOwnerRequests: string[] }>;
   running(): string[];
 } {
   const { dataDir, env, logger } = deps;
@@ -182,7 +182,7 @@ export function createLauncher(deps: LauncherDeps): {
     });
   }
 
-  async function resumeRun(id: string, rounds: number, cap?: number | null, replacements?: ResumeReplacement[]): Promise<{ droppedOwnerRequests: string[] }> {
+  async function resumeRun(id: string, rounds: number, cap?: number | null, replacements?: ResumeReplacement[], message?: string): Promise<{ droppedOwnerRequests: string[] }> {
     const { min, max } = ROUNDS_BOUNDS;
     if (!Number.isInteger(rounds) || rounds < min || rounds > max) throw new LaunchError(msg().resumeRounds(min, max));
     if (cap !== undefined && cap !== null && !capOk(cap)) throw new LaunchError(msg().resumeCap);
@@ -195,9 +195,9 @@ export function createLauncher(deps: LauncherDeps): {
         throw e;
       }
     }
-    logger.info(`Resume request for session ${id}: rounds ${rounds}, replacements ${named?.length ?? 0}`);
+    logger.info(`Resume request for session ${id}: rounds ${rounds}, replacements ${named?.length ?? 0}, message ${message !== undefined && message.trim() ? "yes" : "no"}`);
     try {
-      const plan = planResume(dataDir, id, { rounds, ...(cap !== undefined ? { maxTotalTokens: cap } : {}), ...(named?.length ? { replacements: named } : {}) });
+      const plan = planResume(dataDir, id, { rounds, ...(cap !== undefined ? { maxTotalTokens: cap } : {}), ...(named?.length ? { replacements: named } : {}), ...(message !== undefined ? { message } : {}) });
       const driverOptions = { registry: deps.registry(), env, dataDir, scenarioPath: resumeScenarioPath(deps.scenarioPath) };
       const { drivers } = await resumeDrivers(plan, driverOptions);
       return await new Promise((resolve, reject) => {
@@ -227,11 +227,11 @@ export function createLauncher(deps: LauncherDeps): {
   }
 
   return {
-    resume(id, rounds, cap, replacements) {
+    resume(id, rounds, cap, replacements, message) {
       const prev = resuming.get(id);
       // undefined for the ceiling ("do not change") and null ("remove") are different requests; the order of replacements does not matter
       const rs = Array.isArray(replacements) ? [...replacements].sort((a, b) => String(a?.participantId).localeCompare(String(b?.participantId), "en", { numeric: true })) : replacements;
-      const key = JSON.stringify([rounds, cap === undefined ? "keep" : cap, rs?.length ? rs : null]);
+      const key = JSON.stringify([rounds, cap === undefined ? "keep" : cap, rs?.length ? rs : null, message ?? null]);
       if (prev) {
         if (resumeKeys.get(id) !== key) {
           logger.info(`Repeated resume request for session ${id} with other parameters rejected`);
@@ -240,7 +240,7 @@ export function createLauncher(deps: LauncherDeps): {
         logger.info(`Repeated resume request for session ${id}: the already starting resume returned`);
         return prev;
       }
-      const p = resumeRun(id, rounds, cap, replacements).finally(() => { if (resuming.get(id) === p) { resuming.delete(id); resumeKeys.delete(id); } });
+      const p = resumeRun(id, rounds, cap, replacements, message).finally(() => { if (resuming.get(id) === p) { resuming.delete(id); resumeKeys.delete(id); } });
       resuming.set(id, p);
       resumeKeys.set(id, key);
       return p;

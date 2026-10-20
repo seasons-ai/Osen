@@ -63,7 +63,31 @@ const unrecoverable = (id: string) => {
   const evs = readEvents(dir, id)!.events.map((e) => (e.type === "session_finished" ? (({ reasonCode: _r, ...rest }) => rest)(e as typeof e & { reasonCode?: string }) : e));
   writeFileSync(eventsPath(dir, id), evs.map((e) => JSON.stringify(e)).join("\n") + "\n");
 };
-const view = (id: string, r = registry(), sp: (m: string) => string | null = resumeScenarioPath(() => null), replacements?: Parameters<typeof resumeView>[4]) => resumeView(dir, id, r, sp, replacements);
+const view = (id: string, r = registry(), sp: (m: string) => string | null = resumeScenarioPath(() => null), replacements?: Parameters<typeof resumeView>[4], message?: string) => resumeView(dir, id, r, sp, replacements, message);
+
+describe("resumeView: consensus with an owner message", () => {
+  it("consensus without a message: refusal with messageRequired and the engine text", async () => {
+    await prior(mk("c"), [drv(amend("v1")), drv(agree())]);
+    const v = view("c");
+    expect(v).toMatchObject({ allowed: false, messageRequired: true, participants: [], rounds: { remaining: null } });
+    expect(v.reason).toMatch(/согласие достигнуто/);
+    expect(view("c", registry(), resumeScenarioPath(() => null), undefined, "   ")).toMatchObject({ allowed: false, messageRequired: true });
+  });
+
+  it("consensus with a message: full view without messageRequired", async () => {
+    const [f1, f2] = [scen("c-p1", [agree()]), scen("c-p2", [agree()])];
+    await prior(mk("c", { models: [f1, f2] }), [drv(amend("v1")), drv(agree())]);
+    const v = view("c", registry(), resumeScenarioPath(() => null), undefined, "Consider the budget");
+    expect(v).toMatchObject({ allowed: true, messageRequired: false, blocked: null });
+    expect(v.participants).toHaveLength(2);
+    expect(v.rounds.min).toBeLessThanOrEqual(v.rounds.initial);
+  });
+
+  it("no_consensus: messageRequired is false", async () => {
+    await noConsensus("n");
+    expect(view("n")).toMatchObject({ allowed: true, messageRequired: false });
+  });
+});
 
 describe("resumeView", () => {
   it("remainder exists: stopped, the round is not finished", async () => {
@@ -217,6 +241,37 @@ describe("launcher.resume", () => {
     expect(readEvents(dir, "c")!.events).toHaveLength(before);
     expect(l.running()).toEqual([]);
     expect(logs.some((m) => m.includes("rejected: consensus"))).toBe(true);
+  });
+
+  it("consensus with a message: owner_message follows session_resumed with afterTurn before the first new turn", async () => {
+    const [f1, f2] = [scen("c-p1", [agree()]), scen("c-p2", [agree()])];
+    await prior(mk("c", { models: [f1, f2] }), [drv(amend("v1")), drv(agree())]);
+    const l = make();
+    await l.resume("c", 1, undefined, undefined, "Consider the budget");
+    await settle();
+    const evs = readEvents(dir, "c")!.events;
+    const i = evs.findIndex((e) => e.type === "session_resumed");
+    expect(i).toBeGreaterThan(0);
+    const om = evs[i + 1] as Extract<SessionEvent, { type: "owner_message" }>;
+    expect(om.type).toBe("owner_message");
+    expect(om.text).toBe("Consider the budget");
+    const firstNew = evs.slice(i + 2).find((e) => e.type === "turn_started") as { turn: number } | undefined;
+    expect(firstNew).toBeDefined();
+    expect(om.afterTurn).toBe(firstNew!.turn - 1);
+  });
+
+  it("consensus with a blank message is refused like one without", async () => {
+    await prior(mk("c"), [drv(amend("v1")), drv(agree())]);
+    await expect(make().resume("c", 1, undefined, undefined, "  ")).rejects.toMatchObject({ reason: "consensus" });
+  });
+
+  it("a repeat with another message is refused while the first is starting", async () => {
+    await noConsensus("s", { slow: true });
+    const l = make();
+    const a = l.resume("s", 2, undefined, undefined, "one");
+    await expect(l.resume("s", 2, undefined, undefined, "two")).rejects.toThrow(LaunchError);
+    await a;
+    await new Promise((r) => setTimeout(r, 600));
   });
 
   it("engine refusal: the material snapshot is deleted", async () => {

@@ -8,7 +8,7 @@ import { panels } from "../../shared/messages/session-panels.ts";
 import { Discussion } from "./Discussion.tsx";
 import type { PendingReply } from "./Feed.tsx";
 import { useMessages } from "./language.tsx";
-import { hasOwnerDraft } from "./OwnerComposer.tsx";
+import { deleteFinishedDraft, hasOwnerDraft, readDraft } from "./OwnerComposer.tsx";
 import { useSessionDrafts } from "./session-drafts.ts";
 import { chosenVersion } from "../../shared/final-version.ts";
 import { Result, ResumePanel, finalVersion, openResume } from "./Result.tsx";
@@ -49,6 +49,12 @@ export const stopFlags = (m: StopMarks, segment: number): { confirming: boolean;
 export const feedAtFinish = (prev: StoredStatus | "loading", next: StoredStatus | "loading", id: string): boolean | null =>
   (prev === "running" || prev === "loading") && next !== "running" && next !== "loading" ? hasOwnerDraft(id) : null;
 
+/** An accepted resume: the draft is deleted only when a message went into the engine (sent); the feed of the same session opens. */
+export function resumeAccepted(id: string, texts: readonly string[], sent: boolean): { feed: true; dropped: string[] | null } {
+  if (sent) deleteFinishedDraft(id);
+  return { feed: true, dropped: texts.length > 0 ? [...texts] : null };
+}
+
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function SessionScreen({ id, item, state, live, pending, expired, onOwnerSent, onNew, onError, onRerun }: {
@@ -64,6 +70,7 @@ export function SessionScreen({ id, item, state, live, pending, expired, onOwner
   const [notice, setNotice] = useState<ResultProps["notice"]>(null);
   const [resume, setResume] = useState<{ view: ResumeView; n: number } | null>(null); // the open resume panel
   const [opening, setOpening] = useState(false);
+  const [draftAtOpen, setDraftAtOpen] = useState(""); // the saved draft text captured when the panel is opened
   const [dropped, setDropped] = useState<string[] | null>(null); // owner message requests dropped by the resume; lives while the screen is open
   const openGuard = useRef(false);
   const status = sessionStatus(state, item);
@@ -90,6 +97,15 @@ export function SessionScreen({ id, item, state, live, pending, expired, onOwner
     setRerunBusy(true);
     Promise.resolve(onRerun(withDecision)).finally(() => setRerunBusy(false));
   };
+  const open = () => {
+    setOpening(true);
+    setDraftAtOpen(readDraft(id)?.text ?? "");
+    void openResume((i) => window.council.resumeOptions(i), id, openGuard).then((r) => {
+      setOpening(false);
+      if (r === null) return;
+      if (r.ok) { setNotice(null); setResume((prev) => openedPanel(prev, r.value)); } else setNotice({ tone: "danger", text: r.error });
+    });
+  };
   if (status !== "running" && !feed) {
     const copy = () => {
       window.council.copyText(finalVersion(state)!.text).then(
@@ -111,16 +127,9 @@ export function SessionScreen({ id, item, state, live, pending, expired, onOwner
         (e) => setNotice({ tone: "danger", text: message(e) }),
       );
     };
-    const open = () => {
-      setOpening(true);
-      void openResume((i) => window.council.resumeOptions(i), id, openGuard).then((r) => {
-        setOpening(false);
-        if (r === null) return;
-        if (r.ok) { setNotice(null); setResume((prev) => openedPanel(prev, r.value)); } else setNotice({ tone: "danger", text: r.error });
-      });
-    };
     const panel = resume && (
-      <ResumePanel key={resume.n} id={id} session={state.session} view={resume.view} onCancel={() => setResume(null)} onResumed={(texts) => { setResume(null); setDropped(texts.length > 0 ? texts : null); }} />
+      <ResumePanel key={resume.n} id={id} session={state.session} view={resume.view} message={draftAtOpen} onCancel={() => setResume(null)}
+        onResumed={(texts, sent) => { const r = resumeAccepted(id, texts, sent); setResume(null); setFeed(r.feed); setDropped(r.dropped); }} />
     );
     return <Result id={id} state={state} status={status as ResultStatus} notice={notice} partial={item?.partial ?? null} when={item?.createdAt} onCopy={copy} onCopyChoice={copyChoice} onExport={exportMd} onFeed={() => setFeed(true)} onNew={onNew} onResume={open} resuming={opening} panel={panel}
       onRerun={() => rerun(false)} onContinue={() => rerun(true)} rerunBusy={rerunBusy} />;
@@ -137,7 +146,7 @@ export function SessionScreen({ id, item, state, live, pending, expired, onOwner
       id={id} drafts={drafts} pending={pending} onOwnerSent={onOwnerSent}
       state={state} status={status} live={live} expired={expired} confirming={confirming} stopping={stopping}
       onStopAsk={() => dispatch({ type: "ask", segment })} onStopCancel={() => dispatch({ type: "cancel", segment })} onStopConfirm={stop}
-      partial={item?.partial ?? null} onResult={() => setFeed(false)} dropped={dropped} onDroppedClose={() => setDropped(null)}
+      partial={item?.partial ?? null} onResult={() => setFeed(false)} onResumeDraft={() => { setFeed(false); open(); }} dropped={dropped} onDroppedClose={() => setDropped(null)}
     />
   );
 }

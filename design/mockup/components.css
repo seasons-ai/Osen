@@ -90,6 +90,7 @@ body{background:var(--bg-0);color:var(--text);font-family:var(--font-ui);font-si
 .field{display:flex;flex-direction:column;gap:var(--sp-1)}
 .field__label{font-size:var(--fs-sm);font-weight:var(--fw-medium);color:var(--text-dim)}
 .field__hint{font-size:var(--fs-sm);color:var(--text-faint)}
+.field__hint[data-tone="danger"]{color:var(--c)}
 .input,.textarea,.select{width:100%;padding:var(--sp-2) var(--sp-3);background:var(--bg-1);color:var(--text);border:var(--border-w) solid var(--line-strong);border-radius:var(--r-md);font:inherit;transition:border-color var(--dur-fast)}
 .input::placeholder,.textarea::placeholder{color:var(--text-faint)}
 .input:hover,.textarea:hover,.select:hover{border-color:var(--text-faint)}

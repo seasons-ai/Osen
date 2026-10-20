@@ -1,4 +1,4 @@
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { sessionTotals, tokenUsage } from "@model-council/core/protocol";
 import type { JournalPartial, StoredStatus } from "@model-council/core";
@@ -65,11 +65,11 @@ export const RESULT_HEAD: Record<ResultStatus, { tone: string; icon: IconName }>
 // Stop by the token cap: its own icon and tone, the title comes from the catalog.
 const CAP_HEAD = { tone: "warn", icon: "i-coins" } as const satisfies { tone: string; icon: IconName };
 
-export const RESUMABLE: readonly ResultStatus[] = ["no_consensus", "stopped", "interrupted"];
+export const RESUMABLE: readonly ResultStatus[] = ["consensus", "no_consensus", "stopped", "interrupted"];
 
 const INSUFFICIENT_ACTIVE: typeof InsufficientCode = "insufficient_active_participants";
 
-/** Three statuses can be continued, plus a failure from a lack of active participants (only with a replacement). */
+/** Four statuses can be continued (consensus only with an owner message), plus a failure from a lack of active participants (only with a replacement). */
 export const canResume = (state: SessionState, status: ResultStatus): boolean =>
   RESUMABLE.includes(status) || (status === "failed" && state.finish?.reasonCode === INSUFFICIENT_ACTIVE);
 
@@ -112,12 +112,17 @@ export async function openResume(
 
 /** Recomputing the view after replacements change. A response to a stale request is dropped (null): only the response to the last one is applied. */
 export async function refreshResume(
-  call: (id: string, replacements?: ResumeReplacement[]) => Promise<ResumeView>, id: string, choices: ResumeChoices, seq: { current: number },
+  call: (id: string, replacements?: ResumeReplacement[], message?: string) => Promise<ResumeView>, id: string, choices: ResumeChoices, seq: { current: number },
+  message?: string,
 ): Promise<ResumeResult<ResumeView> | null> {
   const mine = ++seq.current;
   const replacements = toReplacements(choices);
   let r: ResumeResult<ResumeView>;
-  try { r = { ok: true, value: await (replacements.length === 0 ? call(id) : call(id, replacements)) }; } catch (e) { r = { ok: false, error: errorText(e) }; }
+  try {
+    const value = message !== undefined ? await call(id, replacements.length === 0 ? undefined : replacements, message)
+      : await (replacements.length === 0 ? call(id) : call(id, replacements));
+    r = { ok: true, value };
+  } catch (e) { r = { ok: false, error: errorText(e) }; }
   return mine === seq.current ? r : null;
 }
 
@@ -141,13 +146,13 @@ export function resumeCap(tokenCap: ResumeView["tokenCap"], text: string, uncap:
 
 /** Session resume. After success guard stays busy: no repeated call, the panel closes. */
 export async function submitResume(
-  call: (id: string, rounds: number, maxTotalTokens?: number | null, replacements?: ResumeReplacement[]) => Promise<{ droppedOwnerRequests: string[] }>, id: string, rounds: number, guard: { current: boolean },
-  maxTotalTokens?: number | null, replacements: ResumeReplacement[] = [],
+  call: (id: string, rounds: number, maxTotalTokens?: number | null, replacements?: ResumeReplacement[], message?: string) => Promise<{ droppedOwnerRequests: string[] }>, id: string, rounds: number, guard: { current: boolean },
+  maxTotalTokens?: number | null, replacements: ResumeReplacement[] = [], message?: string,
 ): Promise<ResumeResult<string[]> | null> {
   if (guard.current) return null;
   guard.current = true;
   try {
-    const done = replacements.length > 0 ? await call(id, rounds, maxTotalTokens, replacements) : await (maxTotalTokens === undefined ? call(id, rounds) : call(id, rounds, maxTotalTokens));
+    const done = message !== undefined ? await call(id, rounds, maxTotalTokens, replacements.length > 0 ? replacements : undefined, message) : replacements.length > 0 ? await call(id, rounds, maxTotalTokens, replacements) : await (maxTotalTokens === undefined ? call(id, rounds) : call(id, rounds, maxTotalTokens));
     return { ok: true, value: done.droppedOwnerRequests };
   } catch (e) { guard.current = false; return { ok: false, error: errorText(e) }; }
 }
@@ -165,19 +170,21 @@ export interface ResumePanelViewProps {
   text: string; error: string | null; busy: boolean;
   capText: string; uncap: boolean;
   choices: ResumeChoices; refreshing: boolean; refreshError: string | null; // owner replacements, a view recompute in progress, the refusal of the last recompute
+  message: string; required: boolean; // the owner message field; required — the engine demanded a message (consensus), a blank field blocks "Continue"
   focus?: string | null; // replacement row to return keyboard focus to after "Replace" and "Keep"
-  onText(text: string): void; onCapText(text: string): void; onUncap(on: boolean): void; onSubmit(): void; onCancel(): void;
+  onText(text: string): void; onMessage(text: string): void; onCapText(text: string): void; onUncap(on: boolean): void; onSubmit(): void; onCancel(): void;
   onReplace(id: string): void; onKeep(id: string): void; onProvider(id: string, providerId: string): void; onModel(id: string, model: string): void;
 }
 
-export function ResumePanelView({ language, session, view, text, error, busy, capText, uncap, choices, refreshing, refreshError, focus, onText, onCapText, onUncap, onSubmit, onCancel, onReplace, onKeep, onProvider, onModel }: ResumePanelViewProps): ReactNode {
+export function ResumePanelView({ language, session, view, text, error, busy, capText, uncap, choices, refreshing, refreshError, message, required, focus, onText, onMessage, onCapText, onUncap, onSubmit, onCancel, onReplace, onKeep, onProvider, onModel }: ResumePanelViewProps): ReactNode {
   const t = result(language);
   const { rounds } = view;
   const value = parseRounds(text, rounds);
   const blocked = view.participants.filter((p) => !p.available);
   const cap = resumeCap(view.tokenCap, capText, uncap, language);
   const chosen = Object.values(choices);
-  const canGo = view.allowed && value !== null && blocked.length === 0 && view.blocked === null && !busy && cap.ok
+  const needMessage = required && message.trim() === "";
+  const canGo = view.allowed && !needMessage && value !== null && blocked.length === 0 && view.blocked === null && !busy && cap.ok
     && !refreshing && refreshError === null && chosen.every((c) => c.model !== "");
   const bounds = t.bounds(rounds.min, rounds.max);
   const alert = (text: string) => <div className="alert" data-tone="danger" role="alert"><Icon name="i-alert" /><div><div className="alert__text">{text}</div></div></div>;
@@ -187,7 +194,15 @@ export function ResumePanelView({ language, session, view, text, error, busy, ca
   return (
     <section className="card result-resume" aria-label={t.resumeLabel}>
       <h2 className="section-title">{t.continueDiscussion}</h2>
-      {!view.allowed ? alert(view.reason ?? t.resumeUnavailable) : (
+      {(view.allowed || view.messageRequired) && (
+        <label className="field result-resume__message">
+          <span className="field__label">{t.ownerMessage}</span>
+          <textarea className="textarea" rows={2} value={message} onChange={(e) => onMessage(e.target.value)} />
+          <span className="field__hint">{t.ownerMessageHint}</span>
+          {needMessage && <span className="field__hint" data-tone="danger">{view.reason ?? t.messageNeeded}</span>}
+        </label>
+      )}
+      {view.messageRequired ? (refreshError !== null && alert(refreshError)) : !view.allowed ? alert(view.reason ?? t.resumeUnavailable) : (
         <>
           <label className="field result-resume__rounds">
             <span className="field__label">{t.moreRounds}</span>
@@ -287,8 +302,8 @@ export function ResumePanelView({ language, session, view, text, error, busy, ca
   );
 }
 
-export function ResumePanel({ id, session, view: first, onCancel, onResumed }: {
-  id: string; session: Session | null; view: ResumeView; onCancel(): void; onResumed(dropped: string[]): void;
+export function ResumePanel({ id, session, view: first, message: initialMessage = "", onCancel, onResumed }: {
+  id: string; session: Session | null; view: ResumeView; message?: string; onCancel(): void; onResumed(dropped: string[], sent: boolean): void; // sent — a non-blank owner message went with the resume
 }): ReactNode {
   const language = useLanguage();
   const [view, setView] = useState(first);
@@ -304,26 +319,39 @@ export function ResumePanel({ id, session, view: first, onCancel, onResumed }: {
   const guard = useRef(false);
   const seq = useRef(0);
   const [focus, setFocus] = useState<string | null>(null);
-  const change = (next: ResumeChoices) => {
+  const [message, setMessage] = useState(initialMessage); // the saved draft is only the initial text; editing here never touches it
+  const requiredRef = useRef(first.messageRequired); // sticky: once the engine demanded a message, it stays demanded
+  if (view.messageRequired) requiredRef.current = true;
+  const required = requiredRef.current;
+  // The plan depends on the message only when it is required; otherwise typing needs no recompute.
+  const request = (next: ResumeChoices, text: string) => {
     setChoices(next); setRefreshing(true);
-    void refreshResume((i, r) => window.council.resumeOptions(i, r), id, next, seq).then((r) => {
+    const m = required && text.trim() !== "" ? text : undefined;
+    void refreshResume((i, r, msg) => window.council.resumeOptions(i, r, msg), id, next, seq, m).then((r) => {
       if (r === null) return;
       setRefreshing(false);
       if (!r.ok) return setRefreshError(r.error);
       setRefreshError(null); setView(r.value);
       if (!edited.current) setText(String(r.value.rounds.initial));
-      const { kept, dropped } = pruneChoices(next, r.value);
-      if (dropped.length > 0) change(kept); // the map is strictly smaller: the loop is finite
+      const { kept, dropped } = r.value.messageRequired ? { kept: next, dropped: [] } : pruneChoices(next, r.value); // a message-required view lists no replaceable: keep the choice until the text returns
+      if (dropped.length > 0) request(kept, text); // the map is strictly smaller: the loop is finite
     });
+  };
+  const change = (next: ResumeChoices) => request(next, message);
+  // A prefilled draft on a view that still demands a message: ask for the full view right away.
+  useEffect(() => { if (first.messageRequired && initialMessage.trim() !== "") request({}, initialMessage); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const onMessage = (next: string) => {
+    setMessage(next);
+    if (required && (next.trim() === "") !== (message.trim() === "")) request(choices, next);
   };
   const submit = () => {
     const rounds = parseRounds(text, view.rounds);
     const cap = resumeCap(view.tokenCap, capText, uncap, language);
-    if (rounds === null || busy || refreshing || refreshError !== null || !cap.ok) return;
+    if (rounds === null || busy || refreshing || refreshError !== null || !cap.ok || (required && message.trim() === "")) return;
     setBusy(true); setError(null);
-    void submitResume((i, r, c, m) => window.council.resumeSession(i, r, c, m), id, rounds, guard, cap.value, toReplacements(choices)).then((r) => {
+    void submitResume((i, r, c, m, msg) => window.council.resumeSession(i, r, c, m, msg), id, rounds, guard, cap.value, toReplacements(choices), message.trim() === "" ? undefined : message).then((r) => {
       if (r === null) return;
-      if (r.ok) return onResumed(r.value); // the panel is closed by the owner of the state
+      if (r.ok) return onResumed(r.value, message.trim() !== ""); // the panel is closed by the owner of the state
       setBusy(false); setError(r.error);
     });
   };
@@ -332,8 +360,8 @@ export function ResumePanel({ id, session, view: first, onCancel, onResumed }: {
   const onKeep = (pid: string) => { const { [pid]: _gone, ...rest } = choices; setFocus(pid); change(rest); };
   const onProvider = (pid: string, providerId: string) => withChoice(pid, { providerId, model: view.providers.find((x) => x.id === providerId)?.models[0] ?? "" });
   const onModel = (pid: string, model: string) => withChoice(pid, { ...choices[pid]!, model });
-  return <ResumePanelView language={language} session={session} view={view} text={text} error={error} busy={busy} capText={capText} uncap={uncap} choices={choices} refreshing={refreshing} refreshError={refreshError} focus={focus}
-    onText={(t) => { edited.current = true; setText(t); }} onCapText={setCapText} onUncap={setUncap} onSubmit={submit} onCancel={onCancel}
+  return <ResumePanelView language={language} session={session} view={view} text={text} error={error} busy={busy} capText={capText} uncap={uncap} choices={choices} refreshing={refreshing} refreshError={refreshError} message={message} required={required} focus={focus}
+    onText={(t) => { edited.current = true; setText(t); }} onMessage={onMessage} onCapText={setCapText} onUncap={setUncap} onSubmit={submit} onCancel={onCancel}
     onReplace={onReplace} onKeep={onKeep} onProvider={onProvider} onModel={onModel} />;
 }
 
@@ -511,7 +539,7 @@ export function Result({ id = "", state, status, notice, onCopy, onCopyChoice, o
             : <div><h2 className="result-hero__title">{h.title}</h2><p className="result-hero__text muted">{h.text}</p></div>}
           {when && <span className="result-hero__when mono">{formatWhen(when, new Date(), language)}</span>}
           {(view ? true : canResume(state, status)) && (
-            <button type="button" className="btn result-resume-btn" disabled={resuming || !actions.resume} title={actions.reason ?? undefined} onClick={onResume}><Icon name="i-play" size="sm" />{t.continueDiscussion}</button>
+            <button type="button" className="btn result-resume-btn" disabled={resuming || !actions.resume} title={actions.reason ?? undefined} onClick={onResume}><Icon name="i-play" size="sm" />{status === "consensus" ? t.continueWithMessage : t.continueDiscussion}</button>
           )}
         </section>
         {view === null && status === "interrupted" && state.waiting !== null && <WaitInterruptedNote state={state} />}

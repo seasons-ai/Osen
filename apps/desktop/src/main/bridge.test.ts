@@ -94,8 +94,25 @@ describe("bridge: resume", () => {
     const { deps, bridge } = setup();
     expect(await bridge.call("resumeOptions", ["s1"])).toEqual({ ok: true, value: { allowed: true } });
     expect(await bridge.call("resumeSession", ["s1", 3])).toEqual({ ok: true, value: { droppedOwnerRequests: ["р"] } });
-    expect(deps.resumeOptions).toHaveBeenCalledWith("s1", undefined);
-    expect(deps.resumeSession).toHaveBeenCalledWith("s1", 3, undefined, undefined);
+    expect(deps.resumeOptions).toHaveBeenCalledWith("s1", undefined, undefined);
+    expect(deps.resumeSession).toHaveBeenCalledWith("s1", 3, undefined, undefined, undefined);
+  });
+
+  it("the owner message is forwarded; null is absence; a non-string is refused", async () => {
+    const { deps, bridge } = setup();
+    await bridge.call("resumeOptions", ["s1", undefined, "Consider the budget"]);
+    await bridge.call("resumeOptions", ["s1", undefined, null]);
+    await bridge.call("resumeSession", ["s1", 3, undefined, undefined, "Consider the budget"]);
+    await bridge.call("resumeSession", ["s1", 3, undefined, undefined, null]);
+    expect(deps.resumeOptions).toHaveBeenNthCalledWith(1, "s1", undefined, "Consider the budget");
+    expect(deps.resumeOptions).toHaveBeenNthCalledWith(2, "s1", undefined, undefined);
+    expect(deps.resumeSession).toHaveBeenNthCalledWith(1, "s1", 3, undefined, undefined, "Consider the budget");
+    expect(deps.resumeSession).toHaveBeenNthCalledWith(2, "s1", 3, undefined, undefined, undefined);
+    const bad = { ok: false, error: "Реплика владельца должна быть строкой." };
+    expect(await bridge.call("resumeOptions", ["s1", undefined, 5])).toEqual(bad);
+    expect(await bridge.call("resumeSession", ["s1", 3, undefined, undefined, { a: 1 }])).toEqual(bad);
+    expect(deps.resumeOptions).toHaveBeenCalledTimes(2);
+    expect(deps.resumeSession).toHaveBeenCalledTimes(2);
   });
 
   it("third ceiling argument: number, null, absence", async () => {
@@ -103,7 +120,7 @@ describe("bridge: resume", () => {
     await bridge.call("resumeSession", ["s1", 3, 2500]);
     await bridge.call("resumeSession", ["s1", 3, null]);
     await bridge.call("resumeSession", ["s1", 3]);
-    expect((deps.resumeSession as ReturnType<typeof vi.fn>).mock.calls).toEqual([["s1", 3, 2500, undefined], ["s1", 3, null, undefined], ["s1", 3, undefined, undefined]]);
+    expect((deps.resumeSession as ReturnType<typeof vi.fn>).mock.calls).toEqual([["s1", 3, 2500, undefined, undefined], ["s1", 3, null, undefined, undefined], ["s1", 3, undefined, undefined, undefined]]);
   });
 
   it.each([[0], [1.5], ["5"], [-1]])("потолок %s отклоняется на мосту", async (cap) => {
@@ -676,8 +693,8 @@ describe("bridge: prepareRerun", () => {
     const { deps, bridge } = setup();
     await bridge.call("resumeOptions", ["s1", map]);
     await bridge.call("resumeSession", ["s1", 3, null, map]);
-    expect(deps.resumeOptions).toHaveBeenCalledWith("s1", map);
-    expect(deps.resumeSession).toHaveBeenCalledWith("s1", 3, null, map);
+    expect(deps.resumeOptions).toHaveBeenCalledWith("s1", map, undefined);
+    expect(deps.resumeSession).toHaveBeenCalledWith("s1", 3, null, map, undefined);
   });
 
   it.each([["не массив", {}], ["не объект", [5]], ["participantId не pN", [{ participantId: "2", providerId: "a", model: "b" }]], ["пустой model", [{ participantId: "p2", providerId: "a", model: "" }]], ["providerId не строка", [{ participantId: "p2", providerId: 1, model: "b" }]]])("замены (%s) отклоняются на мосту", async (_n, bad) => {

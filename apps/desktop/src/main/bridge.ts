@@ -34,8 +34,8 @@ export interface BridgeDeps {
   saveLineup(input: unknown): Promise<LineupSaveResult>;
   startSession(input: unknown): Promise<{ id: string }>;
   lastParticipants(): RosterEntry[] | null;
-  resumeOptions(id: string, replacements?: ResumeReplacement[]): Promise<ResumeView>;
-  resumeSession(id: string, rounds: number, maxTotalTokens?: number | null, replacements?: ResumeReplacement[]): Promise<{ droppedOwnerRequests: string[] }>;
+  resumeOptions(id: string, replacements?: ResumeReplacement[], message?: string): Promise<ResumeView>;
+  resumeSession(id: string, rounds: number, maxTotalTokens?: number | null, replacements?: ResumeReplacement[], message?: string): Promise<{ droppedOwnerRequests: string[] }>;
   stopSession(id: string): void;
   acceptVersion(id: string, version: number, note?: string): OwnerSelection;
   sendOwnerMessage(id: string, text: string, answerTo?: string): { requestId: string };
@@ -59,6 +59,13 @@ export interface BridgeDeps {
 export type CallResult = { ok: true; value: unknown } | { ok: false; error: string };
 
 class ActionError extends Error {}
+
+// The owner message arrives from the window: only the type is checked, blank is treated as absent by the engine.
+function messageOf(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "string") throw new ActionError(shell().resumeMessageInvalid);
+  return raw;
+}
 
 // The replacement map arrives from the window: the shape is checked here, names from the catalog and registry — where they are known.
 function replacementsOf(raw: unknown): ResumeReplacement[] | undefined {
@@ -244,17 +251,18 @@ export function createBridge(deps: BridgeDeps): {
         throw e;
       }
     },
-    resumeOptions: async ([raw, replacements]) => {
+    resumeOptions: async ([raw, replacements, rawMessage]) => {
       const id = validId(raw);
       const map = replacementsOf(replacements);
+      const message = messageOf(rawMessage);
       try {
-        return await deps.resumeOptions(id, map);
+        return await deps.resumeOptions(id, map, message);
       } catch (e) {
         if (e instanceof ResumeRejectedError || e instanceof ReplacementInputError) throw new ActionError(e.message);
         throw e;
       }
     },
-    resumeSession: async ([raw, rounds, cap, replacements]) => {
+    resumeSession: async ([raw, rounds, cap, replacements, rawMessage]) => {
       const id = validId(raw);
       const { min, max } = ROUNDS_BOUNDS;
       if (typeof rounds !== "number" || !Number.isInteger(rounds) || rounds < min || rounds > max) {
@@ -264,8 +272,9 @@ export function createBridge(deps: BridgeDeps): {
         throw new ActionError(shell().capInvalid);
       }
       const map = replacementsOf(replacements);
+      const message = messageOf(rawMessage);
       try {
-        return await deps.resumeSession(id, rounds, cap, map);
+        return await deps.resumeSession(id, rounds, cap, map, message);
       } catch (e) {
         if (e instanceof ResumeRejectedError || e instanceof ReplacementInputError) throw new ActionError(e.message);
         throw e;

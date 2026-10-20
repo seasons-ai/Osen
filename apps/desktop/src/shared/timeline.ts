@@ -42,11 +42,12 @@ export function timeline(state: SessionState, expired: readonly WaitExpiry[] = [
     }
     if (state.draftsFinished) items.push({ kind: "discussion-start", synthesizerId: drafts.synthesizerId });
   }
-  let next = 0; // owner messages go in application order; afterTurn = N — after all elements of turn N
-  const flushOwner = (before: number) => {
-    for (; next < state.ownerMessages.length && state.ownerMessages[next]!.afterTurn < before; next++) items.push({ kind: "owner", message: state.ownerMessages[next]! });
-  };
   let mark = 0;
+  let next = 0; // owner messages go in application order; afterTurn = N — after all elements of turn N
+  // a message written at a resume (index >= ownerMessagesBefore) stands after that resume's divider
+  const flushOwner = (before: number) => {
+    for (; next < state.ownerMessages.length && state.ownerMessages[next]!.afterTurn < before && !(mark < state.resumes.length && next >= state.resumes[mark]!.ownerMessagesBefore); next++) items.push({ kind: "owner", message: state.ownerMessages[next]! });
+  };
   let expiry = 0;
   // resume and deadline-expiry marks at one point of the feed go by event time; at equal time the resume goes first
   const flushMarks = (before: number) => {
@@ -58,6 +59,7 @@ export function timeline(state: SessionState, expired: readonly WaitExpiry[] = [
   for (const n of numbers) {
     flushOwner(n);
     flushMarks(n);
+    flushOwner(n);
     const fails = state.failures.filter((f) => f.turn === n).sort((a, b) => a.attempt - b.attempt);
     const turn = state.turns.find((t) => t.turn === n);
     fails.forEach((failure, i) => items.push({ kind: "failure", failure, retried: turn !== undefined || i < fails.length - 1 }));
@@ -71,6 +73,7 @@ export function timeline(state: SessionState, expired: readonly WaitExpiry[] = [
   }
   flushOwner(Infinity);
   flushMarks(Infinity);
+  flushOwner(Infinity);
   return items;
 }
 

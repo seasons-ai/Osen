@@ -55,6 +55,7 @@ export const panels = defineMessages({
     draftLabel: "Message draft",
     draftSaved: "The session finished while you were writing. The text is saved.",
     copyDraft: "Copy text",
+    resumeWithDraft: "Continue with this message",
     deleteDraft: "Delete draft",
     draftCopied: "Text copied to the clipboard",
 
@@ -114,6 +115,7 @@ export const panels = defineMessages({
     draftLabel: "Черновик реплики",
     draftSaved: "Сессия завершилась, пока вы писали. Текст сохранён.",
     copyDraft: "Скопировать текст",
+    resumeWithDraft: "Продолжить с этой репликой",
     deleteDraft: "Удалить черновик",
     draftCopied: "Текст скопирован в буфер обмена",
 
