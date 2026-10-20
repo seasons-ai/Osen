@@ -8,6 +8,7 @@ export interface RunSpec {
   env: Record<string, string | undefined>;       // whole environment; not merged with process.env
   signal?: AbortSignal;
   onStdout?: (chunk: string) => void;
+  onSpawn?: (pid: number) => void;                // called once, right after the child is started
   killGraceMs?: number;                          // default 2000
 }
 export interface RunResult {
@@ -28,6 +29,7 @@ export function runProcess(spec: RunSpec): Promise<RunResult> {
 
   return new Promise((resolve) => {
     const child = spawn(spec.command, spec.args, { cwd: spec.cwd, env: spec.env, stdio: "pipe", detached: true });
+    if (child.pid !== undefined) spec.onSpawn?.(child.pid);
     let stdout = "";
     let stderr = "";
     let aborted = false;

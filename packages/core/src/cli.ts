@@ -26,6 +26,8 @@ import { npmReleases, npmSource } from "./cli-agents/npm-source.ts";
 import { candidatesJson, checkCandidates } from "./cli-agents/candidates.ts";
 import type { ReleaseSource } from "./cli-agents/candidates.ts";
 import { installPin, listPins, rollbackPin, usePin } from "./cli-agents/pins.ts";
+import { checkMaxCalls, formatPlan, planAcceptance, runAcceptance } from "./cli-agents/acceptance.ts";
+import { acceptanceMessages } from "./messages/acceptance.ts";
 import type { PackageSource } from "./cli-agents/pins.ts";
 import { loadVerifiedRecord } from "./cli-agents/verified-record.ts";
 import type { VerifiedEntry, VerifiedRecord } from "./cli-agents/verified-record.ts";
@@ -521,6 +523,9 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           version: { type: "string" },
           candidate: { type: "boolean" },
           agent: { type: "string" },
+          model: { type: "string" },
+          "max-calls": { type: "string" },
+          "save-fixture": { type: "string" },
         },
       }));
     } catch (e) {
@@ -535,7 +540,10 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     if (values.answer !== undefined && cmd !== "say") return usageFail(t.answerOnlySay);
     if (!["run", "providers", "list", "show", "stop", "say", "status", "continue", "resume", "home", "templates", "lineups", "doctor", "run-prepared", "cli"].includes(cmd)) return usageFail(t.unknownCommand(cmd));
     if (values.agent !== undefined && !(cmd === "cli" && rest[0] === "candidates")) return usageFail(t.agentOnlyCandidates);
-    if (cmd !== "cli" && (values.version !== undefined || values.candidate)) return usageFail(t.cliFlagOnlyCli(values.version !== undefined ? "--version" : "--candidate"));
+    // flags of cli accept: refused for every other command; the sub-command check below refuses them for the other cli subcommands
+    const acceptFlag = values.model !== undefined ? "--model" : values["max-calls"] !== undefined ? "--max-calls" : values["save-fixture"] !== undefined ? "--save-fixture" : undefined;
+    if (cmd !== "cli" && (values.version !== undefined || values.candidate)) return usageFail(values.version !== undefined ? t.cliFlagOnlyCli("--version") : t.cliFlagOnlyInstallAccept("--candidate"));
+    if (cmd !== "cli" && acceptFlag) return usageFail(t.cliFlagOnlyAccept(acceptFlag));
     if (values.json) {
       const jsonCmd = cmd === "lineups" && rest.length ? "lineups save" : cmd === "cli" && rest[0] === "candidates" ? "cli candidates" : cmd;
       if (!JSON_COMMANDS.includes(jsonCmd)) return usageFail(t.jsonNotSupported(jsonCmd));
@@ -545,19 +553,25 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       if (rest.length) return usageFail(t.noArgs(cmd));
     } else if (cmd === "cli") {
       const [sub = "", ...args] = rest;
-      const usages: Record<string, string> = { install: "<agent> [--version <X>] [--candidate]", use: "<agent> <version>", rollback: "<agent>" };
-      const need = { install: 1, list: 0, use: 2, rollback: 1, candidates: 0 }[sub];
+      const usages: Record<string, string> = { install: "<agent> [--version <X>] [--candidate]", use: "<agent> <version>", rollback: "<agent>", accept: "<agent> <version> [--candidate] [--model <id>] [--max-calls <N>] [--save-fixture <folder>]" };
+      const need = { install: 1, list: 0, use: 2, rollback: 1, candidates: 0, accept: 2 }[sub];
       if (!rest.length) return usageFail(t.cliUsage);
       if (need === undefined) return usageFail(t.cliUnknownSub(sub));
-      if (sub !== "install") {
-        const flag = values.version !== undefined ? "--version" : values.candidate ? "--candidate" : undefined;
-        if (flag) return usageFail(t.cliFlagNotAllowed(flag, sub));
-      }
-      const allowed = sub === "candidates" ? ["agent", "json"] : ["version", "candidate"];
+      const rejected = values.version !== undefined && sub !== "install" ? "--version"
+        : values.candidate && sub !== "install" && sub !== "accept" ? "--candidate"
+        : acceptFlag && sub !== "accept" ? acceptFlag : undefined;
+      if (rejected) return usageFail(t.cliFlagNotAllowed(rejected, sub));
+      const allowed = sub === "candidates" ? ["agent", "json"] : sub === "accept" ? ["candidate", "model", "max-calls", "save-fixture"] : ["version", "candidate"];
       if (Object.entries(values).some(([k, v]) => v !== undefined && v !== false && !allowed.includes(k))) return usageFail(t.cliUsage);
       if (values.agent !== undefined && !(CLI_AGENTS as readonly string[]).includes(values.agent)) return usageFail(t.cliUnknownAgent(values.agent, CLI_AGENTS.join(", ")));
       if (args.length !== need) return usageFail(sub === "list" || sub === "candidates" ? t.noArgs(`cli ${sub}`) : t.cliWrongArgs(sub, usages[sub]!));
       if (need > 0 && !(CLI_AGENTS as readonly string[]).includes(args[0]!)) return usageFail(t.cliUnknownAgent(args[0]!, CLI_AGENTS.join(", ")));
+      if (sub === "accept") {
+        const maxCalls = values["max-calls"];
+        if (maxCalls !== undefined && !(/^\d+$/.test(maxCalls) && Number(maxCalls) >= 1)) return usageFail(t.maxCallsRange(maxCalls));
+        if (values.model !== undefined && !values.model.trim()) return usageFail(t.flagNeedsValue("--model"));
+        if (values["save-fixture"] !== undefined && !values["save-fixture"].trim()) return usageFail(t.flagNeedsValue("--save-fixture"));
+      }
     } else if (cmd === "lineups") {
       if (rest.length && !(rest[0] === "save" && rest.length === 2)) return usageFail(t.lineupsUsage);
       if (rest.length && values["from-session"] === undefined) return usageFail(t.lineupsSaveNeedsSession);
@@ -696,6 +710,36 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         // the only place that may install a pinned CLI: an explicit command
         const [sub, agent, version] = rest as [string, string, string];
         const record = io.cliPin?.record ?? loadVerifiedRecord(dataDir);
+        if (sub === "accept") {
+          // only the explicit accept command calls models; without --max-calls it prints the plan and makes no call
+          const planned = await planAcceptance(dataDir, agent, version, { candidate: values.candidate, model: values.model }, { record });
+          if (!planned.ok) {
+            io.stderr(`${planned.text}\n`);
+            return planned.code;
+          }
+          if (values["max-calls"] === undefined) {
+            io.stdout(`${formatPlan(planned.plan)}\n`);
+            return EXIT.usage;
+          }
+          const refusal = checkMaxCalls(planned.plan, Number(values["max-calls"]));
+          if (refusal !== undefined) {
+            io.stderr(`${refusal}\n`);
+            return EXIT.usage;
+          }
+          let probeNo = 0;
+          const outcome = await runAcceptance(dataDir, planned.plan, {
+            env: io.env,
+            language: getProcessLanguage(),
+            signal: io.signal,
+            ...(values["save-fixture"] !== undefined ? { saveFixture: resolve(values["save-fixture"]) } : {}),
+            osenVersion: io.appVersion,
+            onProbe: (o) => io.stdout(`${acceptanceMessages().probeLine(++probeNo, acceptanceMessages().probeName(o.probe), o.ok ? undefined : o.reason ?? "")}\n`),
+          });
+          if (outcome.fixtureError) io.stderr(`${outcome.fixtureError}\n`);
+          if (outcome.fixture) io.stdout(`${outcome.fixture}\n`);
+          (outcome.code === 0 ? io.stdout : io.stderr)(`${outcome.text}\n`);
+          return outcome.code;
+        }
         const r = sub === "install" ? await installPin(dataDir, agent, { version: values.version, candidate: values.candidate }, { source: io.cliPin?.source ?? npmSource(io.env), record })
           : sub === "use" ? usePin(dataDir, agent, version, { record })
           : sub === "rollback" ? rollbackPin(dataDir, agent, {})
