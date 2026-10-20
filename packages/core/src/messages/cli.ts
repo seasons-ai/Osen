@@ -28,7 +28,7 @@ export const cliMessages = defineMessages({
   council say <id> [--answer <qN>] <text>
   council status <id> [--json]
   council continue <id>
-  council resume <id> [--rounds <n>] [--max-tokens <n> | --no-max-tokens] [--replace <pN>=<entry>]…
+  council resume <id> [--rounds <n>] [--max-tokens <n> | --no-max-tokens] [--replace <pN>=<entry>]… [--message <text>]
   council doctor [--json]
   council home
   council --help
@@ -44,7 +44,7 @@ Subcommands:
   say <id> [--answer <qN>] <text>  send an owner message to a running session or answer a participant's question (from another terminal)
   status <id>  session state and the current owner wait
   continue <id>  release the current owner wait of a running session (from another terminal)
-  resume <id>  continue a saved session (interrupted, no_consensus, stopped; failed — only after the "fewer than two active participants" failure and with --replace)
+  resume <id>  continue a saved session (interrupted, no_consensus, stopped; consensus — only with --message; failed — only after the "fewer than two active participants" failure and with --replace)
   doctor     diagnostics: binary, version, runtime, data folder, config, providers; no model calls
   home       data folder path
 
@@ -79,6 +79,8 @@ Flags:
                            (without the flag — the rest of the previous limit)
   --replace <pN>=<entry>   only for resume, repeatable: replace the dropped or unavailable participant pN; the entry is as for --participant;
                            the new participant gets the next identifier, the place and role of the previous one, agreements are reset
+  --message <text>         only for resume: owner message written before the first turn of the resume; resets agreements;
+                           required for a session with consensus
   --json                   print one JSON document to stdout (status, list, show, providers, templates, lineups, doctor)
   --help                   this help
 
@@ -101,7 +103,7 @@ Questions to the owner: a participant can address a question to the owner — in
 
 Owner wait: --pause-after-round stops the discussion after every round without an outcome, --wait-for-owner — before the next turn while a question to the owner is unanswered. --owner-wait-sec sets the period (default 300 s); when it expires the discussion continues on its own within the round limit. A regular message (say) does not release the pause, an answer to a question (say --answer) releases the question, continue releases the whole wait and closes unanswered questions without an answer. continue does not start new participants and does not add rounds, unlike resume. During the wait models are not called; the session status stays "running"; state — council status <id>.
 
-Resume: resume continues a session with the status interrupted, no_consensus or stopped from the same place; the topic, framing, template and limits do not change, the other start flags are not accepted. The lineup changes only with the --replace <pN>=<entry> flag: the previous participant keeps their identifier and history, the new one gets the next identifier, the place and role of the previous one, all agreements are reset and every active participant confirms the version again. A session with the status failed can be continued only after the "fewer than two active participants" failure and only with a replacement after which there are at least two active participants. A refusal (session not found, running, consensus reached, a different failure, no rounds left, unavailable provider, material snapshot, invalid replacement: a repeat or unknown pN, an available active participant, an unavailable new participant, too many participants) gives the reason and code 2.
+Resume: resume continues a session with the status interrupted, no_consensus or stopped from the same place; the topic, framing, template and limits do not change, the other start flags are not accepted. The lineup changes only with the --replace <pN>=<entry> flag: the previous participant keeps their identifier and history, the new one gets the next identifier, the place and role of the previous one, all agreements are reset and every active participant confirms the version again. A session with the status consensus can be continued only with an owner message (--message <text>): it is written before the first turn of the resume, resets the agreements, and every active participant speaks again. A session with the status failed can be continued only after the "fewer than two active participants" failure and only with a replacement after which there are at least two active participants. A refusal (session not found, running, consensus reached, a different failure, no rounds left, unavailable provider, material snapshot, invalid replacement: a repeat or unknown pN, an available active participant, an unavailable new participant, too many participants) gives the reason and code 2.
 
 Independent drafts (experiment): off by default. With --drafts each participant first writes their own version of the solution without seeing the others; then the synthesizer starts the regular discussion (by default the first participant). Model call bound — participants × (rounds + 1) × 3. Drafts do not count as agreement. All drafts are passed whole into every regular turn and must fit into --context-chars, otherwise the session fails before the discussion. Check the benefit of the mode for decision quality yourself — it is not proven.
 
@@ -274,6 +276,10 @@ Example:
     resumeFlag: (flag: string) => `the resume command does not change the lineup, framing, template and limits: the --${flag} flag is not accepted.`,
     roundsOnlyResume: "the --rounds flag is accepted only by the resume command.",
     replaceOnlyResume: "the --replace flag is accepted only by the resume command.",
+    messageOnlyResume: "the --message flag is accepted only by the resume command.",
+    messageRepeated: "the --message flag is given more than once: pass one owner message.",
+    messageNeedsText: "the --message flag needs a non-empty owner message.",
+    consensusNeedsMessage: (id: string) => `Add an owner message: council resume ${id} --message "<text>"`,
     urlFlagsOnlyRun: "the --url, --include, --no-ignore, --preview-materials and --prepared-materials flags are accepted only by a new start.",
     includeNoIgnore: "--include and --no-ignore are incompatible: without rules there is nothing to bring back.",
     includeNeedsPath: "--include: a path to an excluded file or folder is required.",
@@ -379,7 +385,7 @@ Example:
   council say <id> [--answer <qN>] <текст>
   council status <id> [--json]
   council continue <id>
-  council resume <id> [--rounds <n>] [--max-tokens <n> | --no-max-tokens] [--replace <pN>=<запись>]…
+  council resume <id> [--rounds <n>] [--max-tokens <n> | --no-max-tokens] [--replace <pN>=<запись>]… [--message <текст>]
   council doctor [--json]
   council home
   council --help
@@ -395,7 +401,7 @@ Example:
   say <id> [--answer <qN>] <текст>  отправить реплику владельца идущей сессии или ответить на вопрос участника (из другого терминала)
   status <id>  состояние сессии и текущее ожидание владельца
   continue <id>  снять текущее ожидание владельца у идущей сессии (из другого терминала)
-  resume <id>  продолжить сохранённую сессию (interrupted, no_consensus, stopped; failed — только при сбое «меньше двух активных участников» и с --replace)
+  resume <id>  продолжить сохранённую сессию (interrupted, no_consensus, stopped; consensus — только с --message; failed — только при сбое «меньше двух активных участников» и с --replace)
   doctor     диагностика: бинарь, версия, рантайм, папка данных, конфиг, провайдеры; без вызовов моделей
   home       путь папки данных
 
@@ -430,6 +436,8 @@ Example:
                            (без флага — остаток прежнего лимита)
   --replace <pN>=<запись>  только для resume, повторяется: заменить выбывшего или недоступного участника pN; запись как у --participant;
                            новый участник получает следующий идентификатор, место и роль прежнего, согласия сбрасываются
+  --message <текст>        только для resume: реплика владельца, записанная до первого хода продолжения; сбрасывает согласия;
+                           обязательна для сессии с согласием (consensus)
   --json                   напечатать в stdout один JSON-документ (status, list, show, providers, templates, lineups, doctor)
   --help                   эта справка
 
@@ -452,7 +460,7 @@ config.json создаётся в папке данных при первом з
 
 Ожидание владельца: --pause-after-round останавливает обсуждение после каждого круга без итога, --wait-for-owner — перед ближайшим ходом, пока вопрос владельцу без ответа. Срок задаёт --owner-wait-sec (по умолчанию 300 с); по истечении срока обсуждение продолжается само в пределах лимита кругов. Обычная реплика (say) паузу не снимает, ответ на вопрос (say --answer) снимает вопрос, continue снимает ожидание целиком и закрывает неотвеченные вопросы без ответа. continue не запускает новых участников и не добавляет кругов, в отличие от resume. Во время ожидания модели не вызываются; статус сессии остаётся «идёт»; состояние — council status <id>.
 
-Продолжение: resume продолжает сессию со статусом interrupted, no_consensus или stopped с того же места; тема, рамка, шаблон и лимиты не меняются, остальные флаги запуска не принимаются. Состав меняется только флагом --replace <pN>=<запись>: прежний участник сохраняет идентификатор и историю, новый получает следующий идентификатор, место и роль прежнего, все согласия сбрасываются и каждый действующий участник подтверждает версию заново. Сессия со статусом failed продолжается только при сбое «меньше двух активных участников» и только с заменой, после которой активных не меньше двух. Отказ (сессия не найдена, идёт, согласие достигнуто, иной сбой, нет остатка кругов, недоступный провайдер, снимок материала, неверная замена: повтор или неизвестный pN, доступный действующий участник, недоступный новый участник, превышение числа участников) даёт причину и код 2.
+Продолжение: resume продолжает сессию со статусом interrupted, no_consensus или stopped с того же места; тема, рамка, шаблон и лимиты не меняются, остальные флаги запуска не принимаются. Состав меняется только флагом --replace <pN>=<запись>: прежний участник сохраняет идентификатор и историю, новый получает следующий идентификатор, место и роль прежнего, все согласия сбрасываются и каждый действующий участник подтверждает версию заново. Сессия со статусом consensus продолжается только с репликой владельца (--message <текст>): она записывается до первого хода продолжения, сбрасывает согласия, и каждый действующий участник высказывается заново. Сессия со статусом failed продолжается только при сбое «меньше двух активных участников» и только с заменой, после которой активных не меньше двух. Отказ (сессия не найдена, идёт, согласие достигнуто, иной сбой, нет остатка кругов, недоступный провайдер, снимок материала, неверная замена: повтор или неизвестный pN, доступный действующий участник, недоступный новый участник, превышение числа участников) даёт причину и код 2.
 
 Независимые черновики (эксперимент): выключены по умолчанию. С --drafts каждый участник сначала пишет свой вариант решения, не видя чужих; затем обычное обсуждение начинает синтезатор (по умолчанию первый участник). Граница вызовов моделей — участники × (круги + 1) × 3. Черновики не считаются согласием. Все черновики целиком передаются в каждый обычный ход и должны помещаться в --context-chars, иначе сессия завершается сбоем до обсуждения. Пользу режима для качества решения проверяйте сами — она не доказана.
 
@@ -618,6 +626,10 @@ history-pins.json в ней — закрепления экрана «Истор
     resumeFlag: (flag: string) => `команда resume не меняет состав, рамку, шаблон и лимиты: флаг --${flag} не принимается.`,
     roundsOnlyResume: "флаг --rounds принимается только командой resume.",
     replaceOnlyResume: "флаг --replace принимается только командой resume.",
+    messageOnlyResume: "флаг --message принимается только командой resume.",
+    messageRepeated: "флаг --message указан больше одного раза: передайте одну реплику владельца.",
+    messageNeedsText: "флагу --message нужна непустая реплика владельца.",
+    consensusNeedsMessage: (id: string) => `Добавьте реплику владельца: council resume ${id} --message "<текст>"`,
     urlFlagsOnlyRun: "флаги --url, --include, --no-ignore, --preview-materials и --prepared-materials принимаются только новым запуском.",
     includeNoIgnore: "--include и --no-ignore несовместимы: без правил возвращать нечего.",
     includeNeedsPath: "--include: нужен путь к исключённому файлу или папке.",

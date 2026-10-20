@@ -16,6 +16,7 @@ import { createScriptedDriver, readScenario } from "./participants/scripted.ts";
 import { resolveDataDir } from "./store/data-dir.ts";
 import { runStoredSession } from "./store/run.ts";
 import { planResume, runResumedSession } from "./store/resume.ts";
+import { getProcessLanguage, setProcessLanguage } from "./i18n/process-language.ts";
 import { listSessions } from "./store/sessions.ts";
 import { appendEvent, createSessionJournal, eventsPath, materialPath, readEvents } from "./store/journal.ts";
 import { openOwnerQueue, ownerMessagesDir } from "./store/owner-messages.ts";
@@ -1269,7 +1270,7 @@ describe("council resume", () => {
     };
     await reject("no-such-session", "не найдена");
     const done = idOf((await run(full(), { env: dev(home) })).out);
-    await reject(done, "согласие уже достигнуто");
+    await reject(done, "согласие достигнуто");
     const { id: lim } = await seed(home);
     await reject(lim, "--rounds");
 
@@ -2480,5 +2481,79 @@ describe("Shared log: loading settings per council command", () => {
     const r = tmp();
     expect((await run([...base, ...two(), "--max-rounds", "3"], { env: dev(r) })).code).toBe(0);
     expect(settingsLines(r)).toHaveLength(1);
+  });
+});
+
+describe("council resume --message", () => {
+  const bytes = (home: string, id: string) => readFileSync(eventsPath(home, id));
+  const step = (stance: string, solution: string | null) => ({ response: { stance, reasoning: "r", solution, answers: [], questions: [] } });
+  // Round 1 ends in consensus; the scenarios keep agreeing after it.
+  const seed = async (home: string) => {
+    const f = (name: string, steps: unknown[]) => { const p = join(home, name); writeFileSync(p, JSON.stringify({ steps })); return `scripted:${p}`; };
+    const r = await run([...base, ...parts(f("p1.json", [step("amend", "v1"), step("agree", null), step("agree", null)]), f("p2.json", [step("agree", null), step("agree", null), step("agree", null)])), "--max-rounds", "3"], { env: dev(home) });
+    expect(r.code).toBe(0);
+    return idOf(r.out);
+  };
+
+  it("invalid --message: empty, whitespace, repeated, on another command — exit code 2 with help, journal unchanged", async () => {
+    const home = tmp();
+    const id = await seed(home);
+    const before = bytes(home, id);
+    const cases: [string[], string][] = [
+      [["resume", id, "--message", ""], "--message"],
+      [["resume", id, "--message", "  \t "], "--message"],
+      [["resume", id, "--message", "a", "--message", "b"], "--message"],
+      [["show", id, "--message", "a"], "--message принимается только командой resume"],
+      [["say", id, "x", "--message", "a"], "--message принимается только командой resume"],
+    ];
+    for (const [argv, why] of cases) {
+      const r = await run(argv, { env: dev(home) });
+      expect([r.code, argv]).toEqual([2, argv]);
+      expect(r.err).toContain(why);
+      expect(r.err).toContain(help());
+    }
+    expect(bytes(home, id).equals(before)).toBe(true);
+  });
+
+  it("consensus without --message: exit code 2, reason names consensus and --message in ru and en, journal unchanged", async () => {
+    const home = tmp();
+    const id = await seed(home);
+    const before = bytes(home, id);
+    const ru = await run(["resume", id], { env: dev(home) });
+    expect(ru.code).toBe(2);
+    expect(ru.err).toContain("согласие достигнуто: продолжить можно только с репликой владельца");
+    expect(ru.err).toContain(`council resume ${id} --message`);
+    const lang = getProcessLanguage();
+    setProcessLanguage("en");
+    try {
+      const en = await run(["resume", id], { env: dev(home) });
+      expect(en.code).toBe(2);
+      expect(en.err).toContain("consensus reached: it can be resumed only with an owner message");
+      expect(en.err).toContain(`council resume ${id} --message`);
+    } finally {
+      setProcessLanguage(lang);
+    }
+    expect(bytes(home, id).equals(before)).toBe(true);
+  });
+
+  it("consensus with --message: the owner message is printed before the turns, numbering continues, show has it between turns", async () => {
+    const home = tmp();
+    const id = await seed(home);
+    const r = await run(["resume", id, "--rounds", "1", "--message", "Учтите ещё бюджет"], { env: dev(home) });
+    expect(r.code).toBe(0);
+    const at = (s: string) => r.out.indexOf(s);
+    expect(r.out).toContain(`Продолжение сессии ${id}: ещё кругов 1 (общий лимит 2), не более 6 вызовов моделей (активных участников 2 × 1 × 3).`);
+    expect(at("Продолжение сессии")).toBeLessThan(at("── Владелец · o1 · после хода 2"));
+    expect(at("── Владелец · o1 · после хода 2")).toBeLessThan(at("Учтите ещё бюджет"));
+    expect(at("Учтите ещё бюджет")).toBeGreaterThan(at("— Продолжено"));
+    expect(at("Учтите ещё бюджет")).toBeLessThan(at("── Ход 3 · круг 2 · p1"));
+    expect(r.out).toContain("── Ход 4 · круг 2 · p2");
+    expect(r.out).toContain("══ Итог: consensus");
+    const evs = readEvents(home, id)!.events;
+    const i = evs.findIndex((e) => e.type === "session_resumed");
+    expect(evs[i + 1]).toMatchObject({ type: "owner_message", id: "o1", text: "Учтите ещё бюджет", afterTurn: 2 });
+    const sh = await run(["show", id], { env: dev(home) });
+    expect(sh.out.indexOf("── Ход 2 ")).toBeLessThan(sh.out.indexOf("Учтите ещё бюджет"));
+    expect(sh.out.indexOf("Учтите ещё бюджет")).toBeLessThan(sh.out.indexOf("── Ход 3 "));
   });
 });

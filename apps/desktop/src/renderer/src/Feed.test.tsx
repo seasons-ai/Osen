@@ -296,7 +296,7 @@ describe("FeedView: owner", () => {
 describe("FeedView: «Continued» separator", () => {
   const base = fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), started(2, "p2"), done(2, "p2", "agree", 1), started(3, "p3"), done(3, "p3", "agree", 1)]);
   const ts = "2026-01-02T10:42:00Z";
-  const mark = (beforeTurn: number, addedRounds: number) => ({ ts, maxRounds: 5, addedRounds, beforeTurn });
+  const mark = (beforeTurn: number, addedRounds: number) => ({ ts, maxRounds: 5, addedRounds, beforeTurn, ownerMessagesBefore: 0 });
   it("icon, text with the round count in the right form, date; between the old and new turns", () => {
     const h = view({ ...base, resumes: [mark(3, 2)] }, { running: false });
     expect(h).toContain('role="separator"');

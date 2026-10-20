@@ -12,6 +12,7 @@ import { createScriptedDriver } from "../participants/scripted.ts";
 import type { Scenario } from "../participants/scripted.ts";
 import type { Limits, Session, SessionEvent } from "../protocol/schema.ts";
 import { sessionTotals, tokenUsage } from "../protocol/state.ts";
+import { foldEvents } from "../protocol/fold.ts";
 import type { ResumePoint, SessionState } from "../protocol/state.ts";
 import type { Registry } from "../registry/config.ts";
 import { eventsPath, materialPath, readEvents, resumeLockPath, stopRequestPath } from "./journal.ts";
@@ -154,7 +155,7 @@ describe("planResume: statuses", () => {
     expect(reasonOf(() => planResume(dir, "nope", { isAlive: dead }))).toBe("not_found");
     expect(reasonOf(() => planResume(dir, "../x", { isAlive: dead }))).toBe("not_found");
     expect([journal(dir, "c"), journal(dir, "f")]).toEqual(before);
-    expect(msg(() => planResume(dir, "c", { isAlive: dead }))).toContain("согласие уже достигнуто");
+    expect(msg(() => planResume(dir, "c", { isAlive: dead }))).toContain("согласие достигнуто");
   });
 
   it("no result and executor running: running; result written — live process does not interfere", async () => {
@@ -1384,5 +1385,113 @@ describe("Interrupted session: continuation executor crashed in a live process",
     expect((err as StopRejectedError).reason).toBe("interrupted");
     expect(existsSync(stopRequestPath(dir, "s"))).toBe(false);
     expect(journal(dir, "s")).toBe(before);
+  });
+});
+
+// Session id with two scripted participants: round 1 → consensus (p1 amend, p2 agree); both keep agreeing.
+async function consensus(dir: string, id = "c") {
+  const f1 = scenarioFile(dir, `${id}-p1`, [amend("v1"), agree(), agree()]);
+  const f2 = scenarioFile(dir, `${id}-p2`, [agree(), agree(), agree()]);
+  const session = mk(id, { maxRounds: 3, models: [f1, f2] });
+  await prior(dir, session, [scripted(amend("v1")), scripted(agree())]);
+  return session;
+}
+const after = (events: readonly SessionEvent[], type: SessionEvent["type"]) => events[events.findIndex((e) => e.type === type) + 1];
+
+describe("Owner message on resume", () => {
+  it("consensus without a message or with a whitespace message refused, journal unchanged", async () => {
+    const dir = tmp();
+    await consensus(dir);
+    const before = journal(dir, "c");
+    expect(reasonOf(() => planResume(dir, "c", { isAlive: dead }))).toBe("consensus");
+    expect(reasonOf(() => planResume(dir, "c", { isAlive: dead, message: "   \n\t" }))).toBe("consensus");
+    expect(reasonOf(() => planResume(dir, "c", { isAlive: dead, message: "" }))).toBe("consensus");
+    expect(msg(() => planResume(dir, "c", { isAlive: dead }))).toContain("согласие достигнуто: продолжить можно только с репликой владельца");
+    expect(journal(dir, "c")).toBe(before);
+  });
+
+  it("consensus with a message accepted: owner_message right after session_resumed, agreement reset, consensus again after both spoke", async () => {
+    const dir = tmp();
+    await consensus(dir);
+    const plan = planResume(dir, "c", { rounds: 1, isAlive: dead, message: "Учтите ещё бюджет" });
+    expect(plan.message).toBe("Учтите ещё бюджет");
+    const run = await go(dir, plan);
+    const evs = run.events;
+    expect(evs[0]).toMatchObject({ type: "session_resumed" });
+    expect(evs[1]).toMatchObject({ type: "owner_message", id: "o1", text: "Учтите ещё бюджет", afterTurn: 2 });
+    const reset = readEvents(dir, "c")!.events;
+    expect(foldEvents(reset.slice(0, reset.indexOf(reset.find((e) => e.type === "owner_message")!) + 1)).agreed).toEqual([]);
+    expect((evs[1] as { requestId: string }).requestId).toMatch(/^resume-/);
+    expect(types(evs.slice(2))).toEqual(["turn_started", "turn_completed", "turn_started", "turn_completed", "session_finished"]);
+    expect(evs[2]).toMatchObject({ turn: 3, round: 2, participantId: "p1" });
+    expect(run.state.finish?.status).toBe("consensus");
+    expect(run.state.finish?.version).toBe(1);
+    expect(run.state.versions.map((v) => v.number)).toEqual([1]);
+    expect(run.state.resumes.at(-1)).toMatchObject({ beforeTurn: 3, ownerMessagesBefore: 0 });
+    const folded = readSession(dir, "c", dead)!.state;
+    expect(folded.ownerMessages.map((o) => o.id)).toEqual(["o1"]);
+  });
+
+  it("the message reaches the next turn's context", async () => {
+    const dir = tmp();
+    await consensus(dir);
+    const plan = planResume(dir, "c", { rounds: 1, isAlive: dead, message: "Учтите ещё бюджет" });
+    const seen: string[] = [];
+    const spy = (d: ParticipantDriver): ParticipantDriver => ({ call: (r: TurnRequest) => { seen.push(JSON.stringify(r)); return d.call(r); } });
+    await runResumedSession({ dataDir: dir, plan, drivers: { p1: spy(scripted(agree())), p2: spy(scripted(agree())) }, isAlive: dead });
+    expect(seen.length).toBe(2);
+    expect(seen.every((s) => s.includes("Учтите ещё бюджет"))).toBe(true);
+  });
+
+  it("numbering continues after earlier messages; mark keeps their count", async () => {
+    const dir = tmp();
+    await consensus(dir);
+    const plan1 = planResume(dir, "c", { rounds: 1, isAlive: dead, message: "раз" });
+    await go(dir, plan1);
+    const plan2 = planResume(dir, "c", { rounds: 1, isAlive: dead, message: "два" });
+    const run = await go(dir, plan2);
+    expect(run.events[1]).toMatchObject({ type: "owner_message", id: "o2", text: "два", afterTurn: 4 });
+    expect(run.state.resumes.map((r) => r.ownerMessagesBefore)).toEqual([0, 1]);
+    expect(new Set(run.state.ownerMessages.map((o) => o.requestId)).size).toBe(2);
+  });
+
+  it("no_consensus accepts a message and works without one", async () => {
+    const dir = tmp();
+    await noConsensus(dir);
+    const with_ = await go(dir, planResume(dir, "s", { rounds: 1, isAlive: dead, message: "ещё" }));
+    expect(with_.events[1]).toMatchObject({ type: "owner_message", id: "o1", afterTurn: 2 });
+    const d2 = tmp();
+    await noConsensus(d2);
+    const without = await go(d2, planResume(d2, "s", { rounds: 1, isAlive: dead }));
+    expect(types(without.events)).not.toContain("owner_message");
+  });
+
+  it("unfinished turn repeated: message afterTurn = beforeTurn − 1, same turn repeated after it", async () => {
+    const dir = tmp();
+    const ac = new AbortController();
+    const f1 = scenarioFile(dir, "p1", [amend("v1"), agree()]);
+    const f2 = scenarioFile(dir, "p2", [agree(), agree()]);
+    const stopper: ParticipantDriver = { call: () => (ac.abort(), never()) };
+    await prior(dir, mk("s", { models: [f1, f2] }), [scripted(amend("v1")), stopper], { signal: ac.signal });
+    const plan = planResume(dir, "s", { isAlive: dead, message: "подождите" });
+    expect(plan.point).toMatchObject({ turn: 2, redo: true });
+    const run = await go(dir, plan);
+    expect(run.events[1]).toMatchObject({ type: "owner_message", afterTurn: 1 });
+    expect(run.events[2]).toMatchObject({ type: "turn_started", turn: 2, participantId: "p2" });
+  });
+
+  it("consensus fixed by a turn without session_finished: with a message a new turn runs before the result; without one the result is written at once", async () => {
+    const dir = tmp();
+    await consensus(dir);
+    cutAfter(dir, "c", (e) => e.type === "turn_completed", 2);
+    expect(readSession(dir, "c", dead)?.status).toBe("interrupted");
+    const run = await go(dir, planResume(dir, "c", { rounds: 1, isAlive: dead, message: "ещё" }));
+    expect(types(run.events).slice(0, 3)).toEqual(["session_resumed", "owner_message", "turn_started"]);
+    expect(run.state.finish?.status).toBe("consensus");
+    const d2 = tmp();
+    await consensus(d2);
+    cutAfter(d2, "c", (e) => e.type === "turn_completed", 2);
+    const plain = await go(d2, planResume(d2, "c", { rounds: 1, isAlive: dead }));
+    expect(types(plain.events)).toEqual(["session_resumed", "session_finished"]);
   });
 });

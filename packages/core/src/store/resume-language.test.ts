@@ -117,7 +117,7 @@ const rep = (participantId: string, model: string, extra: Partial<{ providerId: 
 type Case = { name: string; reason: string; ru: string; values: string[]; recorded?: string[]; run: (dir: string) => Promise<unknown> | unknown };
 const cases = (dir: string): Case[] => [
   { name: "not_found", reason: "not_found", ru: "Сессия nope не найдена.", values: ["nope"], run: () => planResume(dir, "nope", { isAlive: dead }) },
-  { name: "consensus", reason: "consensus", ru: "Сессия c: согласие уже достигнуто, продолжать нечего.", values: ["c"], run: () => planResume(dir, "c", { isAlive: dead }) },
+  { name: "consensus", reason: "consensus", ru: "Сессия c: согласие достигнуто: продолжить можно только с репликой владельца.", values: ["c"], run: () => planResume(dir, "c", { isAlive: dead }) },
   { name: "no_rounds_left", reason: "no_rounds_left", ru: "Сессия nc: круги прежнего лимита пройдены: укажите число дополнительных кругов (--rounds).", values: ["nc", "--rounds"], run: () => planResume(dir, "nc", { isAlive: dead }) },
   { name: "bad_rounds", reason: "bad_rounds", ru: "Сессия nc: число дополнительных кругов должно быть целым числом не меньше 1.", values: ["nc"], run: () => planResume(dir, "nc", { rounds: 0, isAlive: dead }) },
   { name: "bad_token_cap", reason: "bad_token_cap", ru: "Сессия nc: потолок токенов должен быть целым числом не меньше 1.", values: ["nc"], run: () => planResume(dir, "nc", { rounds: 1, maxTotalTokens: 0, isAlive: dead }) },

@@ -13,7 +13,7 @@ export interface ResumeView {
   mode: "plan" | "execute";
   accepted: boolean;
   planToken: string;
-  status: "interrupted" | "no_consensus" | "stopped" | "failed";
+  status: ResumePlan["status"];
   source: "desktop" | "mcp" | "cli";
   topic: string;
   addedRounds: number;

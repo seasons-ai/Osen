@@ -45,7 +45,7 @@ function apply(state: SessionState, event: SessionEvent): SessionState {
       return {
         ...prev,
         resumes: point
-          ? [...prev.resumes, { ts: event.ts, maxRounds: event.maxRounds, addedRounds: event.maxRounds - point.completedRounds, beforeTurn: point.turn, ...(event.replacements ? { replacements: event.replacements.map((r) => ({ oldParticipantId: r.oldParticipantId, newParticipantId: r.participant.id })) } : {}) }]
+          ? [...prev.resumes, { ts: event.ts, maxRounds: event.maxRounds, addedRounds: event.maxRounds - point.completedRounds, beforeTurn: point.turn, ownerMessagesBefore: prev.ownerMessages.length, ...(event.replacements ? { replacements: event.replacements.map((r) => ({ oldParticipantId: r.oldParticipantId, newParticipantId: r.participant.id })) } : {}) }]
           : prev.resumes,
         status: "running",
         finish: null,

@@ -182,6 +182,8 @@ export interface RunSessionOptions {
     events: readonly SessionEvent[]; maxRounds: number; maxTotalTokens?: number | null;
     /** Replacements of departed or unavailable participants: the new one takes the old one's slot; the old one is no longer called. */
     replacements?: readonly SessionReplacement[];
+    /** Owner message of the resume: written right after session_resumed, before the first turn or draft event. */
+    ownerMessage?: { text: string; requestId: string };
   };
 }
 
@@ -478,6 +480,9 @@ export async function runSession(options: RunSessionOptions): Promise<SessionRun
   else emit({ type: "session_created", session, pid: process.pid });
   const point = resume ? resumePoint(state) : { turn: 1, round: 1, index: 0 };
   let turn = point.turn - 1;
+  if (resume?.ownerMessage) {
+    emit({ type: "owner_message", id: `o${state.ownerMessages.length + 1}`, text: resume.ownerMessage.text, afterTurn: turn, requestId: resume.ownerMessage.requestId });
+  }
   // A reply is applied once: a repeated reply is recognized by requestId in the state.
   const closeHeld = (ids: readonly string[]): void => {
     for (const id of ids) {
