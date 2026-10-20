@@ -414,6 +414,27 @@ COUNCIL_HOME=.council-data npx council cli rollback claude
 - A pinned install has its own config dir, so the owner logs in to it once: `CLAUDE_CONFIG_DIR=<version dir>/config claude` and then `/login`; `CODEX_HOME=<version dir>/config codex login`.
 - Switching versions never rewrites session journals.
 
+## CLI adapter contract and fixtures
+
+The adapter turns the output of one `claude` or `codex` turn into a reply text and usage (`packages/core/src/cli-agents/output-parse.ts`).
+
+**Version branches.** `PARSE_BRANCHES` lists one parser per output format with an inclusive version range. A CLI version inside a range uses that branch; a version above all ranges uses the nearest lower branch; a version older than all uses the oldest branch; an unknown version (no `x.y.z`) uses the newest. Parsing never refuses a start: whether a version may be launched is decided by the launch guard (see "Pinned CLIs"). A new output format gets a new branch; an old branch is never edited.
+
+**Read strictly (a wrong type rejects the turn).**
+- `claude`: a `result` event with a boolean `is_error`, and a `structured_output` object or a string `result`.
+- `codex`: at least one completed `agent_message` item whose `text` is a string.
+- Token counts must be non-negative integers and the cost a non-negative number; otherwise the value is treated as absent.
+
+**Skipped.** Unknown fields, unknown events, unknown item types and lines that are not JSON. If the whole `claude` output is not one JSON document, the last `result` event is searched line by line; a truncated document is still a failure.
+
+**Never ignored.** `claude` `is_error: true`; `codex` `error` and `*.failed` events; any started or completed tool item of `codex` (`command_execution`, `mcp_tool_call`, `web_search`, `file_change`), which is a non-retryable refusal naming the tool; a non-zero exit code.
+
+**Fixtures.** Recorded turn outputs live in `packages/core/src/cli-agents/fixtures/` as `<agent>-<version>-turn[.synthetic].<json|jsonl>` (`json` for `claude`, `jsonl` for `codex`). `synthetic` marks a file built from the current parsing contract rather than recorded from a real CLI. Coverage is checked against the built-in verified record only: every entry needs a real or a synthetic fixture. Versions added to the local record by `council cli` need none.
+
+**Capturing real fixtures.** After the owner's consent run `node packages/core/scenarios/cli-adapter-fixtures/capture.ts --real --max-calls 2` (one turn per agent on the cheapest model, `--out` another folder; `--max-tokens` only goes into the session limits the prompt is built from: Osen cannot cap the tokens of a single CLI turn). The raw output is kept in a temporary folder outside git, anonymized (user paths, UUIDs, e-mails, keys, the model answer), checked for leftovers and written under the real name; the synthetic file of the same version is removed. The acceptance run of change 181 may save its raw output through the same anonymizer instead. `capture.ts --stub` (with `COUNCIL_DEV=1`) does the same on stubs into a temporary folder with 0 model calls.
+
+**Stand.** `COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the repository> node packages/core/scenarios/cli-adapter-fixtures/check.ts` runs the real `council` process against stubs that print every fixture byte for byte, plus broken variants (a non-boolean `is_error`, a tool item, truncated JSON), in `en` and `ru`, and prints the number of synthetic fixtures.
+
 ## Token ceiling
 
 The number of rounds does not limit spend: long answers and large materials make a round expensive. `--max-tokens <N>` sets the ceiling of total session tokens (input plus output over all turns, an integer of at least 1); `--no-max-tokens` turns off the ceiling set in `config.json` (`defaults.maxTotalTokens`; the initial file does not have it). The ceiling is counted in tokens, not money: not all providers report cost.

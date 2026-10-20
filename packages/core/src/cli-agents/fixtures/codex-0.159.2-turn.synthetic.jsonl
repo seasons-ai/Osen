@@ -1,0 +1,5 @@
+{"type":"thread.started","thread_id":"<id-1>"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"Anonymized reasoning."}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"{\"stance\":\"agree\",\"reasoning\":\"Anonymized reasoning.\",\"solution\":null,\"answers\":[],\"questions\":[],\"files\":[]}"}}
+{"type":"turn.completed","usage":{"input_tokens":4210,"cached_input_tokens":3072,"output_tokens":96}}
