@@ -30,6 +30,10 @@ export const cliMessages = defineMessages({
   council continue <id>
   council resume <id> [--rounds <n>] [--max-tokens <n> | --no-max-tokens] [--replace <pN>=<entry>]… [--message <text>]
   council doctor [--json]
+  council cli install <agent> [--version <X>] [--candidate]
+  council cli list
+  council cli use <agent> <version>
+  council cli rollback <agent>
   council home
   council --help
 
@@ -46,6 +50,10 @@ Subcommands:
   continue <id>  release the current owner wait of a running session (from another terminal)
   resume <id>  continue a saved session (interrupted, no_consensus, stopped; consensus — only with --message; failed — only after the "fewer than two active participants" failure and with --replace)
   doctor     diagnostics: binary, version, runtime, data folder, config, providers; no model calls
+  cli install <agent> [--version <X>] [--candidate]  install a pinned claude or codex into the data folder (needs npm and network; the newest verified version by default; --candidate does not activate it)
+  cli list   pinned installs, the active one and the previous one
+  cli use <agent> <version>  make an installed verified version active
+  cli rollback <agent>  return to the previous active version (one step)
   home       data folder path
 
 Flags:
@@ -259,6 +267,12 @@ Example:
     launchExpired: (deadline: string) => `Launch file is stale: its deadline ${deadline} has passed.`,
     launchUsage: "council run-prepared <launch-file>",
     noArgs: (cmd: string) => `Command ${cmd} takes no arguments.`,
+    cliUsage: "Command cli: install <agent> [--version <X>] [--candidate] | list | use <agent> <version> | rollback <agent>.",
+    cliUnknownSub: (sub: string) => `Unknown cli subcommand «${sub}». Expected: install, list, use, rollback.`,
+    cliWrongArgs: (sub: string, usage: string) => `Command cli ${sub} takes: ${usage}.`,
+    cliFlagNotAllowed: (flag: string, sub: string) => `The ${flag} flag is not allowed for cli ${sub}.`,
+    cliFlagOnlyCli: (flag: string) => `The ${flag} flag applies only to the command cli install.`,
+    cliUnknownAgent: (agent: string, known: string) => `Unknown agent «${agent}». Expected: ${known}.`,
     unknown: "unknown",
     doctorBinary: (exec: string, entry: string) => `Binary: ${exec} (${entry})`,
     doctorVersion: (v: string) => `Version: ${v}`,
@@ -388,6 +402,10 @@ Example:
   council continue <id>
   council resume <id> [--rounds <n>] [--max-tokens <n> | --no-max-tokens] [--replace <pN>=<запись>]… [--message <текст>]
   council doctor [--json]
+  council cli install <agent> [--version <X>] [--candidate]
+  council cli list
+  council cli use <agent> <version>
+  council cli rollback <agent>
   council home
   council --help
 
@@ -404,6 +422,10 @@ Example:
   continue <id>  снять текущее ожидание владельца у идущей сессии (из другого терминала)
   resume <id>  продолжить сохранённую сессию (interrupted, no_consensus, stopped; consensus — только с --message; failed — только при сбое «меньше двух активных участников» и с --replace)
   doctor     диагностика: бинарь, версия, рантайм, папка данных, конфиг, провайдеры; без вызовов моделей
+  cli install <agent> [--version <X>] [--candidate]  установить закреплённый claude или codex в папку данных (нужны npm и сеть; по умолчанию новейшая проверенная версия; --candidate не делает её активной)
+  cli list   закреплённые установки, активная и предыдущая версии
+  cli use <agent> <version>  сделать активной установленную проверенную версию
+  cli rollback <agent>  вернуться к предыдущей активной версии (один шаг)
   home       путь папки данных
 
 Флаги:
@@ -610,6 +632,12 @@ history-pins.json в ней — закрепления экрана «Истор
     launchExpired: (deadline: string) => `Файл запуска устарел: срок ${deadline} прошёл.`,
     launchUsage: "council run-prepared <launch-file>",
     noArgs: (cmd: string) => `Команда ${cmd} не принимает аргументов.`,
+    cliUsage: "Команда cli: install <agent> [--version <X>] [--candidate] | list | use <agent> <version> | rollback <agent>.",
+    cliUnknownSub: (sub: string) => `Неизвестная подкоманда cli «${sub}». Ожидается: install, list, use, rollback.`,
+    cliWrongArgs: (sub: string, usage: string) => `Команда cli ${sub} принимает: ${usage}.`,
+    cliFlagNotAllowed: (flag: string, sub: string) => `Флаг ${flag} не допускается у cli ${sub}.`,
+    cliFlagOnlyCli: (flag: string) => `Флаг ${flag} относится только к команде cli install.`,
+    cliUnknownAgent: (agent: string, known: string) => `Неизвестный агент «${agent}». Ожидается: ${known}.`,
     unknown: "неизвестно",
     doctorBinary: (exec: string, entry: string) => `Бинарь: ${exec} (${entry})`,
     doctorVersion: (v: string) => `Версия: ${v}`,

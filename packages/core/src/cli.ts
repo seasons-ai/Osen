@@ -20,8 +20,14 @@ import type { ParticipantDriver } from "./participants/driver.ts";
 import { DRAFT_CONTEXT_LIMIT_REASON, INSUFFICIENT_ACTIVE_REASON_CODE, MAX_TURN_TIMEOUT_SEC, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, SYNTHESIZER_UNAVAILABLE_REASON, TOKEN_CAP_REASON } from "./protocol/schema.ts";
 import type { SessionEvent } from "./protocol/schema.ts";
 import { createCliDriver } from "./cli-agents/driver.ts";
+import { resetDiscoveryCache } from "./cli-agents/discovery.ts";
+import { npmSource } from "./cli-agents/npm-source.ts";
+import { installPin, listPins, rollbackPin, usePin } from "./cli-agents/pins.ts";
+import type { PackageSource } from "./cli-agents/pins.ts";
+import { loadVerifiedRecord } from "./cli-agents/verified-record.ts";
+import type { VerifiedRecord } from "./cli-agents/verified-record.ts";
 import { createHttpDriver } from "./http/driver.ts";
-import { DEFAULT_MODEL } from "./cli-agents/types.ts";
+import { CLI_AGENTS, DEFAULT_MODEL } from "./cli-agents/types.ts";
 import { FOLDER_LIMITS, folderStats } from "./protocol/folder.ts";
 import { finishReasonText } from "./protocol/finish-reason.ts";
 import type { FolderFile } from "./protocol/folder.ts";
@@ -63,6 +69,7 @@ export interface CliIo {
   urlWorker?: string; // for packaging: path of the HTML text extraction worker
   appVersion?: string; // application version, passed by the entry point (doctor)
   processVersions?: Partial<NodeJS.ProcessVersions>; // for tests: replacement of process.versions (doctor)
+  cliPin?: { source?: PackageSource; record?: VerifiedRecord }; // for the stand and tests: replacement of the package source and of the verified-versions record (cli install, use, list)
 }
 
 export const help = (): string => cliMessages().help;
@@ -460,6 +467,8 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           "no-max-tokens": { type: "boolean" },
           drafts: { type: "boolean" },
           synthesizer: { type: "string" },
+          version: { type: "string" },
+          candidate: { type: "boolean" },
         },
       }));
     } catch (e) {
@@ -472,7 +481,8 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
 
     const [cmd = "run", ...rest] = positionals;
     if (values.answer !== undefined && cmd !== "say") return usageFail(t.answerOnlySay);
-    if (!["run", "providers", "list", "show", "stop", "say", "status", "continue", "resume", "home", "templates", "lineups", "doctor", "run-prepared"].includes(cmd)) return usageFail(t.unknownCommand(cmd));
+    if (!["run", "providers", "list", "show", "stop", "say", "status", "continue", "resume", "home", "templates", "lineups", "doctor", "run-prepared", "cli"].includes(cmd)) return usageFail(t.unknownCommand(cmd));
+    if (cmd !== "cli" && (values.version !== undefined || values.candidate)) return usageFail(t.cliFlagOnlyCli(values.version !== undefined ? "--version" : "--candidate"));
     if (values.json) {
       const jsonCmd = cmd === "lineups" && rest.length ? "lineups save" : cmd;
       if (!JSON_COMMANDS.includes(jsonCmd)) return usageFail(t.jsonNotSupported(jsonCmd));
@@ -480,6 +490,19 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     if (cmd === "run" && positionals.length) return usageFail(t.unknownCommand(cmd));
     if (cmd === "home" || cmd === "list" || cmd === "providers" || cmd === "templates" || cmd === "doctor") {
       if (rest.length) return usageFail(t.noArgs(cmd));
+    } else if (cmd === "cli") {
+      const [sub = "", ...args] = rest;
+      const usages: Record<string, string> = { install: "<agent> [--version <X>] [--candidate]", use: "<agent> <version>", rollback: "<agent>" };
+      const need = { install: 1, list: 0, use: 2, rollback: 1 }[sub];
+      if (!rest.length) return usageFail(t.cliUsage);
+      if (need === undefined) return usageFail(t.cliUnknownSub(sub));
+      if (sub !== "install") {
+        const flag = values.version !== undefined ? "--version" : values.candidate ? "--candidate" : undefined;
+        if (flag) return usageFail(t.cliFlagNotAllowed(flag, sub));
+      }
+      if (Object.entries(values).some(([k, v]) => v !== undefined && v !== false && k !== "version" && k !== "candidate")) return usageFail(t.cliUsage);
+      if (args.length !== need) return usageFail(sub === "list" ? t.noArgs("cli list") : t.cliWrongArgs(sub, usages[sub]!));
+      if (need > 0 && !(CLI_AGENTS as readonly string[]).includes(args[0]!)) return usageFail(t.cliUnknownAgent(args[0]!, CLI_AGENTS.join(", ")));
     } else if (cmd === "lineups") {
       if (rest.length && !(rest[0] === "save" && rest.length === 2)) return usageFail(t.lineupsUsage);
       if (rest.length && values["from-session"] === undefined) return usageFail(t.lineupsSaveNeedsSession);
@@ -586,6 +609,18 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     const code = await (async (): Promise<number> => {
       let registry: Registry | undefined, registryState: "created" | "exists" = "exists";
       if (cmd === "run-prepared") return runPrepared(rest[0]!, dataDir, io, log);
+      if (cmd === "cli") {
+        // the only place that may install a pinned CLI: an explicit command
+        const [sub, agent, version] = rest as [string, string, string];
+        const record = io.cliPin?.record ?? loadVerifiedRecord(dataDir);
+        const r = sub === "install" ? await installPin(dataDir, agent, { version: values.version, candidate: values.candidate }, { source: io.cliPin?.source ?? npmSource(io.env), record })
+          : sub === "use" ? usePin(dataDir, agent, version, { record })
+          : sub === "rollback" ? rollbackPin(dataDir, agent, {})
+          : listPins(dataDir, record);
+        if (r.ok && (sub === "use" || sub === "rollback")) resetDiscoveryCache();
+        (r.ok ? io.stdout : io.stderr)(`${r.text}\n`);
+        return r.code;
+      }
       if (cmd === "run" || cmd === "providers" || cmd === "resume" || cmd === "doctor") {
         try {
           registryState = await ensureRegistry(dataDir, { env: io.env, deps: io.inspectDeps });

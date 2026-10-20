@@ -52,6 +52,7 @@ echo $$ > "$P/pid"
 : > "$P/args"; for a in "$@"; do printf '%s\\n' "$a" >> "$P/args"; done
 cat > "$P/stdin"
 printf '%s' "$COUNCIL_PARTICIPANT" > "$P/cp"
+printf '%s\\n' "COUNCIL_PARTICIPANT=$COUNCIL_PARTICIPANT" "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR" "DISABLE_AUTOUPDATER=$DISABLE_AUTOUPDATER" "DISABLE_UPDATES=$DISABLE_UPDATES" "CODEX_HOME=$CODEX_HOME" > "$P/pinvars"
 printf '%s' "\${COUNCIL_TEST_MARKER-unset}" > "$P/marker"
 pwd > "$P/pwd"; ls -A > "$P/ls"
 prev=""; for a in "$@"; do [ "$prev" = "--output-schema" ] && cat "$a" > "$P/schema"; prev="$a"; done
@@ -202,6 +203,31 @@ describe("codex", () => {
     const e = await rejection(run(s).p);
     expect(e.retryable).toBe(false);
     expect(e.message).toContain("command_execution");
+  });
+});
+
+describe("pinned runtime", () => {
+  const pinVars = { CLAUDE_CONFIG_DIR: "/pin/cfg", DISABLE_AUTOUPDATER: "1", DISABLE_UPDATES: "1" };
+  const claudeOut = JSON.stringify({ type: "result", result: "ok", usage: {} });
+  it("pin variables and COUNCIL_PARTICIPANT reach the process; the codex -c switch is passed", async () => {
+    const s = stub("claude", { stdout: claudeOut });
+    await run({ ...s, runtime: { ...s.runtime, env: { ...s.runtime.env, ...pinVars }, pinned: true } }).p;
+    const seen = lines(s, "pinvars");
+    for (const [k, v] of Object.entries(pinVars)) expect(seen).toContain(`${k}=${v}`);
+    expect(seen).toContain("COUNCIL_PARTICIPANT=1");
+    const x = stub("codex", { stdout: codexOut(msg("ok"), done()) });
+    await run({ ...x, runtime: { ...x.runtime, pinned: true } }).p;
+    expect(lines(x, "args")).toContain("check_for_update_on_startup=false");
+  });
+  it("an unpinned runtime has no pin variables and no -c", async () => {
+    const s = stub("claude", { stdout: claudeOut });
+    await run(s).p;
+    const seen = lines(s, "pinvars");
+    for (const k of Object.keys(pinVars)) expect(seen).toContain(`${k}=`);
+    expect(seen).toContain("COUNCIL_PARTICIPANT=1");
+    const x = stub("codex", { stdout: codexOut(msg("ok"), done()) });
+    await run(x).p;
+    expect(lines(x, "args")).not.toContain("-c");
   });
 });
 

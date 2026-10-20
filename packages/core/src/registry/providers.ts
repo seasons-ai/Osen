@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { HELP_ARGS, planLaunch } from "../cli-agents/args.ts";
-import { locateCli } from "../cli-agents/discovery.ts";
+import { locateCli, pinnedEnv } from "../cli-agents/discovery.ts";
 import { declaredFlags, parseCodexFeatures } from "../cli-agents/flags.ts";
 import { listModels } from "../cli-agents/models.ts";
 import { CLI_AGENTS, DEFAULT_MODEL } from "../cli-agents/types.ts";
@@ -72,7 +72,7 @@ async function inspectCli(provider: CliProvider, { env, withModels = true, deps,
   if (loc.verified) status.verified = loc.verified;
   if (loc.warning) status.warning = loc.warning;
 
-  const childEnv = { ...env, PATH: loc.searchPath };
+  const childEnv = { ...env, PATH: loc.searchPath, ...(loc.pin ? pinnedEnv(agent, loc.pin.configDir) : {}) };
   let help: string;
   try {
     help = await d.readHelp(path, HELP_ARGS[agent], childEnv);
@@ -83,13 +83,14 @@ async function inspectCli(provider: CliProvider, { env, withModels = true, deps,
   let features: Set<string> | undefined;
   if (agent === "codex") features = await d.readFeatures(path, childEnv).then(parseCodexFeatures, () => undefined);
 
-  const plan = planLaunch({ agent, flags, version: loc.version, model: DEFAULT_MODEL, language: getProcessLanguage(), features });
+  const plan = planLaunch({ agent, flags, version: loc.version, model: DEFAULT_MODEL, language: getProcessLanguage(), features, pinned: !!loc.pin });
   let runtime: CliRuntime | undefined;
   if (plan.ok) {
     status.available = true;
     runtime = { agent, path, env: childEnv, flags };
     if (features) runtime.features = features;
     if (loc.version) runtime.version = loc.version;
+    if (loc.pin) runtime.pinned = true;
   } else status.reason = plan.reason;
 
   if (withModels) {
@@ -151,6 +152,6 @@ export const inspectProviders = (registry: Registry, options: Options): Promise<
 export async function ensureRegistry(dataDir: string, options: { env: Env; deps?: Partial<InspectDeps> }): Promise<"created" | "exists"> {
   if (existsSync(configPath(dataDir))) return "exists";
   const locate = options.deps?.locate ?? locateCli;
-  const locs = await Promise.all(CLI_AGENTS.map((a) => locate(a, { env: options.env })));
+  const locs = await Promise.all(CLI_AGENTS.map((a) => locate(a, { env: options.env, dataDir })));
   return createRegistry(dataDir, locs.filter((l) => l.found).map((l) => l.agent));
 }

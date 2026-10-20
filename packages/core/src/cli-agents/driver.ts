@@ -102,7 +102,7 @@ export function createCliDriver(runtime: CliRuntime): ParticipantDriver {
         await mkdir(cwd);
         await writeFile(schemaFile, JSON.stringify(TURN_RESPONSE_JSON_SCHEMA));
         const plan = planLaunch({
-          agent, flags: runtime.flags, version: runtime.version, features: runtime.features, model: request.participant.model, language: request.language,
+          agent, flags: runtime.flags, version: runtime.version, features: runtime.features, pinned: runtime.pinned, model: request.participant.model, language: request.language,
           schema: { json: JSON.stringify(TURN_RESPONSE_JSON_SCHEMA), file: schemaFile },
         });
         if (!plan.ok) throw new ParticipantCallError("call_error", plan.reason, false);

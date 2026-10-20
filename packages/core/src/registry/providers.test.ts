@@ -49,6 +49,38 @@ describe("inspectProvider cli", () => {
     expect(x?.runtime?.env.PATH).toBe(dir);
   });
 
+  describe("pinned CLI", () => {
+    const PIN_KEYS = ["CLAUDE_CONFIG_DIR", "DISABLE_AUTOUPDATER", "DISABLE_UPDATES", "CODEX_HOME"];
+    const pinLoc = (agent: "claude" | "codex", pinned: boolean) => async (): Promise<CliLocation> => ({
+      agent, found: true, path: join(dir, agent), searchPath: dir, version: agent === "claude" ? "2.1.288" : "0.159.2",
+      source: pinned ? "pin" : "path", ...(pinned ? { pin: { version: "x", configDir: "/cfg" } } : {}),
+    });
+    it("claude pin: config dir and update switches in runtime.env, pinned true", async () => {
+      fakeClaude();
+      const r = await inspectProvider(claude, { env: env(), deps: { ...noModels, locate: pinLoc("claude", true) } });
+      expect(r.runtime).toMatchObject({ pinned: true, env: { CLAUDE_CONFIG_DIR: "/cfg", DISABLE_AUTOUPDATER: "1", DISABLE_UPDATES: "1", PATH: dir } });
+    });
+    it("codex pin: CODEX_HOME", async () => {
+      fakeCodex();
+      const r = await inspectProvider(codex, { env: env(), deps: { ...noModels, locate: pinLoc("codex", true) } });
+      expect(r.runtime).toMatchObject({ pinned: true, env: { CODEX_HOME: "/cfg" } });
+      expect(r.runtime?.env.CLAUDE_CONFIG_DIR).toBeUndefined();
+    });
+    it("pin variables reach the help read", async () => {
+      fakeCodex();
+      const seen: Array<Record<string, string | undefined>> = [];
+      const readHelp = async (_p: string, _a: readonly string[], e: Record<string, string | undefined>) => { seen.push(e); return readFileSync(fixture("codex-0.159.2-exec-help.txt"), "utf8"); };
+      await inspectProvider(codex, { env: env(), deps: { ...noModels, locate: pinLoc("codex", true), readHelp } });
+      expect(seen[0]?.CODEX_HOME).toBe("/cfg");
+    });
+    it("PATH binary: no pin keys, pinned unset", async () => {
+      fakeClaude();
+      const r = await inspectProvider(claude, { env: env(), deps: { ...noModels, locate: pinLoc("claude", false) } });
+      for (const k of PIN_KEYS) expect(r.runtime?.env[k]).toBeUndefined();
+      expect(r.runtime?.pinned).toBeUndefined();
+    });
+  });
+
   it("CLI removed", async () => {
     const r = await inspectProvider(claude, { env: env() });
     expect(r.status.available).toBe(false);
