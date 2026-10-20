@@ -2,6 +2,9 @@
 //   node apps/desktop/scenarios/narrow-width/measure.ts                  the design/mockup mockup in headless Chrome, languages en and ru
 //   node apps/desktop/scenarios/narrow-width/measure.ts --cdp <port>     an open development app window (screen and language as in the window)
 //   … --save-baseline                                                    record the view at 1100 into baseline-1100.json (before editing styles)
+//   … --overlay-scrollbars                                               headless Chrome with macOS overlay scrollbars (a Mac without a mouse): the result must not change
+// Scrollbars are forced to a classic 15 px width: with the macOS overlay style ("Show scroll bars: automatically" and no mouse)
+// .content gains 15 px and every box at 1100 moves, so the result depended on the machine (change 186).
 // The width is set by CDP viewport emulation and cleared at the end. A threshold violation or a mismatch with the baseline gives exit code 1.
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -19,6 +22,7 @@ const baselineFile = join(here, "baseline-1100.json");
 const argv = process.argv.slice(2);
 const cdpPort = argv.includes("--cdp") ? Number(argv[argv.indexOf("--cdp") + 1]) : undefined;
 const saveBaseline = argv.includes("--save-baseline");
+const overlayScrollbars = argv.includes("--overlay-scrollbars");
 const NARROW = [900, 950, 1000, 1050];
 const WIDE = 1100;
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -38,6 +42,13 @@ async function evaluate(cdp: Cdp, expression: string): Promise<any> {
 // Runs in the page: text substitution (mockup only) and measurement of visible rows.
 type Texts = Record<string, string> | null;
 function inPage(texts: Texts) {
+  // The system scrollbar width of .content before forcing (0 = overlay); null once forced earlier on this page.
+  let systemScrollbar: number | null = null;
+  if (!document.getElementById("nw-scrollbars")) {
+    const c = document.querySelector(".content") as HTMLElement | null;
+    if (c) systemScrollbar = c.offsetWidth - c.clientWidth;
+    const st = document.createElement("style"); st.id = "nw-scrollbars"; st.textContent = "::-webkit-scrollbar{width:15px;height:15px}"; document.head.append(st);
+  }
   const visible = (el: Element | null): el is HTMLElement => !!el && (el as HTMLElement).getClientRects().length > 0;
   const all = (sel: string) => [...document.querySelectorAll(sel)].filter(visible);
   if (texts) {
@@ -59,7 +70,7 @@ function inPage(texts: Texts) {
   const usable = (el: HTMLElement) => { const s = getComputedStyle(el); return el.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight); };
   const fit = (name: string, el: HTMLElement, text: string) => ({ name, text, textW: +textW(el, text).toFixed(1), usable: +usable(el).toFixed(1) });
   const clickable = (el: HTMLElement) => { const r = el.getBoundingClientRect(); el.scrollIntoView({ block: "center" }); const r2 = el.getBoundingClientRect(); const hit = document.elementFromPoint(r2.left + r2.width / 2, r2.top + r2.height / 2); return r.width > 0 && !!hit && el.contains(hit); };
-  const out: { fits: ReturnType<typeof fit>[]; failures: string[]; rects: Record<string, number[]>; scroll: { doc: number[]; content: number[] } } = { fits: [], failures: [], rects: {}, scroll: { doc: [], content: [] } };
+  const out: { fits: ReturnType<typeof fit>[]; failures: string[]; rects: Record<string, number[]>; scroll: { doc: number[]; content: number[] }; systemScrollbar: number | null } = { fits: [], failures: [], rects: {}, scroll: { doc: [], content: [] }, systemScrollbar };
   const rect = (key: string, el: Element) => { const r = el.getBoundingClientRect(); const c = document.querySelector(".content")!.getBoundingClientRect(); out.rects[key] = [r.left - c.left, r.top - c.top + (document.querySelector(".content")!.scrollTop), r.width, r.height].map((v) => +v.toFixed(1)); };
   all(".setup-p").slice(0, 2).forEach((row, i) => {
     const [prov, model] = [...row.querySelectorAll("select")] as HTMLSelectElement[];
@@ -110,7 +121,8 @@ async function check(cdp: Cdp, key: string, texts: Texts, reload: () => Promise<
     await setWidth(cdp, width);
     const r = await evaluate(cdp, `(${inPage.toString()})(${JSON.stringify(texts)})`);
     if (r.fits.length === 0 && Object.keys(r.rects).length === 0) { console.log(`${key} ${width}: no measurable rows on screen`); failed = true; continue; }
-    console.log(`\n${key} width ${width}: document ${r.scroll.doc.join("/")}, .content ${r.scroll.content.join("/")}`);
+    console.log(`\n${key} width ${width}: document ${r.scroll.doc.join("/")}, .content ${r.scroll.content.join("/")}${r.systemScrollbar === null ? "" : `, system scrollbar ${r.systemScrollbar} px`}`);
+    if (overlayScrollbars && !cdpPort && r.systemScrollbar !== 0) { console.log(`  ✗ overlay scrollbars not in effect (system scrollbar ${r.systemScrollbar} px)`); failed = true; }
     for (const f of r.fits) console.log(`  ${f.textW > f.usable + 0.5 ? "✗" : "✓"} ${f.name} «${f.text}»: text ${f.textW} px, usable ${f.usable} px`);
     const fails: string[] = width === WIDE ? [] : [...r.failures, ...r.fits.filter((f: any) => f.textW > f.usable + 0.5).map((f: any) => `${f.name}: does not fit`)];
     if (width === WIDE) {
@@ -125,6 +137,7 @@ async function check(cdp: Cdp, key: string, texts: Texts, reload: () => Promise<
     if (fails.length) failed = true;
   }
   await cdp.send("Emulation.clearDeviceMetricsOverride");
+  await evaluate(cdp, "document.getElementById('nw-scrollbars')?.remove()");
 }
 
 if (cdpPort) {
@@ -135,7 +148,9 @@ if (cdpPort) {
   cdp.close();
 } else {
   const profile = mkdtempSync(join(tmpdir(), "narrow-width-"));
-  const chrome = spawn(CHROME, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+  const chrome = spawn(CHROME, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run",
+    // A Cocoa argument-domain default for this process only; Chrome also takes the value as its start page, so no about:blank.
+    ...(overlayScrollbars ? ["-AppleShowScrollBars", "WhenScrolling"] : ["about:blank"])], { stdio: ["ignore", "ignore", "pipe"] });
   const browserWs = await new Promise<string>((ok, fail) => {
     let buf = "";
     chrome.stderr.on("data", (d) => { buf += d; const m = buf.match(/DevTools listening on (ws:\/\/\S+)/); if (m) ok(m[1]); });
