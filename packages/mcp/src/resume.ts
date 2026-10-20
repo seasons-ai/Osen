@@ -31,7 +31,12 @@ export interface ResumeView {
   next: string;
 }
 
-const HINTED = new Set(["no_rounds_left", "token_cap", "bad_token_cap"]);
+const HINTED: Record<string, () => string> = {
+  no_rounds_left: () => mcpMessages().resumeCapHint,
+  token_cap: () => mcpMessages().resumeCapHint,
+  bad_token_cap: () => mcpMessages().resumeCapHint,
+  consensus: () => mcpMessages().resumeConsensusHint,
+};
 
 // on execute a participant or replacement refusal means availability changed after the plan
 const staleOrRefuse = (id: string, e: unknown): never => {
@@ -43,7 +48,7 @@ const staleOrRefuse = (id: string, e: unknown): never => {
 
 const refuse = (id: string, e: unknown): never => {
   if (!(e instanceof ResumeRejectedError)) throw e;
-  throw new ToolError(`${e.reason}: ${e.message}${HINTED.has(e.reason) ? mcpMessages().resumeCapHint : ""}`, `Resume of session ${id} rejected: ${e.reason}`);
+  throw new ToolError(`${e.reason}: ${e.message}${HINTED[e.reason]?.() ?? ""}`, `Resume of session ${id} rejected: ${e.reason}`);
 };
 
 // The token confirms that the plan is unchanged; it is not written to disk.
@@ -56,7 +61,7 @@ function tokenOf(ctxDir: string, plan: ResumePlan): string {
     plan.id, plan.addedRounds, plan.maxRounds, plan.maxCalls, plan.tokenCap,
     plan.maxTotalTokens === undefined ? "keep" : plan.maxTotalTokens, plan.journalBytes, journal,
     plan.active.map((p) => [p.id, p.providerId, p.model, p.role, p.name]),
-    plan.status,
+    plan.status, plan.message ?? null,
     plan.replacements.map((r) => [r.oldParticipantId, r.participant.id, r.participant.providerId, r.participant.model, r.participant.role, r.participant.name]),
   ])).digest("hex");
 }
@@ -74,6 +79,7 @@ export const councilResume = defineTool({
       planToken: z.string().optional().describe(m.resumeFPlanToken),
       replacements: z.array(z.object({ participantId: z.string(), providerId: z.string(), model: z.string() })).optional()
         .describe(m.resumeFReplacements),
+      message: z.string().optional().describe(m.resumeFMessage),
     };
   },
   async run(ctx, input) {
@@ -113,6 +119,7 @@ export const councilResume = defineTool({
       plan = planResume(ctx.dataDir, sessionId, {
         ...(rounds !== undefined ? { rounds } : {}), ...(maxTotalTokens !== undefined ? { maxTotalTokens } : {}),
         ...(input.replacements ? { replacements: named(input.replacements) } : {}),
+        ...(input.message !== undefined ? { message: input.message } : {}),
       });
       token = tokenOf(ctx.dataDir, plan); // right after the plan: while the journal is the same
       // a stale plan is noticed before the availability checks
@@ -142,10 +149,10 @@ export const councilResume = defineTool({
       sessionId, mode: execute ? "execute" : "plan", accepted: false, planToken: token,
       status: plan.status, source: plan.session.origin, topic: plan.session.topic,
       addedRounds: plan.addedRounds, maxRounds: plan.maxRounds, maxCalls: plan.maxCalls, draftCalls: plan.draftCalls,
-      maxTotalTokens: plan.tokenCap, spentTokens: plan.spentTokens, participants, replacements, agreementReset: replacements.length > 0,
+      maxTotalTokens: plan.tokenCap, spentTokens: plan.spentTokens, participants, replacements, agreementReset: replacements.length > 0 || plan.message !== undefined,
       requiresConsent: participants.some((p) => p.billing !== "free"),
       waiting: w ? { waitId: w.waitId, deadline: w.deadline, expired: Date.parse(w.deadline) <= Date.now() } : null,
-      next: m.resumeNextPlan(plan.addedRounds, plan.maxCalls, plan.draftCalls, replacements.length > 0),
+      next: m.resumeNextPlan(plan.addedRounds, plan.maxCalls, plan.draftCalls, replacements.length > 0, plan.message !== undefined),
     };
     if (!execute) {
       ctx.logger.info(`Resume plan of session ${sessionId} from MCP: ${plan.addedRounds} more rounds, call bound ${plan.maxCalls}`);

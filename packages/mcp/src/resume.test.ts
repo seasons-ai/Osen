@@ -126,6 +126,66 @@ describe("council_resume: plan", () => {
   });
 });
 
+describe("council_resume: owner message on a consensus session", () => {
+  const consensus = async (id: string) => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id, first: [amend("v1"), agree()] });
+    return { dir, ctx: ctxOf(dir, scn) };
+  };
+
+  it("without a message or with a blank one: consensus refusal, journal unchanged", async () => {
+    const { dir, ctx } = await consensus("c");
+    await refused(dir, "c", () => go(ctx, "c", { rounds: 1 }), /^consensus:/);
+    await refused(dir, "c", () => go(ctx, "c", { rounds: 1, message: "   " }), /^consensus:/);
+    // the refusal carries the hint that names message and the owner's own words, in both languages
+    for (const [lang, hint] of [["en", /only with message.*owner's own words/], ["ru", /только с message.*словами владельца/]] as const) {
+      setProcessLanguage(lang);
+      try {
+        const e = await rejected(go(ctx, "c", { rounds: 1 }));
+        expect(e.message).toMatch(/^consensus:/);
+        expect(e.message).toMatch(hint);
+      } finally { setProcessLanguage("ru"); }
+    }
+  });
+
+  it("plan with a message: agreementReset, status consensus, journal unchanged; the log never holds the text", async () => {
+    const { dir, ctx } = await consensus("c");
+    const before = bytes(dir, "c");
+    const v = await go(ctx, "c", { rounds: 1, message: "Consider the budget too" });
+    expect(v).toMatchObject({ mode: "plan", status: "consensus", agreementReset: true });
+    expect(bytes(dir, "c").equals(before)).toBe(true);
+    expect(ctx.logs.join("\n")).not.toContain("budget");
+  });
+
+  it("a different message at execute: stale_plan, no new events", async () => {
+    const { dir, ctx } = await consensus("c");
+    const p = await go(ctx, "c", { rounds: 1, message: "A" });
+    await refused(dir, "c", () => resume(ctx, { sessionId: "c", rounds: 1, message: "B", execute: true, planToken: p.planToken }), /^stale_plan:/);
+  });
+
+  it("the same message at execute: owner_message right after session_resumed, council_status shows afterTurn", async () => {
+    const { dir, ctx } = await consensus("c");
+    const lastTurn = evs(dir, "c").filter((e) => e.type === "turn_completed").length;
+    const v = await exec(ctx, "c", { rounds: 1, message: "Consider the budget too" });
+    expect(v).toMatchObject({ accepted: true, agreementReset: true });
+    const all = evs(dir, "c");
+    const i = all.findIndex((e) => e.type === "session_resumed");
+    expect(all[i + 1]).toMatchObject({ type: "owner_message", text: "Consider the budget too" });
+    await finished(dir, "c");
+    const st = (await councilStatus.run(ctx, { sessionId: "c" })) as any;
+    expect(st.ownerMessages.at(-1).afterTurn).toBe(lastTurn);
+    expect(ctx.logs.join("\n")).not.toContain("budget");
+  });
+
+  it("no_consensus: a message resets agreements, without it nothing changes", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "n" });
+    const ctx = ctxOf(dir, scn);
+    expect((await go(ctx, "n", { rounds: 1, message: "Hi" })).agreementReset).toBe(true);
+    expect((await go(ctx, "n", { rounds: 1 })).agreementReset).toBe(false);
+  });
+});
+
 describe("council_resume: launch", () => {
   it("answer before the result, one session_resumed, journal prefix unchanged, result in council_status", async () => {
     const dir = tmp(), scn = tmp();

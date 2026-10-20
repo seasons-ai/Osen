@@ -67,6 +67,7 @@ The session can be opened in the Osen app, the History section (source MCP).
 - If the response contains `ownerSelection`, it is the owner's choice made in the app: give it separately from the status and do not call it the models' consensus.
 - Take the spend from `stats`; skip fields with null, do not estimate them.
 - A session started with `council_start` runs in its own process: closing the agent does not interrupt it (it is stopped with `council_stop`, and its state stays readable from `council_status` and the app). Only if that process is killed or the machine restarts does the session become “interrupted”. A session resumed with `council_resume` still lives in the server process: if the agent is closed, it gets the status “interrupted”. Tell the owner this if they are about to close the agent before the result of a resumed session.
+- A `consensus` session is resumed with `council_resume` only when the owner asks for it and gives a reply. Pass the reply in `message` verbatim; never invent or paraphrase it. Without a non-blank `message` the call is refused with code `consensus`. Call it first without `execute` (the plan), tell the owner the bound from the plan and that agreements are reset (`agreementReset`), and after consent call it again with the same `message`, `execute=true` and the `planToken`; a different `message` gives `stale_plan`.
 
 ## Failure modes
 

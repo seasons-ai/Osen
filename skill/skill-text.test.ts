@@ -48,6 +48,11 @@ describe("osen skill text", () => {
     expect(lineWith(/Calling `council_start` without this message is a violation/)).toBe(true);
   });
 
+  it("a consensus session is resumed only with the owner's message, verbatim, with the plan and the same message at execute", () => {
+    expect(lineWith(/`consensus` session is resumed with `council_resume` only when the owner asks/, /`message` verbatim/, /never invent or paraphrase/)).toBe(true);
+    expect(lineWith(/code `consensus`/, /`agreementReset`/, /same `message`/, /`stale_plan`/)).toBe(true);
+  });
+
   it("consent to spend for cli and openai-http", () => {
     expect(lineWith(/`cli`/, /`openai-http`/, /wait for the answer/, /do not call `council_start`/)).toBe(true);
   });

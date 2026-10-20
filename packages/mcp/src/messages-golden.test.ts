@@ -40,7 +40,7 @@ const VARIANTS: Record<string, unknown[][]> = {
   resumeJournalChanged: [["ID1"]],
   resumeReplacementUnavailable: [["RSN"], [undefined]],
   resumeReplacementDropped: [["RSN"], [null], [undefined]],
-  resumeNextPlan: [[2, 12, 0, false], [2, 12, 5, false], [2, 12, 0, true], [2, 12, 5, true]],
+  resumeNextPlan: [[2, 12, 0, false, false], [2, 12, 5, false, false], [2, 12, 0, true, false], [2, 12, 5, true, false], [2, 12, 0, false, true]],
   resumeNextAccepted: [["SID", 0], ["SID", 2]],
 };
 
