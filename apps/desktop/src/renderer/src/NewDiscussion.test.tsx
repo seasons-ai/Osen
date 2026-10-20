@@ -82,7 +82,6 @@ describe("NewDiscussion", () => {
 
   const own = tpl({ id: "own", title: "Свой", source: "user" });
   const mod = tpl({ id: "mod", title: "Правленый", source: "user", modified: true });
-  const text = (h: string) => h.replace(/<[^>]+>/g, "");
 
   it("«New template» next to «Custom topic» in one grid", () => {
     const h = html(ok([tpl()]));
@@ -138,7 +137,7 @@ describe("NewDiscussion", () => {
 
   it("confirmation of deleting a modified one and of reset", () => {
     const d = html(ok([mod]), { gallery: { confirming: { id: "mod", mode: "delete" } } });
-    expect(text(d)).toContain("Ваша правка будет удалена, вернётся встроенный шаблон.");
+    expect(d).toContain("Ваша правка будет удалена, вернётся встроенный шаблон.");
     const r = html(ok([mod]), { gallery: { confirming: { id: "mod", mode: "reset" } } });
     expect(r).toContain("Сбросить «Правленый» к встроенному?");
     expect(r).toContain('data-tone="warn"');
