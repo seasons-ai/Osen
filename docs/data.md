@@ -60,6 +60,7 @@ rm -rf "$HOME/Library/Application Support/model-council-backup-"*
   `defaults.materialsIgnore` — names of files and folders that are skipped at any depth when a materials folder is attached; names only, no paths or patterns; initially `node_modules`, `dist`, `build`. `defaults.materialsChars` — the limit on the total text of materials in characters (UTF-16 units, like `contextChars`); initially 60000; when exceeded, the start is rejected, nothing is truncated. In an old `config.json` without these fields the initial values are used, and the file is not rewritten on read. `defaults.maxTotalTokens` — an optional ceiling on total tokens for new sessions (an integer of at least 1); if the field is absent there is no ceiling, and it is not in the initial file; see [docs/cli.md, "Token ceiling"](cli.md#token-ceiling).
 
 - `templates/` — user discussion templates (`*.json`; the template editor in the app also adds to them) and its own neutral framing (`neutral.md`); format — [docs/templates.md](templates.md). User templates have no language and are shown as written; built-in ones are taken from the set for the interface language.
+- `cli-verified.json` — the optional local record of verified CLI versions (see [Verified CLI versions](#verified-cli-versions-cli-verifiedjson)): next to `config.json`, written by no command in this version; no file means only the built-in record.
 - `lineups.json` — named participant lineups (see [docs/cli.md, "Lineups"](cli.md#lineups)): a JSON array of `{ id, name, participants[] }`, with no keys or paths to materials. No file means no lineups; the program does not fix or replace a corrupted file, the owner edits or deletes it. Written under the `lineups.lock` lock.
 - `sessions/<id>/events.jsonl` — the session log: one JSON line per event, fields `seq`, `ts`, `type`; opens in any text editor. Reading stops at the first unreadable line and names the reason: `newer_version` (the line is intact but unknown to this version of the app: the log was appended by a newer version) or `corrupted` (a truncated or damaged record). Reading does not go past that line, the state is built from what was read, the log is not changed on reading, and the owner's sessions are not repaired.
 - `sessions/<id>/materials/m1.txt`, `m2.txt`, … — snapshots of the texts of the owner's materials, if attached; written before the start and not changed; for link materials, `sources.json` (origin) lies next to them.
@@ -73,6 +74,33 @@ rm -rf "$HOME/Library/Application Support/model-council-backup-"*
 Sessions are not deleted or overwritten. The `interrupted` status is derived: there is no finish record and the executor process is not running.
 
 Installation, `.env`, startup and the "it works" criterion are described here by the change that introduces them.
+
+## Verified CLI versions (`cli-verified.json`)
+
+Which versions of the `claude` and `codex` CLIs were checked is data, not code. The effective record is the union of two sources: the built-in record shipped with the app (`packages/core/src/cli-agents/verified-record.json`) and the optional local record `cli-verified.json` in the root of the data folder (next to `config.json` and `preferences.json`).
+
+```json
+{ "schemaVersion": 1, "entries": [
+  { "agent": "claude", "version": "2.1.288", "level": "real", "checkedAt": "2026-10-07",
+    "os": "darwin-arm64", "osenVersion": "0.1.0", "modelCalls": 3 } ] }
+```
+
+- `agent` — `claude` or `codex`; `version` — `x.y.z`; `level` — `interface` or `real`; `checkedAt` — `YYYY-MM-DD`; `os` — `<platform>-<arch>`, for example `darwin-arm64`; `osenVersion` — the app version that did the check.
+- `sha256` is optional, 64 hex characters; it is stored only and not compared in this version.
+- `modelCalls` is an integer of at least 1: required for `real`, forbidden for `interface`.
+- Unknown fields are rejected.
+
+Levels: `interface` — the CLI's help and feature list were checked without a model call; `real` — a real turn of this version with the isolation check was recorded. A successful `--version` or `--help` never gives more than `interface`.
+
+Built-in entries: `claude` 2.1.288 `real` (2026-10-07, `darwin-arm64`, Osen 0.1.0, 3 model calls); `codex` 0.159.2 `interface` (2026-10-16, `darwin-arm64`, Osen 0.9.0).
+
+Merge, per pair (`agent`, `version`): the higher level wins, then the later `checkedAt`, then the local entry. The local record can raise a built-in entry, never lower it.
+
+A local file with any invalid entry (bad schema, a duplicate pair, a wrong version or date format, an unknown agent or level, `modelCalls` wrong for the level, a bad `sha256`) is rejected as a whole; so is an unreadable file (no permission). The built-in record then applies, and the reason (the file name and the first invalid field, or the error code; no paths, no `sha256` values) is appended to the warning of every CLI provider and logged once per file state in `logs/app.log`. Nothing breaks: discovery, the provider listing and a session start continue.
+
+Reading never creates or changes files. Nothing in this version writes `cli-verified.json`; future acceptance commands will, through `addLocalEntry` (the same schema, an atomic write, a refusal to overwrite a damaged file, the level of a pair is raised without duplicates). A changed file takes effect on the next CLI lookup, also in a running MCP server or app (the lookup cache is keyed by the file's state).
+
+Warnings for the version reported by `--version`, by level: `real` — none; `interface` — "the interface is verified, a real acceptance run is missing"; not recorded — "newer" or "older" than the recorded range of this agent (for example `2.1.288–2.1.288`), or "not in the verified record" when it lies between recorded versions or none are recorded; undeterminable — "could not determine". Warnings never block a provider or a launch. `council providers` and `council doctor` show the level of each found CLI provider: [docs/cli.md, "The `council` command"](cli.md#the-council-command).
 
 ## Interface language
 

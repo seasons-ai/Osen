@@ -314,6 +314,7 @@ Example:
     available: "available",
     unavailable: (reason: string) => `unavailable: ${reason}`,
     version: (v: string) => `version ${v}`,
+    verified: (level: string, checkedAt: string | null) => `  verified: ${level}${checkedAt === null ? "" : `, ${checkedAt}`}`, // identical in en and ru: field name and values are not translated
     providerWarning: (w: string) => `  warning: ${w}`,
     key: (env: string, set: boolean) => `  key: ${env} — ${set ? "set" : "not set"}`,
     keyNotRequired: "  key: not required",
@@ -663,6 +664,7 @@ history-pins.json в ней — закрепления экрана «Истор
     available: "доступен",
     unavailable: (reason: string) => `недоступен: ${reason}`,
     version: (v: string) => `версия ${v}`,
+    verified: (level: string, checkedAt: string | null) => `  verified: ${level}${checkedAt === null ? "" : `, ${checkedAt}`}`, // identical in en and ru: field name and values are not translated
     providerWarning: (w: string) => `  предупреждение: ${w}`,
     key: (env: string, set: boolean) => `  ключ: ${env} — ${set ? "задан" : "не задан"}`,
     keyNotRequired: "  ключ: не требуется",

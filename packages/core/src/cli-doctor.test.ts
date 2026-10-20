@@ -124,4 +124,21 @@ describe("council doctor", () => {
     expect(d.binary.version).toBe(version);
     expect(d.binary.entry.endsWith("council.ts")).toBe(true);
   });
+
+  it("providers: verified line for real, interface and none; none for HTTP and not-found CLI; --json carries the object", async () => {
+    const home = tmp();
+    const level = { claude: { level: "real", checkedAt: "2026-10-07" }, codex: { level: "interface", checkedAt: "2026-10-16" } } as const;
+    const locate = async (agent: "claude" | "codex") => ({ agent, found: true as const, path: "/nope/x", version: "1.0.0", searchPath: "", verified: level[agent] });
+    const deps = { locate, listModels: async () => ({ models: [], confirmed: false }), readHelp: async () => "" };
+    const text = await run(["providers"], home, { inspectDeps: deps });
+    expect(text.code).toBe(0);
+    const lines = text.out.filter((l) => l.startsWith("  verified:"));
+    expect(lines).toEqual(["  verified: real, 2026-10-07", "  verified: interface, 2026-10-16"]);
+    const none = await run(["providers"], home, { inspectDeps: { ...deps, locate: async (agent) => ({ agent, found: true as const, path: "/nope/x", searchPath: "", verified: { level: "none" as const, checkedAt: null } }) } });
+    expect(none.out).toContain("  verified: none");
+    const nf = await run(["providers"], home);
+    expect(nf.out.filter((l) => l.includes("verified:"))).toEqual([]);
+    const j = doc(await run(["providers", "--json"], home, { inspectDeps: deps }));
+    expect(j.providers.find((p: { id: string }) => p.id === "codex").verified).toEqual({ level: "interface", checkedAt: "2026-10-16" });
+  });
 });

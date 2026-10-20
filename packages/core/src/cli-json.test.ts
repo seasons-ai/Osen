@@ -194,8 +194,9 @@ describe("council --json", () => {
     const claude = d.providers.find((p: { id: string }) => p.id === "claude");
     expect(claude.warning).toBe("version is newer than tested");
     expect(r.err).toContain("version is newer than tested");
-    expect(Object.keys(claude)).toEqual(["id", "kind", "label", "available", "reason", "warning", "path", "version", "baseUrl", "keyEnv", "keySet", "models", "modelsConfirmed", "modelsReason"]);
+    expect(Object.keys(claude)).toEqual(["id", "kind", "label", "available", "reason", "warning", "path", "version", "verified", "baseUrl", "keyEnv", "keySet", "models", "modelsConfirmed", "modelsReason"]);
     expect(claude.baseUrl).toBeNull();
+    expect(claude.verified).toBeNull();
     expect(JSON.stringify(d)).not.toContain("searchPath");
   });
 

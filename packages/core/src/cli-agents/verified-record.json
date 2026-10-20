@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    { "agent": "claude", "version": "2.1.288", "level": "real", "checkedAt": "2026-10-07", "os": "darwin-arm64", "osenVersion": "0.1.0", "modelCalls": 3 },
+    { "agent": "codex", "version": "0.159.2", "level": "interface", "checkedAt": "2026-10-16", "os": "darwin-arm64", "osenVersion": "0.9.0" }
+  ]
+}

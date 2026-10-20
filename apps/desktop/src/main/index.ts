@@ -125,12 +125,12 @@ async function start(): Promise<void> {
     await ensureRegistry(dataDir, { env });
     const found = readRegistry(dataDir);
     logRegistryLoaded(logger, dataDir, found);
-    void inspectProviders(found, { env, keyFile: envFilePath(dataDir), withModels: false }).then(
+    void inspectProviders(found, { env, keyFile: envFilePath(dataDir), withModels: false, dataDir }).then(
       (r) => logProviders(logger, r.map((f) => f.status)),
       (e: unknown) => logger.error("Provider inspection at startup failed", e),
     );
     const inRegistry = new Set(found.providers.flatMap((p) => (p.kind === "cli" ? [p.agent] : [])));
-    void Promise.all(CLI_AGENTS.filter((a) => !inRegistry.has(a)).map((a) => locateCli(a, { env }))).then(
+    void Promise.all(CLI_AGENTS.filter((a) => !inRegistry.has(a)).map((a) => locateCli(a, { env, dataDir }))).then(
       (l) => logMissingClis(logger, l),
       (e: unknown) => logger.error("Provider inspection at startup failed", e),
     );
@@ -210,7 +210,7 @@ async function start(): Promise<void> {
   const templateDirs = () => ({ builtinDir, userDir: userTemplatesDir(dataDir) });
   const inspected = async () => {
     const reg = readRegistry(dataDir);
-    const found = await inspectProviders(reg, { env, keyFile: envFilePath(dataDir) });
+    const found = await inspectProviders(reg, { env, keyFile: envFilePath(dataDir), dataDir });
     return { reg, statuses: found.map((f) => f.status) };
   };
   // Packaged: the wrappers inside Osen.app, null when missing. Development: the server from the repo with an absolute node
@@ -298,7 +298,7 @@ async function start(): Promise<void> {
     lastParticipants: () => lastRoster(dataDir),
     resumeOptions: async (id, replacements) => {
       const reg = readRegistry(dataDir);
-      const found = await inspectProviders(reg, { env, keyFile: envFilePath(dataDir) });
+      const found = await inspectProviders(reg, { env, keyFile: envFilePath(dataDir), dataDir });
       const view = registryView(reg, found.map((f) => f.status), scenariosDir === null ? null : listScenarios(scenariosDir));
       return resumeView(dataDir, id, view, resumeScenarioPath((model) => scenarioPath(scenariosDir, model)), replacements);
     },

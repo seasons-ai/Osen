@@ -29,7 +29,15 @@ COUNCIL_HOME=.council-data npx council --topic "Как назвать кота" 
 COUNCIL_HOME=.council-data npx council providers
 ```
 
-  An HTTP provider has a different block: `id  openai-http  available | unavailable: reason  address`, a `key:` line and a `models:` line without `default` (see [docs/participants.md, "HTTP participants"](participants.md#http-participants)). A CLI provider gets one block per provider: `id  cli  available | unavailable: reason  version  path`, then a warning (if any), a `models:` line (always starting with `default`) and, if the model list is not confirmed, the reason. If the registry is empty, the line «No providers: …» is printed.
+  An HTTP provider has a different block: `id  openai-http  available | unavailable: reason  address`, a `key:` line and a `models:` line without `default` (see [docs/participants.md, "HTTP participants"](participants.md#http-participants)). A CLI provider gets one block per provider: `id  cli  available | unavailable: reason  version  path`, then a `verified:` line, a warning (if any), a `models:` line (always starting with `default`) and, if the model list is not confirmed, the reason. If the registry is empty, the line «No providers: …» is printed.
+
+  The `verified:` line is printed right after the provider line for each found CLI provider, in the same words in every interface language: `  verified: real, 2026-10-07`, `  verified: interface, 2026-10-16` or `  verified: none`. HTTP providers and CLIs that are not found have no such line; exit codes are unchanged. `interface` means the CLI's help and feature list were checked without a model call; `real` means a real turn of this version with the isolation check was recorded; `--version` or `--help` success never gives more than `interface`. `council doctor` prints the same line. The record and its file `cli-verified.json` — [docs/data.md, "Verified CLI versions"](data.md#verified-cli-versions-cli-verifiedjson).
+
+```
+claude  cli  available  2.1.288  /usr/local/bin/claude
+  verified: real, 2026-10-07
+  models: default, …
+```
 - Discussion templates (no model is called):
 
 ```bash
@@ -104,6 +112,8 @@ show:      {schemaVersion, id, status, partial, finish, currentVersion, agreed, 
              totals: {turns, drafts, durationMs, inputTokens, outputTokens, costUsd, incomplete}
 providers: {schemaVersion, providers: [{id, kind, label, available, reason, warning, path, version,
                                         baseUrl, keyEnv, keySet, models, modelsConfirmed, modelsReason}]}
+             verified: {level, checkedAt} | null — level "real" | "interface" | "none" (checkedAt is null for "none");
+                       null for an HTTP provider and a CLI that is not found
 templates: {schemaVersion, templates: [{id, category, title, source}], errors: [{file, source, reason}]}
              source: "builtin" | "user"
 lineups:   {schemaVersion, lineups: [{id, name, participants: [{providerId, model, role}]}]}
