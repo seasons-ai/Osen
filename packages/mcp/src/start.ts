@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import { closeSync, existsSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
-import { checkLineup, collectSessionMaterials, createSession, eventsPath, launchErrPath, launchFilePath, writeLaunchFile, DEFAULT_MODEL, ensureRegistry, envFilePath, FOLDER_LIMITS, folderStats, inspectProvider, LineupsError, maxCallsBound, loadTemplates, logRegistryLoaded, MaterialsError, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, readLineups, readRegistry, readScenario, ScriptedUnavailableError, scriptedDevOnlyMessage, SessionInputError, templateSessionInput, UnknownTemplateError, userTemplatesDir } from "@model-council/core";
-import type { FolderFile, LaunchPayload } from "@model-council/core";
+import { checkLineup, collectSessionMaterials, createSession, eventsPath, launchAcceptedPath, launchErrPath, launchFilePath, ResumeRejectedError, writeLaunchFile, DEFAULT_MODEL, ensureRegistry, envFilePath, FOLDER_LIMITS, folderStats, inspectProvider, LineupsError, maxCallsBound, loadTemplates, logRegistryLoaded, MaterialsError, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, readLineups, readRegistry, readScenario, ScriptedUnavailableError, scriptedDevOnlyMessage, SessionInputError, templateSessionInput, UnknownTemplateError, userTemplatesDir } from "@model-council/core";
+import type { FolderFile, LaunchPayload, LaunchResumePayload, ResumeRejection } from "@model-council/core";
 import { z } from "zod";
 import { defineTool, ROUNDS_BOUNDS, resumeScenarioPath, SCRIPTED_PROVIDER_ID, scriptedProviderLabel, scenarioPath, ToolError } from "./context.ts";
 import type { ToolContext } from "./context.ts";
@@ -49,10 +49,12 @@ export const rosterProviders = (registry: ReturnType<typeof readRegistry>): Prov
 
 const START_TIMEOUT_MS = 15_000;
 
-// Hands the prepared session to a detached executor and waits for the first journal event; any other outcome is a ToolError and leaves no launch files.
-async function startExecutor(ctx: ToolContext, payload: Omit<LaunchPayload, "deadline">): Promise<void> {
+type Prepared = Omit<LaunchPayload, "deadline"> | Omit<LaunchResumePayload, "deadline">;
+
+// Hands the prepared launch file to a detached executor and waits until isReady(); any other outcome is a ToolError (or ResumeRejectedError) and leaves no launch files.
+// On success the .accepted.json file stays for the caller to read and delete.
+export async function launchExecutor(ctx: ToolContext, id: string, payload: Prepared, isReady: () => boolean, waitingFor: string): Promise<void> {
   const m = mcpMessages();
-  const id = payload.session.id;
   const timeoutMs = ctx.startTimeoutMs ?? START_TIMEOUT_MS;
   const pollMs = ctx.startPollMs ?? 100;
   const file = launchFilePath(ctx.dataDir, id);
@@ -83,14 +85,12 @@ async function startExecutor(ctx: ToolContext, payload: Omit<LaunchPayload, "dea
         closeSync(errFd);
       }
     }
-    ctx.logger.info(`Executor started for session ${id}, waiting for the first event up to ${timeoutMs} ms`);
-    const first = eventsPath(ctx.dataDir, id);
-    const hasEvent = (): boolean => { try { return existsSync(first) && statSync(first).size > 0; } catch { return false; } };
+    ctx.logger.info(`Executor started for session ${id}, waiting for ${waitingFor} up to ${timeoutMs} ms`);
     const end = Date.now() + timeoutMs;
-    while (!hasEvent()) {
+    while (!isReady()) {
       if (failure !== null) {
-        ctx.logger.error(`Executor of session ${id} failed before the first event`, failure);
-        throw new ToolError(m.startExecutorFailed(failure));
+        ctx.logger.error(`Executor of session ${id} failed before ${waitingFor}`, failure);
+        throw rejection(failure) ?? new ToolError(m.startExecutorFailed(failure));
       }
       if (Date.now() >= end) {
         ctx.logger.error(`Executor of session ${id} did not respond in ${timeoutMs} ms`);
@@ -101,8 +101,18 @@ async function startExecutor(ctx: ToolContext, payload: Omit<LaunchPayload, "dea
     cleanup();
   } catch (e) {
     cleanup();
+    rmSync(launchAcceptedPath(ctx.dataDir, id), { force: true });
     throw e;
   }
+}
+
+// A refusal of a prepared resume is one JSON line {code, message} first on stderr.
+function rejection(text: string): ResumeRejectedError | null {
+  try {
+    const j = JSON.parse(text.split("\n")[0]!) as { code?: unknown; message?: unknown };
+    if (typeof j.code === "string" && typeof j.message === "string") return new ResumeRejectedError(j.code as ResumeRejection, j.message);
+  } catch { /* plain text */ }
+  return null;
 }
 
 export const councilStart = defineTool({
@@ -263,7 +273,9 @@ export const councilStart = defineTool({
       ? { pauseAfterRound: session.ownerWait.pauseAfterRound === true, waitForOwner: session.ownerWait.waitForOwner === true, timeoutSec: session.ownerWait.timeoutSec ?? OWNER_WAIT_DEFAULT_SEC }
       : null;
     ctx.logger.info(`Session start from MCP: template ${session.templateId ?? "none"}, participants ${session.participants.length}, round limit ${session.limits.maxRounds}, materials ${count}, size ${chars}, snapshot files ${folder?.files ?? 0}, snapshot size ${folder?.chars ?? 0}, not in the initial set ${left.length}, ${session.limits.maxTotalTokens === undefined ? "no token cap" : `token cap ${session.limits.maxTotalTokens}`}, ${ow === null ? "owner wait: none" : `owner wait: pause after round ${ow.pauseAfterRound ? "yes" : "no"}, answer to a question ${ow.waitForOwner ? "yes" : "no"}, timeout ${ow.timeoutSec} s`}, ${lineup ? `lineup ${lineup.id}` : "no lineup"}`);
-    await startExecutor(ctx, { session, ...(materials ? { materials } : {}), ...(workspace.length ? { workspace } : {}), scenarios });
+    const first = eventsPath(ctx.dataDir, session.id);
+    const hasEvent = (): boolean => { try { return existsSync(first) && statSync(first).size > 0; } catch { return false; } };
+    await launchExecutor(ctx, session.id, { session, ...(materials ? { materials } : {}), ...(workspace.length ? { workspace } : {}), scenarios }, hasEvent, "the first event");
 
     const draftsView: StartView["drafts"] = session.drafts
       ? { synthesizerId: session.drafts.synthesizerId, synthesizerName: session.participants.find((p) => p.id === session.drafts!.synthesizerId)!.name, byDefault: input.synthesizerId === undefined }
