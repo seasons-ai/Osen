@@ -469,7 +469,8 @@ describe("FeedView: en", () => {
   const en = <T,>(f: () => T): T => { setProcessLanguage("en"); return f(); };
   const cyr = /[А-Яа-яЁё]/;
   const tags = (h: string) => [...h.matchAll(/<([a-z0-9]+)/g)].map((m) => m[1]).join(",");
-  const strip = (h: string) => h.replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+  const who = (n: number, name: string) => `<span class="session-who"><span class="avatar avatar--sm">${n}</span> ${name}</span>`;
+  const replaced = (from: string, to: string, reason: string) => `<span>Replaced: </span>${from}<span> → </span>${to}<span class="muted"> · ${reason}</span>`;
 
   it("in-progress turn and turn text", () => {
     const s = fold([created(), started(1, "p1")]);
@@ -508,21 +509,22 @@ describe("FeedView: en", () => {
   });
   it("attempt failure with and without a retry, departure", () => {
     const h = en(() => view(fold([created(), started(1, "p1"), failed(1, "p1", 1, "timeout", "300 с"), failed(1, "p1", 2, "call_error", "упало."), failed(1, "p1", 3, "invalid_response", "x"), drop("p1")]), { running: false }));
-    const t = strip(h);
-    expect(t).toContain("Turn 1 · Имя1 · attempt 1 — timeout: 300 с. Retried.");
-    expect(t).toContain("attempt 2 — call error: упало. Retried.");
-    expect(t).toContain("attempt 3 — invalid response: x");
-    expect(t).toContain("Имя1 dropped out: таймаут ответа");
-    expect(t).not.toContain("attempt 3 — invalid response: x. Retried");
+    expect(h).toContain("<span>Turn 1 · Имя1 · attempt 1 — timeout: 300 с. Retried.</span>");
+    expect(h).toContain("<span>Turn 1 · Имя1 · attempt 2 — call error: упало. Retried.</span>");
+    expect(h).toContain("<span>Turn 1 · Имя1 · attempt 3 — invalid response: x</span>");
+    expect(h).toContain("<span>Имя1 dropped out: таймаут ответа</span>");
+    expect(h).not.toContain("attempt 3 — invalid response: x. Retried");
   });
   it("«Continued», «Replaced», agreement reset", () => {
     const dropped = [created(), started(1, "p1"), done(1, "p1", "amend", 1), started(2, "p2"), done(2, "p2", "agree", 1), drop("p2"), finishedFail];
-    const t = strip(en(() => view(fold([...dropped, resumeWith("p2")]), { running: false })));
-    expect(t).toContain("Resumed · 5 rounds");
-    expect(t).toContain("Replaced: 2 Имя2 → 4 Новый · dropped out: таймаут ответа");
-    expect(t).toContain("Agreements reset: participants confirm the version again");
-    const u = strip(en(() => view(fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), finishedFail, resumeWith("p3")]), { running: false })));
-    expect(u).toContain("Replaced: 3 Имя3 → 4 Новый · was unavailable");
+    const t = en(() => view(fold([...dropped, resumeWith("p2")]), { running: false }));
+    const resumed = t.indexOf("<span>Resumed · 5 rounds</span>");
+    const row = t.indexOf(replaced(who(2, "Имя2"), who(4, "Новый"), "dropped out: таймаут ответа"));
+    expect(resumed).toBeGreaterThan(-1);
+    expect(row).toBeGreaterThan(resumed);
+    expect(t.indexOf("<span>Agreements reset: participants confirm the version again</span>")).toBeGreaterThan(row);
+    const u = en(() => view(fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), finishedFail, resumeWith("p3")]), { running: false }));
+    expect(u).toContain(replaced(who(3, "Имя3"), who(4, "Новый"), "was unavailable"));
   });
   it("expired wait", () => {
     const base = fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), started(2, "p2"), done(2, "p2", "agree", 1)]);
@@ -540,16 +542,16 @@ describe("FeedView: en", () => {
     const r = (drafts: unknown) => en(() => renderToStaticMarkup(<FeedView state={s} running live={null} unseen={0} onJump={() => {}} drafts={drafts as never} />));
     const h = r(undefined);
     for (const t of ["Independent drafts", "participants write their versions without seeing the others", "> draft<", "attempts: 2", "1 character", "Draft text", "Loading draft text…", "Discussion started · synthesizer 2 · Имя2"]) expect(h).toContain(t);
-    expect(strip(h)).toContain("draft · Имя2 · attempt 1 — timeout: долго");
+    expect(h).toContain("<span>draft · Имя2 · attempt 1 — timeout: долго. Retried.</span>");
     const w = en(() => renderToStaticMarkup(<FeedView state={fold([wd, dst("d2", "p2")])} running live={null} unseen={0} onJump={() => {}} />));
     expect(w).toContain("writing a draft");
     const un = r({ byId: new Map([["d1", { draftId: "d1", participantId: "p1", attempts: 2, chars: 1, reasoning: "x", text: null, error: "снимок изменён" }]]), error: null });
-    expect(strip(un)).toContain("Text unavailable: снимок изменён");
-    expect(strip(r({ byId: new Map(), error: null }))).toContain("Loading draft text…");
-    expect(strip(un)).toContain("Text unavailable: ");
+    expect(un).toContain("<span>Text unavailable: снимок изменён</span>");
+    expect(r({ byId: new Map(), error: null })).toContain('<span class="muted">Loading draft text…</span>');
+    expect(un).toContain("<span>Text unavailable: ");
     const none = r({ byId: new Map([["d1", { draftId: "d1", participantId: "p1", attempts: 2, chars: 1, reasoning: "x", text: null, error: null }]]), error: null });
-    expect(strip(none)).toContain(`Text unavailable: ${feed("en").reasonMissing}`);
-    expect(strip(none)).toContain("no reason given");
+    expect(none).toContain(`<span>Text unavailable: ${feed("en").reasonMissing}</span>`);
+    expect(none).toContain("<span>Text unavailable: no reason given</span>");
   });
   it("no Russian labels: only what was recorded", () => {
     const s = fold([created(), started(1, "p1"), done(1, "p1", "amend", 1)]);
@@ -557,9 +559,9 @@ describe("FeedView: en", () => {
   });
   it("what was recorded is not translated", () => {
     const s = fold([created(), started(1, "p1"), failed(1, "p1", 1, "timeout", "сервис ответил: «нет»"), drop("p1")]);
-    const t = strip(en(() => view(s, { running: false })));
-    expect(t).toContain("Имя1 dropped out: таймаут ответа");
-    expect(t).toContain("сервис ответил: «нет»");
+    const t = en(() => view(s, { running: false }));
+    expect(t).toContain("<span>Имя1 dropped out: таймаут ответа</span>");
+    expect(t).toContain("<span>Turn 1 · Имя1 · attempt 1 — timeout: сервис ответил: «нет»</span>");
   });
   it("the lineup does not depend on the language", () => {
     const dropped = [created(), started(1, "p1"), done(1, "p1", "amend", 1, { questions: [{ id: "q1", to: "owner", text: "?" }] }), started(2, "p2"), failed(2, "p2", 1, "timeout", "x"), drop("p2"), finishedFail];
