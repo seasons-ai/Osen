@@ -112,7 +112,7 @@ describe("timeline: owner messages", () => {
 });
 
 describe("timeline: resume divider", () => {
-  const mark = (beforeTurn: number, addedRounds = 2) => ({ ts: "2026-01-02T10:42:00Z", maxRounds: 5, addedRounds, beforeTurn });
+  const mark = (beforeTurn: number, addedRounds = 2) => ({ ts: "2026-01-02T10:42:00Z", maxRounds: 5, addedRounds, beforeTurn, ownerMessagesBefore: 0 });
   const withMarks = (b: Body[], ...marks: ReturnType<typeof mark>[]) => ({ ...fold(b), resumes: marks });
   const order = (s: ReturnType<typeof fold>) => timeline(s).map((i) => (i.kind === "turn" ? `t${i.turn.turn}` : i.kind === "owner" ? `o${i.message.id}` : i.kind === "failure" ? `f${i.failure.turn}` : i.kind === "resumed" ? `r${i.mark.beforeTurn}` : i.kind));
   it("one mark between the previous and the new turns", () => {
@@ -159,12 +159,12 @@ describe("timeline: owner wait expiry", () => {
     const s = {
       ...base,
       ownerMessages: [{ id: "o1", requestId: "r1", text: "уточнение", afterTurn: 2, answers: [], ts: mark.at }],
-      resumes: [{ ts: mark.at, maxRounds: 5, addedRounds: 2, beforeTurn: 3 }],
+      resumes: [{ ts: mark.at, maxRounds: 5, addedRounds: 2, beforeTurn: 3, ownerMessagesBefore: 0 }],
     };
     expect(timeline(s, [mark]).map((i) => i.kind)).toEqual(["turn", "failure", "turn", "owner", "resumed", "wait-expired", "turn"]);
   });
   it("at one point marks go by time: the deadline expired before the resume — expiry first", () => {
-    const s = { ...base, resumes: [{ ts: new Date(Date.parse(mark.at) + 60000).toISOString(), maxRounds: 5, addedRounds: 2, beforeTurn: 3 }] };
+    const s = { ...base, resumes: [{ ts: new Date(Date.parse(mark.at) + 60000).toISOString(), maxRounds: 5, addedRounds: 2, beforeTurn: 3, ownerMessagesBefore: 0 }] };
     expect(timeline(s, [mark]).map((i) => i.kind)).toEqual(["turn", "failure", "turn", "wait-expired", "resumed", "turn"]);
   });
   it("after the last turn — at the end, after the message and the resume", () => {

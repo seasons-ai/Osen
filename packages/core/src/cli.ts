@@ -455,6 +455,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           answer: { type: "string" },
           rounds: { type: "string" },
           replace: { type: "string", multiple: true },
+          message: { type: "string", multiple: true },
           "max-tokens": { type: "string" },
           "no-max-tokens": { type: "boolean" },
           drafts: { type: "boolean" },
@@ -497,6 +498,12 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       return usageFail(t.roundsOnlyResume);
     } else if (values.replace !== undefined) {
       return usageFail(t.replaceOnlyResume);
+    } else if (values.message !== undefined) {
+      return usageFail(t.messageOnlyResume);
+    }
+    if (values.message !== undefined) {
+      if (values.message.length > 1) return usageFail(t.messageRepeated);
+      if (!values.message[0]!.trim()) return usageFail(t.messageNeedsText);
     }
     const urlFlags = values.url !== undefined || values["preview-materials"] !== undefined || values["prepared-materials"] !== undefined || values.include !== undefined || values["no-ignore"] !== undefined;
     if (urlFlags && cmd !== "run") return usageFail(t.urlFlagsOnlyRun);
@@ -790,6 +797,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           const plan = planResume(dataDir, id, {
             rounds, ...(maxTokens !== undefined ? { maxTotalTokens: maxTokens } : values["no-max-tokens"] ? { maxTotalTokens: null } : {}),
             ...(replacements.length ? { replacements } : {}),
+            ...(values.message ? { message: values.message[0]! } : {}),
           });
           const driverOptions = { registry: registry!, env: io.env, dataDir, deps: io.inspectDeps };
           const { drivers, warnings, unavailable } = await resumeDrivers(plan, driverOptions);
@@ -836,6 +844,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           if (!(e instanceof ResumeRejectedError)) throw e;
           log.error("Resume rejected", e.reason);
           io.stderr(t.error(e.message));
+          if (e.reason === "consensus") io.stderr(t.consensusNeedsMessage(id));
           return EXIT.usage;
         }
         formatSummary(run.state).forEach((l) => io.stdout(l));

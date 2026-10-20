@@ -213,7 +213,7 @@ describe("launcher.resume", () => {
     await prior(mk("c"), [drv(amend("v1")), drv(agree())]);
     const before = readEvents(dir, "c")!.events.length;
     const l = make();
-    await expect(l.resume("c", 1)).rejects.toThrow(/согласие уже достигнуто/);
+    await expect(l.resume("c", 1)).rejects.toThrow(/согласие достигнуто/);
     expect(readEvents(dir, "c")!.events).toHaveLength(before);
     expect(l.running()).toEqual([]);
     expect(logs.some((m) => m.includes("rejected: consensus"))).toBe(true);

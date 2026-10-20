@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { runSession } from "../engine.ts";
 import type { OwnerMessageRequest, RunSessionOptions, SessionRun } from "../engine.ts";
@@ -57,7 +57,7 @@ export interface ResumePlan {
   state: SessionState;             // state before the resume (the former lineup)
   events: SessionEvent[];          // the full previous journal
   journalBytes: number;            // size of the journal file at planning time
-  status: "interrupted" | "no_consensus" | "stopped" | "failed"; // failed — only the failure "fewer than two active", which a replacement can fix
+  status: "interrupted" | "no_consensus" | "stopped" | "failed" | "consensus"; // failed — only the failure "fewer than two active", which a replacement can fix; consensus — only with an owner message
   replacements: PlannedReplacement[]; // [] — no replacements
   point: ResumePoint;             // on the state after replacements
   addedRounds: number;             // how many rounds are still to run, including the unfinished one
@@ -70,6 +70,7 @@ export interface ResumePlan {
   spentTokens: number;             // tokenUsage(state).total at planning time
   tokenCap: number | null;         // effective cap after the resume; null — no cap
   maxTotalTokens?: number | null;  // what to write into session_resumed: set only when a change was requested
+  message?: string;                // owner message written right after session_resumed; absent — none or blank
 }
 
 const reject = (reason: ResumeRejection, message: string): never => {
@@ -104,7 +105,7 @@ function planReplacements(id: string, state: SessionState, inputs: readonly Repl
 
 /** All resume checks without side effects. Throws ResumeRejectedError. */
 export function planResume(
-  dataDir: string, id: string, options: { rounds?: number; maxTotalTokens?: number | null; isAlive?: (pid: number) => boolean; replacements?: readonly ReplacementInput[] } = {},
+  dataDir: string, id: string, options: { rounds?: number; maxTotalTokens?: number | null; isAlive?: (pid: number) => boolean; replacements?: readonly ReplacementInput[]; message?: string } = {},
 ): ResumePlan {
   const m = resumeMessages();
   const notFound = () => reject("not_found", m.notFound(id));
@@ -121,7 +122,8 @@ export function planResume(
     reject("corrupted", m.corrupted(id, events.length));
   }
   if (status === "running") reject("running", m.running(id));
-  if (status === "consensus") reject("consensus", m.consensus(id));
+  const message = options.message?.trim() ? options.message : undefined;
+  if (status === "consensus" && message === undefined) reject("consensus", m.consensus(id));
   if (status === "failed" && state.finish?.reasonCode !== INSUFFICIENT_ACTIVE_REASON_CODE) {
     reject("failed", m.failed(id));
   }
@@ -200,6 +202,7 @@ export function planResume(
     id, session, state, events, journalBytes, status: status as ResumePlan["status"], replacements: planned, point, addedRounds,
     maxRounds: point.completedRounds + addedRounds, active, draftCalls, maxCalls: active.length * addedRounds * 3 + draftCalls, materials,
     ...(workspace ? { workspace } : {}), spentTokens, tokenCap, ...(requested !== undefined ? { maxTotalTokens: requested } : {}),
+    ...(message !== undefined ? { message } : {}),
   };
 }
 
@@ -334,6 +337,8 @@ export async function runResumedSession(options: ResumeRunOptions): Promise<Sess
         events: plan.events, maxRounds: plan.maxRounds,
         ...(plan.replacements.length ? { replacements: plan.replacements.map(({ oldParticipantId, participant }): SessionReplacement => ({ oldParticipantId, participant })) } : {}),
         ...(plan.maxTotalTokens !== undefined ? { maxTotalTokens: plan.maxTotalTokens } : {}),
+        // accepted under the lock of the single executor: no request file, so no protection against a repeat is needed
+        ...(plan.message !== undefined ? { ownerMessage: { text: plan.message, requestId: `resume-${randomUUID()}` } } : {}),
       },
       ownerMessages, draftStore: storedDraftStore(dataDir, id), signal, onChunk: options.onChunk, now: options.now, waitPollMs: options.waitPollMs, sleep: options.sleep,
       onEvent: (e, s) => {

@@ -67,6 +67,7 @@ export interface ResumeMark {
   maxRounds: number;   // new shared round limit
   addedRounds: number; // rounds added: maxRounds − number of fully completed rounds at the time of resume
   beforeTurn: number;  // turn number from which the new segment starts
+  ownerMessagesBefore: number; // owner messages written before this resume: tells the resume's message from earlier ones with the same afterTurn
   replacements?: { oldParticipantId: string; newParticipantId: string }[]; // participant replacements on this resume; no key if there were none
 }
 

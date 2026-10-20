@@ -430,7 +430,7 @@ describe("resumes", () => {
       created(2), started(1, "p1"), done(1, "p1", "amend", 1), started(2, "p2"), done(2, "p2", "object", 1),
       round2(3, "p1"), done(3, "p1", "object", 1), round2(4, "p2"), done(4, "p2", "object", 1), fin, resumed(3),
     ]));
-    expect(s.resumes).toEqual([{ ts: "2026-01-01T00:00:00Z", maxRounds: 3, addedRounds: 1, beforeTurn: 5 }]);
+    expect(s.resumes).toEqual([{ ts: "2026-01-01T00:00:00Z", maxRounds: 3, addedRounds: 1, beforeTurn: 5, ownerMessagesBefore: 0 }]);
   });
 
   it("stop in the middle of a turn: beforeTurn is the unfinished turn", () => {
@@ -438,7 +438,7 @@ describe("resumes", () => {
       created(2), started(1, "p1"), done(1, "p1", "amend", 1), started(2, "p2"), done(2, "p2", "object", 1),
       round2(3, "p1"), { ...fin, status: "stopped" as never }, resumed(4),
     ]));
-    expect(s.resumes).toEqual([{ ts: "2026-01-01T00:00:00Z", maxRounds: 4, addedRounds: 3, beforeTurn: 3 }]);
+    expect(s.resumes).toEqual([{ ts: "2026-01-01T00:00:00Z", maxRounds: 4, addedRounds: 3, beforeTurn: 3, ownerMessagesBefore: 0 }]);
   });
 
   it("two continuations: two marks in order", () => {
