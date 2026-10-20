@@ -1,17 +1,22 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_LANGUAGE, setProcessLanguage } from "@model-council/core/i18n";
 import { LanguageProvider } from "./language.tsx";
-import type { DefaultsValues, SettingsProvider, SettingsView } from "../../shared/settings.ts";
+import type { CliTransitionSettings, DefaultsValues, SettingsProvider, SettingsView } from "../../shared/settings.ts";
 import { settings } from "../../shared/messages/settings.ts";
 import { EMPTY_PROVIDER } from "./ProviderForm.tsx";
 import { SettingsScreen, initialSettings, isDirty, reduceSettings } from "./Settings.tsx";
 import type { SettingsAction, SettingsState } from "./Settings.tsx";
+import { followCliTransition, withSessionsRunning } from "./Settings.tsx";
+import { createCliActions } from "./CliTransition.tsx";
+import type { CliApi } from "./CliTransition.tsx";
+import type { CliTransition } from "../../shared/settings.ts";
+import type { BridgeEvent } from "../../shared/bridge.ts";
 
 const prov = (o: Partial<SettingsProvider> = {}): SettingsProvider => ({
   id: "p", kind: "cli", label: "P", available: true, reason: null, warning: null, version: null, path: null,
   baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: ["m1"], defaultModel: "dflt",
-  modelsSource: "provider", modelsReason: null, modelsAt: null, ...o,
+  modelsSource: "provider", modelsReason: null, modelsAt: null, cli: null, ...o,
 });
 const http = (o: Partial<SettingsProvider> = {}) =>
   prov({ id: "h", kind: "openai-http", label: "H", baseUrl: "http://x/v1", keyEnv: "H_KEY", keySet: true, billing: "paid", ...o });
@@ -19,8 +24,9 @@ const defs = (o: Partial<DefaultsValues> = {}): DefaultsValues => ({
   maxRounds: 5, turnTimeoutSec: 300, contextChars: 24000, materialsChars: 60000, maxTotalTokens: null, maxParticipants: 8,
   participants: [{ providerId: "p", model: "m1" }, { providerId: "h", model: "m1" }], ...o,
 });
+const TR: CliTransitionSettings = { periodDays: 30, file: "/cfg/cli-reminder.json", fileError: null, running: false };
 const view = (o: Partial<SettingsView> = {}): SettingsView => ({
-  configPath: "/cfg/config.json", envPath: "/cfg/.env", registryError: null, providers: [prov(), http()], defaults: defs(), ...o,
+  configPath: "/cfg/config.json", envPath: "/cfg/.env", registryError: null, providers: [prov(), http()], defaults: defs(), transition: TR, ...o,
 });
 const loaded = (o: Partial<SettingsView> = {}, s: Partial<SettingsState> = {}): SettingsState =>
   ({ ...reduceSettings(initialSettings(), { type: "view", view: view(o) }), ...s });
@@ -331,3 +337,215 @@ describe("Connections tab in SettingsScreen", () => {
   });
 });
 
+
+// Requirements: "Напоминание о плановом переходе и о кандидате", "Переход и откат из карточки", "Срок перехода", "Тексты перехода CLI на выбранном языке"
+describe("CLI transition on the Providers tab", () => {
+  afterEach(() => setProcessLanguage("ru"));
+  const cli = (o: Partial<CliTransition> = {}): CliTransition => ({
+    agent: "claude", source: "pin", level: "real", checkedAt: "2026-10-07",
+    pin: { version: "2.1.288", activatedAt: "2026-09-10T08:30:00Z", ageDays: 40, previous: "2.1.270" },
+    due: { from: "2.1.288", to: "2.1.300", ageDays: 40, acceptedAt: "2026-10-15" },
+    target: { version: "2.1.300", acceptedAt: "2026-10-15" }, install: null, candidates: [], violations: [], check: null, ...o,
+  });
+  const withCli = (o: Partial<SettingsView> = {}, c: CliTransition | null = cli()) =>
+    loaded({ providers: [prov({ id: "claude", label: "Claude Code", version: "2.1.288", cli: c }), http()], ...o });
+  const en = (s: SettingsState) => { setProcessLanguage("en"); return html(s); };
+
+  it("banner lists every provider with a due transition, above the cards; the block is one", () => {
+    const h = en(withCli({ providers: [prov({ id: "claude", label: "Claude Code", cli: cli() }), prov({ id: "codex", label: "Codex", cli: cli({ agent: "codex" }) }), http()] }));
+    const banner = h.slice(h.indexOf('class="settings-banner"'), h.indexOf('class="settings-grid"'));
+    expect(banner).toContain("Time for the planned transition");
+    expect(banner).toContain("Claude Code: 2.1.288 → 2.1.300");
+    expect(banner).toContain("Codex: 2.1.288 → 2.1.300");
+    expect(h.match(/>CLI transition</g)).toHaveLength(1);
+    expect(h.indexOf(">CLI transition<")).toBeLessThan(h.indexOf('class="settings-grid"'));
+  });
+
+  it("a session started elsewhere (history poll) disables Switch and Roll back on the open screen; its end enables them", () => {
+    const idle = withCli({ transition: { ...TR, running: false } });
+    const busy = en(withSessionsRunning(idle, true));
+    expect(busy).toContain("a session is running");
+    expect(busy).toMatch(/<button[^>]*disabled=""[^>]*>Switch to 2\.1\.300/);
+    const free = en(withSessionsRunning(withCli({ transition: { ...TR, running: true } }), false));
+    expect(free).not.toContain("a session is running");
+    expect(en(withSessionsRunning(idle, undefined))).not.toContain("a session is running");
+  });
+
+  it("no banner without a due transition; no block without CLI data", () => {
+    expect(en(withCli({}, cli({ due: null })))).not.toContain('class="settings-banner"');
+    const h = en(loaded());
+    expect(h).not.toContain("CLI transition");
+  });
+
+  it("period field shows the saved value; 0, 400, 7.5 and empty disable Save with the bounds", () => {
+    expect(en(withCli({ transition: { ...TR, periodDays: 14 } }))).toContain('value="14"');
+    for (const text of ["0", "400", "7.5", ""]) {
+      const s = run(withCli(), { type: "cli", action: { type: "period", text } });
+      const h = en(s);
+      expect(h).toContain("An integer from 1 to 365");
+      expect(h).toMatch(/<button type="button" class="btn btn--sm" disabled="">Save<\/button>/);
+    }
+    const ok = en(run(withCli(), { type: "cli", action: { type: "period", text: "14" } }));
+    expect(ok).not.toContain("An integer from 1 to 365");
+    expect(ok).toMatch(/<button type="button" class="btn btn--sm">Save<\/button>/);
+  });
+
+  it("damaged reminder file is shown with the reason", () => {
+    const h = en(withCli({ transition: { ...TR, fileError: "/cfg/cli-reminder.json is damaged: not valid JSON" } }));
+    expect(h).toContain("Reminder file is damaged");
+    expect(h).toContain("/cfg/cli-reminder.json is damaged: not valid JSON");
+    setProcessLanguage("ru");
+    expect(html(withCli({ transition: { ...TR, fileError: "x" } }))).toContain("Файл напоминаний повреждён");
+  });
+
+  it("running session disables the buttons on the screen", () => {
+    const h = en(withCli({ transition: { ...TR, running: true } }));
+    expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Switch to 2\.1\.300<\/button>/);
+    expect(h).toContain("a session is running");
+  });
+
+  it("an open confirmation survives a language change with the same versions", () => {
+    const confirm = { agent: "claude", kind: "switch" as const, from: "2.1.288", to: "2.1.300" };
+    const s = run(withCli(), { type: "cli", action: { type: "ask", confirm } });
+    const english = en(s);
+    expect(english).toContain("Switch Claude Code from 2.1.288 to 2.1.300?");
+    setProcessLanguage("ru");
+    const russian = html(run(s, { type: "view", view: view({ providers: s.view!.providers }) }));
+    expect(russian).toContain("Перейти Claude Code с 2.1.288 на 2.1.300?");
+    expect(russian).toContain("Отмена");
+  });
+
+  it("no Cyrillic in the transition UI in English", () => {
+    const s = run(withCli({ transition: { ...TR, fileError: "broken", running: true } }), { type: "cli", action: { type: "ask", confirm: { agent: "claude", kind: "rollback", from: "2.1.288", to: "2.1.270" } } });
+    expect(en(s)).not.toMatch(/[А-Яа-яЁё]/);
+  });
+
+  it("the cli-transition event rereads the settings; other events do not", () => {
+    let listener: (e: BridgeEvent) => void = () => {};
+    const off = vi.fn();
+    const reload = vi.fn();
+    const stop = followCliTransition({ subscribe: (l: (e: BridgeEvent) => void) => { listener = l; return off; } }, reload);
+    listener({ type: "language", view: { language: "en", source: "file", locked: false } });
+    expect(reload).not.toHaveBeenCalled();
+    listener({ type: "cli-transition" });
+    expect(reload).toHaveBeenCalledTimes(1);
+    stop();
+    expect(off).toHaveBeenCalled();
+  });
+});
+
+describe("CLI transition actions", () => {
+  const target = { version: "2.1.300", acceptedAt: "2026-10-15" };
+  const c: CliTransition = {
+    agent: "claude", source: "pin", level: "real", checkedAt: "2026-10-07",
+    pin: { version: "2.1.288", activatedAt: "2026-09-10T08:30:00Z", ageDays: 40, previous: "2.1.270" },
+    due: null, target, install: null, candidates: [], violations: [], check: null,
+  };
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  function harness(api: Partial<CliApi>) {
+    let state = loaded({ providers: [prov({ id: "claude", cli: c }), http()] });
+    const actions = createCliActions(() => api as CliApi, {
+      get: () => state.cli,
+      dispatch: (action) => { state = reduceSettings(state, { type: "cli", action }); },
+      apply: (v) => { state = reduceSettings(state, { type: "cliApplied", view: v }); },
+    });
+    return { actions, get: () => state };
+  }
+  const newView = view({ transition: { ...TR, periodDays: 14 } });
+
+  it("confirm calls switchCli with the agent and the version; the returned view replaces the screen view", async () => {
+    const switchCli = vi.fn().mockResolvedValue(newView);
+    const h = harness({ switchCli });
+    h.actions.ask(c, "switch");
+    expect(switchCli).not.toHaveBeenCalled();
+    expect(h.get().cli.confirm).toEqual({ agent: "claude", kind: "switch", from: "2.1.288", to: "2.1.300" });
+    h.actions.confirm();
+    await flush();
+    expect(switchCli).toHaveBeenCalledExactlyOnceWith("claude", "2.1.300");
+    expect(h.get().view).toBe(newView);
+    expect(h.get().cli.confirm).toBeNull();
+  });
+
+  it("Cancel calls nothing and closes the confirmation", () => {
+    const switchCli = vi.fn();
+    const rollbackCli = vi.fn();
+    const h = harness({ switchCli, rollbackCli });
+    h.actions.ask(c, "switch");
+    h.actions.cancel();
+    expect(h.get().cli.confirm).toBeNull();
+    h.actions.confirm();
+    expect(switchCli).not.toHaveBeenCalled();
+    expect(rollbackCli).not.toHaveBeenCalled();
+  });
+
+  it("rollback flow calls rollbackCli with the agent only", async () => {
+    const rollbackCli = vi.fn().mockResolvedValue(newView);
+    const h = harness({ rollbackCli });
+    h.actions.ask(c, "rollback");
+    expect(h.get().cli.confirm).toEqual({ agent: "claude", kind: "rollback", from: "2.1.288", to: "2.1.270" });
+    h.actions.confirm();
+    await flush();
+    expect(rollbackCli).toHaveBeenCalledExactlyOnceWith("claude");
+  });
+
+  it("a refusal closes the confirmation and is shown next to the button; the view is unchanged", async () => {
+    const h = harness({ switchCli: vi.fn().mockRejectedValue(new Error("Version 2.1.300 is not installed")) });
+    const before = h.get().view;
+    h.actions.ask(c, "switch");
+    h.actions.confirm();
+    await flush();
+    expect(h.get().view).toBe(before);
+    expect(h.get().cli.confirm).toBeNull();
+    setProcessLanguage("en");
+    expect(html(h.get())).toContain('settings-cli__refusal" role="alert"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> Version 2.1.300 is not installed');
+    setProcessLanguage("ru");
+  });
+
+  it("a second confirm press while the call runs does not call the bridge again", () => {
+    const switchCli = vi.fn().mockReturnValue(new Promise(() => {}));
+    const h = harness({ switchCli });
+    h.actions.ask(c, "switch");
+    h.actions.confirm();
+    h.actions.confirm();
+    expect(switchCli).toHaveBeenCalledTimes(1);
+  });
+
+  it("nothing to switch to: ask opens no confirmation", () => {
+    const h = harness({});
+    h.actions.ask({ ...c, target: null }, "switch");
+    h.actions.ask({ ...c, pin: { ...c.pin!, previous: null } }, "rollback");
+    expect(h.get().cli.confirm).toBeNull();
+  });
+
+  it("Copy calls copyText with the install command", async () => {
+    const copyText = vi.fn().mockResolvedValue(undefined);
+    const h = harness({ copyText });
+    h.actions.copy("claude", "council cli install claude --version 2.1.310");
+    await flush();
+    expect(copyText).toHaveBeenCalledExactlyOnceWith("council cli install claude --version 2.1.310");
+    expect(h.get().cli.copied).toBe("claude");
+  });
+
+  it("period save: 14 calls setTransitionPeriod(14); 0, 400, 7.5 and empty call nothing", async () => {
+    const setTransitionPeriod = vi.fn().mockResolvedValue(newView);
+    const h = harness({ setTransitionPeriod });
+    for (const text of ["0", "400", "7.5", "", "abc"]) { h.actions.period(text); h.actions.savePeriod(); }
+    expect(setTransitionPeriod).not.toHaveBeenCalled();
+    h.actions.period("14");
+    h.actions.savePeriod();
+    await flush();
+    expect(setTransitionPeriod).toHaveBeenCalledExactlyOnceWith(14);
+    expect(h.get().view).toBe(newView);
+    expect(h.get().cli.period).toBeNull();
+  });
+
+  it("a period save refusal is shown at the field", async () => {
+    const h = harness({ setTransitionPeriod: vi.fn().mockRejectedValue(new Error("Could not save /cfg/cli-reminder.json: EACCES")) });
+    h.actions.period("14");
+    h.actions.savePeriod();
+    await flush();
+    setProcessLanguage("en");
+    expect(html(h.get())).toContain("Could not save /cfg/cli-reminder.json: EACCES");
+    setProcessLanguage("ru");
+  });
+});

@@ -9,7 +9,7 @@ const now = new Date(2026, 9, 8, 15, 0);
 const prov = (o: Partial<SettingsProvider> = {}): SettingsProvider => ({
   id: "router", kind: "openai-http", label: "OpenRouter", available: true, reason: null, warning: null, version: null, path: null,
   baseUrl: "https://x/v1", keyEnv: "K", keySet: true, billing: "paid", models: ["m1", "m2"], defaultModel: "def",
-  modelsSource: "provider", modelsReason: null, modelsAt: new Date(2026, 9, 8, 11, 30).toISOString(), ...o
+  modelsSource: "provider", modelsReason: null, modelsAt: new Date(2026, 9, 8, 11, 30).toISOString(), cli: null, ...o
 });
 const html = (p: SettingsProvider, o: { draft?: string; busy?: boolean } = {}) =>
   renderToStaticMarkup(<ProviderModels provider={p} now={now} draft={o.draft ?? ""} busy={o.busy ?? false}

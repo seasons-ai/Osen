@@ -7,7 +7,7 @@ import { DefaultsPanel, addParticipant, modelOptions, withProvider } from "./Def
 
 const prov = (o: Partial<SettingsProvider> & Pick<SettingsProvider, "id" | "label">): SettingsProvider => ({
   kind: "cli", available: true, reason: null, warning: null, version: null, path: null, baseUrl: null, keyEnv: null, keySet: false,
-  billing: "subscription", models: ["haiku", "opus"], defaultModel: "default", modelsSource: "owner", modelsReason: null, modelsAt: null, ...o
+  billing: "subscription", models: ["haiku", "opus"], defaultModel: "default", modelsSource: "owner", modelsReason: null, modelsAt: null, cli: null, ...o
 });
 const claude = prov({ id: "claude", label: "Claude Code" });
 const codex = prov({ id: "codex", label: "Codex", models: ["m1"], defaultModel: null });

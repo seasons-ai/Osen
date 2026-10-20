@@ -8,6 +8,7 @@ import { setProcessLanguage } from "@model-council/core/i18n";
 import { addLocalEntry } from "../../../../packages/core/src/cli-agents/verified-record.ts";
 import { installStub, realEntry, runs, stubScript, tamper } from "../../../../packages/core/src/cli-agents/launch-guard.fixture.ts";
 import { createLauncher, LaunchError } from "./launcher.ts";
+import { inertTransition } from "./cli-transition.testutil.ts";
 import { createSettings } from "./settings.ts";
 
 const R = "Причина несовпадения закрепления в списке провайдеров";
@@ -44,7 +45,7 @@ async function pinned(): Promise<string> {
 describe(R, () => {
   it(`${R}: the providers list shows a tampered pinned provider unavailable with the reason, and available again after the binary is restored`, async () => {
     const binary = await pinned();
-    const api = createSettings({ dataDir: data, env: env(), reloadEnv: () => {}, logger, inspect });
+    const api = createSettings({ dataDir: data, env: env(), reloadEnv: () => {}, logger, inspect, transition: inertTransition(data, logger) });
     expect((await api.view()).providers.find((p) => p.id === "claude")).toMatchObject({ available: true, reason: null, version: V, path: binary });
 
     tamper(binary);

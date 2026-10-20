@@ -95,6 +95,7 @@ export function reduce(state: UiState, action: UiAction): UiState {
       if (e.type === "sessions") return reduce(state, { type: "sessions", sessions: e.sessions });
       if (e.type === "error") return reduce(state, { type: "error", message: e.message });
       if (e.type === "appearance") return state; // the theme is applied on <html> by theme.ts, it does not affect screen state
+      if (e.type === "cli-transition") return state; // the Settings screen re-reads its own view
       if (e.type === "language") return state; // the language is applied by LanguageProvider, it does not affect screen state
       if (e.type === "turn-text") {
         if (e.id !== state.openId) return state;

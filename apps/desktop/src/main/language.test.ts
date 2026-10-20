@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getProcessLanguage, setProcessLanguage } from "@model-council/core/i18n";
 import { initialRegistry, resetDiscoveryCache, writeRegistry } from "@model-council/core";
+import { inertTransition } from "./cli-transition.testutil.ts";
 import { createSettings } from "./settings.ts";
 import type { BridgeEvent } from "../shared/bridge.ts";
 import { closeWarningText, createLanguageState } from "./language.ts";
@@ -216,7 +217,7 @@ describe("language state: CLI discovery reset", () => {
     const logger = { info: vi.fn(), error: vi.fn() };
     const state = createLanguageState({ env: {}, dataDir, send: vi.fn(), logger });
     setProcessLanguage("en");
-    const api = createSettings({ dataDir, env, reloadEnv: () => {}, logger });
+    const api = createSettings({ dataDir, env, reloadEnv: () => {}, logger, transition: inertTransition(dataDir, logger) });
     const show = async () => (await api.view()).providers.map((p) => [p.id, p.reason, p.warning]);
     const en = await show();
     expect(en.some((r) => r[1] || r[2])).toBe(true);

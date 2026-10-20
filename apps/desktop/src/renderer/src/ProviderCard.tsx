@@ -2,11 +2,13 @@ import type { ReactNode } from "react";
 import type { SettingsProvider } from "../../shared/settings.ts";
 import { settings } from "../../shared/messages/settings.ts";
 import { Icon } from "./icons.tsx";
+import { CliActions, CliDetailRows, CliLines, CliSourceRow, NO_CLI_CARD } from "./CliTransition.tsx";
+import type { CliCardProps } from "./CliTransition.tsx";
 import { useMessages } from "./language.tsx";
 
 const Mono = ({ children }: { children: ReactNode }) => <span className="mono">{children}</span>;
 
-export function ProviderCard({ provider: p, envPath, busy, deleting, canTest, models, test, onTest, onRecheck, onEdit, onAskDelete, onDelete, onCancelDelete }: {
+export function ProviderCard({ provider: p, envPath, busy, deleting, canTest, models, test, onTest, onRecheck, onEdit, onAskDelete, onDelete, onCancelDelete, cli: cliUi = NO_CLI_CARD }: {
   provider: SettingsProvider;
   envPath: string;
   busy: boolean;
@@ -20,6 +22,7 @@ export function ProviderCard({ provider: p, envPath, busy, deleting, canTest, mo
   onAskDelete(): void;
   onDelete(): void;
   onCancelDelete(): void;
+  cli?: CliCardProps; // transition state of the card; the data itself is provider.cli
 }): ReactNode {
   const t = useMessages(settings);
   const cli = p.kind === "cli";
@@ -39,8 +42,10 @@ export function ProviderCard({ provider: p, envPath, busy, deleting, canTest, mo
         <span className="badge" data-tone={badge.tone}><Icon name={badge.icon} size="sm" /> {badge.text}</span>
       </div>
       <dl className="kv settings-info">
+        {p.cli && <CliSourceRow cli={p.cli} />}
         {cli && p.version && <><dt>{t.version}</dt><dd><Mono>{p.version}</Mono></dd></>}
         {cli && p.path && <><dt>{t.command}</dt><dd><Mono>{p.path}</Mono></dd></>}
+        {p.cli && <CliDetailRows cli={p.cli} />}
         {!cli && p.baseUrl && <><dt>{t.address}</dt><dd><Mono>{p.baseUrl}</Mono></dd></>}
         {!cli && (
           <>
@@ -88,6 +93,8 @@ export function ProviderCard({ provider: p, envPath, busy, deleting, canTest, mo
             </div>
           </div>
         ))}
+      {p.cli && <CliLines provider={p} cli={p.cli} ui={cliUi} />}
+      {p.cli && <CliActions cli={p.cli} ui={cliUi} />}
       {models}
       {deleting ? (
         <div className="alert" data-tone="warn" role="alert">

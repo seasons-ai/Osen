@@ -87,6 +87,9 @@ export interface BridgeActions {
   refreshModels(id: string): SettingsProvider;
   testProvider(id: string, model: string): TestResult;
   saveDefaults(values: DefaultsValues): SettingsView;
+  setTransitionPeriod(days: number): SettingsView; // planned CLI transition period, integer 1–365; writes cli-reminder.json, never starts a candidate check
+  switchCli(agent: string, version: string): SettingsView; // 176 use; refused while a session runs; only on the owner's confirmed press
+  rollbackCli(agent: string): SettingsView;                // 176 rollback; refused while a session runs
   materials(): MaterialsView;
   pickMaterials(kind: MaterialsKind): MaterialsView;
   attachMaterials(paths: string[]): MaterialsView;
@@ -118,7 +121,7 @@ export interface BridgeActions {
   setAppearance(input: { mode?: ThemeMode; lightTheme?: LightTheme }): AppearanceView; // a refusal on an unknown value and on a write error; the appearance event goes to all subscribers
 }
 
-export const BRIDGE_ACTIONS = ["listSessions", "openSession", "closeSession", "sessionDrafts", "notices", "listTemplates", "registry", "lineups", "saveLineup", "startSession", "lastParticipants", "stopSession", "sendOwnerMessage", "continueWait", "copyText", "exportSession", "setPinned", "usageSummary", "settings", "recheckProviders", "saveProvider", "deleteProvider", "saveModels", "refreshModels", "testProvider", "saveDefaults", "materials", "pickMaterials", "attachMaterials", "addUrl", "removeMaterial", "clearMaterials", "returnIgnored", "excludeIgnored", "previewMaterials", "prepareRerun", "resumeOptions", "resumeSession", "acceptVersion", "templateEditor", "createTemplate", "saveTemplate", "removeTemplate", "language", "setLanguage", "appearance", "setAppearance", "connections", "connectClient", "updateClient", "disconnectClient", "checkClient", "installCommand", "removeCommand", "copyZprofileLine"] as const satisfies readonly (keyof BridgeActions)[];
+export const BRIDGE_ACTIONS = ["listSessions", "openSession", "closeSession", "sessionDrafts", "notices", "listTemplates", "registry", "lineups", "saveLineup", "startSession", "lastParticipants", "stopSession", "sendOwnerMessage", "continueWait", "copyText", "exportSession", "setPinned", "usageSummary", "settings", "recheckProviders", "saveProvider", "deleteProvider", "saveModels", "refreshModels", "testProvider", "saveDefaults", "setTransitionPeriod", "switchCli", "rollbackCli", "materials", "pickMaterials", "attachMaterials", "addUrl", "removeMaterial", "clearMaterials", "returnIgnored", "excludeIgnored", "previewMaterials", "prepareRerun", "resumeOptions", "resumeSession", "acceptVersion", "templateEditor", "createTemplate", "saveTemplate", "removeTemplate", "language", "setLanguage", "appearance", "setAppearance", "connections", "connectClient", "updateClient", "disconnectClient", "checkClient", "installCommand", "removeCommand", "copyZprofileLine"] as const satisfies readonly (keyof BridgeActions)[];
 
 export type BridgeEvent =
   | { type: "sessions"; sessions: HistoryItem[] }
@@ -128,6 +131,7 @@ export type BridgeEvent =
   | { type: "error"; message: string }
   | { type: "language"; view: LanguageView }
   | { type: "appearance"; view: AppearanceView }
+  | { type: "cli-transition" } // a background candidate check finished: re-read settings()
   | { type: "open-result"; id: string }
   | { type: "open-session"; id: string }; // open the session screen without requesting "Result": a running session shows "Discussion"
 

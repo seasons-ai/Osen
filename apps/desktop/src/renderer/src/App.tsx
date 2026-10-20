@@ -70,7 +70,7 @@ export function Shell({ state, dispatch, version, language }: { state: UiState; 
           </div>
         )}
         {section === "settings" ? (
-          <Settings />
+          <Settings sessionsRunning={state.sessions === null ? undefined : state.sessions.some((s) => s.status === "running")} />
         ) : section === "new" ? null : openId !== null ? (
           <SessionScreen
             key={`${openId}:${state.resultRequest}`} id={openId}

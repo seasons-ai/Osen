@@ -27,6 +27,7 @@ export interface ProviderStatus {
   path?: string;
   version?: string;
   verified?: { level: "real" | "interface" | "none"; checkedAt: string | null }; // only for a found cli
+  source?: "explicit" | "pin" | "path"; // only for cli, when the search got that far: where the executable came from (the same search as a turn launch)
   models: string[];           // without DEFAULT_MODEL; the "default" variant is added by the displaying code
   modelsConfirmed: boolean;
   modelsReason?: string;
@@ -71,6 +72,7 @@ async function inspectCli(provider: CliProvider, { env, withModels = true, deps,
   if (loc.version) status.version = loc.version;
   if (loc.verified) status.verified = loc.verified;
   if (loc.warning) status.warning = loc.warning;
+  if (loc.source) status.source = loc.source;
 
   const childEnv = { ...env, PATH: loc.searchPath, ...(loc.pin ? pinnedEnv(agent, loc.pin.configDir) : {}) };
   let help: string;

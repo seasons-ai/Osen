@@ -51,3 +51,5 @@
 .theme-prev__row{display:flex;align-items:center;gap:6px}
 .theme-prev__btn{padding:0 7px;border-radius:var(--r-sm);background:var(--leaf);color:var(--text-on-accent);font-size:9px;line-height:15px}
 .theme-prev__line{flex:1;height:4px;border-radius:2px;background:var(--text-faint)}
+/* CLI transition (change 182): long refusals and reasons wrap at 900 px instead of clipping */
+.settings-cli__refusal,.settings-actions .muted,.settings-cli .alert__text,.settings-card__note{min-width:0;overflow-wrap:anywhere}

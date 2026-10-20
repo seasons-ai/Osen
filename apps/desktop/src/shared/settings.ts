@@ -24,6 +24,45 @@ export interface SettingsProvider {
   modelsSource: ModelsSource;   // provider — received from the provider, owner — set by the owner in config.json
   modelsReason: string | null;  // explanation for unconfirmed and unavailable
   modelsAt: string | null;      // ISO time the list was received; only when modelsSource === "provider"
+  cli: CliTransition | null;    // cli only: source, verified level and transition state; null for openai-http
+}
+
+// CLI transition (change 182). Computed in main; the renderer only shows it and calls the bridge actions.
+export type CliSource = "explicit" | "pin" | "path"; // the same order as a turn launch: explicit path, then the active Osen pin, then PATH
+export type CliLevel = "real" | "interface" | "none";
+export type CliCheckOutcome = "ok" | "source_unavailable" | "install_failed" | "record_failed" | "no_base" | "check_failed";
+export interface CliTransition {
+  agent: "claude" | "codex";
+  source: CliSource | null;     // null — the binary was not found
+  level: CliLevel;              // verified level of the found version in the effective record
+  checkedAt: string | null;     // YYYY-MM-DD of that record entry; null with level "none"
+  pin: {                        // the active Osen pin from pins.json; also shown (as unused) when source === "explicit"
+    version: string;
+    activatedAt: string | null; // null — pins.json has no activatedAt: the age is unknown
+    ageDays: number | null;     // whole days from activatedAt; null when unknown
+    previous: string | null;    // version kept for rollback
+  } | null;
+  due: { from: string; to: string; ageDays: number; acceptedAt: string } | null; // planned transition reminder: pin older than the period and a newer `real` version exists
+  target: { version: string; acceptedAt: string } | null;   // newest installed `real` version newer than the active pin: the "Switch to" button
+  install: { version: string; command: string } | null;     // newest `real` version newer than the active pin and newer than target, not installed: the install command
+  candidates: { version: string }[];                         // newer than the active pin, `interface` only in the record
+  violations: { version: string; names: string[] }[];        // newer than the active pin, last check status `violates`: missing flags and features
+  check: { at: string; outcome: CliCheckOutcome } | null;    // last candidate check for this agent; null — none recorded
+}
+export interface CliTransitionSettings {
+  periodDays: number;           // planned transition period; 30 when the file is absent or broken
+  file: string;                 // absolute path of cli-reminder.json
+  fileError: string | null;     // the file is unreadable or fails the schema: the reason (localized at read time)
+  running: boolean;             // at least one session is running: switch and rollback are unavailable
+}
+
+export const PERIOD_BOUNDS = { min: 1, max: 365 } as const;
+export const DEFAULT_PERIOD_DAYS = 30;
+
+/** null — valid; otherwise the reason with the bounds. */
+export function checkPeriod(days: unknown): string | null {
+  const { min, max } = PERIOD_BOUNDS;
+  return typeof days === "number" && Number.isInteger(days) && days >= min && days <= max ? null : settings().intRange(min, max);
 }
 
 export interface DefaultsValues {
@@ -42,6 +81,7 @@ export interface SettingsView {
   registryError: string | null; // not null — the registry was not read: providers is empty, defaults === null
   providers: SettingsProvider[];
   defaults: DefaultsValues | null;
+  transition: CliTransitionSettings;
 }
 
 export interface ProviderInput { id: string | null; label: string; baseUrl: string; apiKeyEnv: string } // id null — a new provider; apiKeyEnv "" — no key required

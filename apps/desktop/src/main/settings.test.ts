@@ -6,6 +6,7 @@ import { DEFAULT_MODEL, configPath, envFilePath, initialRegistry, readRegistry, 
 import type { Logger, ProviderInspection, ProviderStatus, Registry } from "@model-council/core";
 import { setProcessLanguage } from "@model-council/core/i18n";
 import { settings as catalog } from "../shared/messages/settings.ts";
+import { inertTransition } from "./cli-transition.testutil.ts";
 import { createSettings, SettingsError } from "./settings.ts";
 
 const logs: string[] = [];
@@ -28,12 +29,25 @@ function make(statusOf: Fn = (id) => ({ id, kind: "cli", label: id, available: t
   const inspect = vi.fn(async (p: { id: string }): Promise<ProviderInspection> => ({ status: statusOf(p.id) }));
   const reloadEnv = vi.fn();
   const resetDiscovery = vi.fn();
-  const api = createSettings({ dataDir: dir, env: {}, reloadEnv, logger, now: () => NOW, inspect: inspect as never, resetDiscovery, ...extra });
+  const api = createSettings({ dataDir: dir, env: {}, reloadEnv, logger, now: () => NOW, inspect: inspect as never, resetDiscovery, transition: inertTransition(dir, logger), ...extra });
   return { api, inspect, reloadEnv, resetDiscovery };
 }
 const st = (over: Partial<ProviderStatus>): Fn => (id) => ({ id, kind: "openai-http", label: id, available: true, models: [], modelsConfirmed: false, ...over });
 
 describe("view", () => {
+  it("cli is null for http providers, transition is always present, view and recheck never start a candidate check", async () => {
+    seed();
+    const maybeCheck = vi.fn(async () => {});
+    const transition = { ...inertTransition(dir, logger), maybeCheck };
+    const { api } = make(undefined, { transition });
+    const v = await api.view();
+    await api.recheck();
+    expect(v.providers.find((p) => p.id === "api")!.cli).toBeNull();
+    expect(v.providers.find((p) => p.id === "claude")!.cli).not.toBeNull();
+    expect(v.transition).toMatchObject({ periodDays: 30, fileError: null, running: false });
+    expect(maybeCheck).not.toHaveBeenCalled();
+  });
+
   it("cli and http provider fields", async () => {
     seed();
     const { api } = make((id) => id === "api"
@@ -44,7 +58,7 @@ describe("view", () => {
     expect(v.providers[0]).toEqual({
       id: "claude", kind: "cli", label: "Claude Code", available: true, reason: null, warning: "новая версия", version: "1.2.3", path: "/bin/claude",
       baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: ["opus"], defaultModel: DEFAULT_MODEL,
-      modelsSource: "provider", modelsReason: null, modelsAt: NOW.toISOString(),
+      modelsSource: "provider", modelsReason: null, modelsAt: NOW.toISOString(), cli: expect.objectContaining({ agent: "claude", source: null, level: "none", pin: null }),
     });
     expect(v.providers[1]).toMatchObject({ id: "api", billing: "paid", baseUrl: "https://api.example/v1", keyEnv: "API_KEY", keySet: true, defaultModel: null, models: ["m1"] });
     expect(Object.keys(v.defaults!)).toEqual(["maxRounds", "turnTimeoutSec", "contextChars", "materialsChars", "maxTotalTokens", "maxParticipants", "participants"]);
@@ -92,7 +106,7 @@ describe("view", () => {
     writeFileSync(configPath(dir), "{не json");
     const { api, inspect } = make();
     const v = await api.view();
-    expect(v).toEqual({ configPath: configPath(dir), envPath: envFilePath(dir), registryError: expect.stringContaining("не JSON"), providers: [], defaults: null });
+    expect(v).toEqual({ configPath: configPath(dir), envPath: envFilePath(dir), registryError: expect.stringContaining("не JSON"), providers: [], defaults: null, transition: expect.objectContaining({ periodDays: 30, fileError: null }) });
     expect(raw()).toBe("{не json");
     expect(inspect).not.toHaveBeenCalled();
   });
@@ -212,7 +226,7 @@ describe("testProvider", () => {
   const withFound = (f: ProviderInspection, call: (r: unknown) => Promise<unknown>) => {
     const driver = vi.fn(() => ({ call: vi.fn(call) as never }));
     const inspect = vi.fn(async () => f);
-    const api = createSettings({ dataDir: dir, env: {}, reloadEnv: () => {}, logger, inspect: inspect as never, driver: driver as never });
+    const api = createSettings({ dataDir: dir, env: {}, reloadEnv: () => {}, logger, transition: inertTransition(dir, logger), inspect: inspect as never, driver: driver as never });
     return { api, driver, inspect };
   };
 
@@ -221,7 +235,7 @@ describe("testProvider", () => {
     const call = vi.fn(async () => ({ text: "готов" }));
     const driver = vi.fn(() => ({ call: call as never }));
     const inspect = vi.fn(async () => found());
-    const api = createSettings({ dataDir: dir, env: {}, reloadEnv: () => {}, logger, inspect: inspect as never, driver: driver as never });
+    const api = createSettings({ dataDir: dir, env: {}, reloadEnv: () => {}, logger, transition: inertTransition(dir, logger), inspect: inspect as never, driver: driver as never });
     const r = await api.testProvider("api", "m1");
     expect(r).toEqual({ ok: true, ms: expect.any(Number) });
     expect(Number.isInteger((r as { ms: number }).ms)).toBe(true);
@@ -456,7 +470,7 @@ describe("language of main refusals", () => {
   it("unavailable provider on a check call: the default reason in the current language", async () => {
     seed();
     const inspect = vi.fn(async (): Promise<ProviderInspection> => ({ status: { id: "api", kind: "openai-http", label: "api", available: false, models: [], modelsConfirmed: false } }));
-    const api = createSettings({ dataDir: dir, env: {}, reloadEnv: () => {}, logger, inspect: inspect as never });
+    const api = createSettings({ dataDir: dir, env: {}, reloadEnv: () => {}, logger, transition: inertTransition(dir, logger), inspect: inspect as never });
     setProcessLanguage("en");
     expect(await api.testProvider("api", "m")).toEqual({ ok: false, reason: "Provider unavailable" });
     expect(logs).toContain("Test call api: refused: Provider unavailable");
@@ -468,7 +482,7 @@ describe("language of main refusals", () => {
     seed();
     let text = "";
     const call = vi.fn(async () => ({ text }));
-    const api = createSettings({ dataDir: dir, env: {}, reloadEnv: () => {}, logger, inspect: (async () => foundHttp()) as never, driver: (() => ({ call })) as never });
+    const api = createSettings({ dataDir: dir, env: {}, reloadEnv: () => {}, logger, transition: inertTransition(dir, logger), inspect: (async () => foundHttp()) as never, driver: (() => ({ call })) as never });
     const prompts: Record<string, string> = {};
     for (const lang of ["en", "ru"] as const) {
       for (const answer of ["готов", "ready", ""]) {
@@ -494,7 +508,7 @@ describe("language of main refusals", () => {
       seed();
       let fail = false;
       const driver = () => ({ call: async () => { if (fail) throw new Error("boom"); return { text: "x" }; } });
-      const api = createSettings({ dataDir: dir, env: {}, reloadEnv: () => {}, logger, inspect: (async (p: { id: string }) => ({ ...foundHttp(), status: { ...foundHttp().status, id: p.id, kind: "openai-http" } })) as never, resetDiscovery: () => {}, driver: driver as never });
+      const api = createSettings({ dataDir: dir, env: {}, reloadEnv: () => {}, logger, transition: inertTransition(dir, logger), inspect: (async (p: { id: string }) => ({ ...foundHttp(), status: { ...foundHttp().status, id: p.id, kind: "openai-http" } })) as never, resetDiscovery: () => {}, driver: driver as never });
       await api.saveProvider(newHttp);
       await api.saveModels("api", ["m1", "m2"]);
       await api.refreshModels("api");

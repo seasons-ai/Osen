@@ -30,6 +30,9 @@ import { prepareRerun } from "./rerun.ts";
 import { sessionMarkdown } from "./markdown.ts";
 import { resumeScenarioPath, resumeView } from "./resume.ts";
 import { onceReporter, readPins, setPinned } from "./pins.ts";
+import { createCliTransition } from "./cli-transition.ts";
+import { standCandidateDeps } from "./cli-stand.ts";
+import { npmReleases, npmSource } from "../../../../packages/core/src/cli-agents/npm-source.ts";
 import { createSettings } from "./settings.ts";
 import { createTemplateEditor } from "./template-editor.ts";
 import { lineupsView, saveLineupInput } from "./lineups.ts";
@@ -206,7 +209,15 @@ async function start(): Promise<void> {
     return historyRead(dataDir, templateTitles, new Set(pins.ids), logUnreadable);
   };
   const history = () => readHistory().items;
-  const settings = createSettings({ dataDir, env, reloadEnv, logger });
+  const cliStand = env["COUNCIL_DEV"] === "1" ? env["COUNCIL_CLI_STAND"] : undefined;
+  if (cliStand) logger.info("CLI candidate checks go through the stand seam (COUNCIL_DEV)");
+  const transition = createCliTransition({
+    dataDir, logger, env, osenVersion: app.getVersion(),
+    running: () => history().some((s) => s.status === "running"),
+    onChecked: () => send({ type: "cli-transition" }),
+    candidateDeps: () => (cliStand ? standCandidateDeps(cliStand) : { releases: npmReleases(env), source: npmSource(env) }),
+  });
+  const settings = createSettings({ dataDir, env, reloadEnv, logger, transition });
   const templateDirs = () => ({ builtinDir, userDir: userTemplatesDir(dataDir) });
   const inspected = async () => {
     const reg = readRegistry(dataDir);
@@ -427,7 +438,10 @@ async function start(): Promise<void> {
       return close;
     },
   });
+  void transition.maybeCheck();
+  const transitionTimer = setInterval(() => void transition.maybeCheck(), 3_600_000);
   app.on("will-quit", () => {
+    clearInterval(transitionTimer);
     polling.stop();
     bridge.dispose();
     logAppQuit(logger);

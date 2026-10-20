@@ -60,7 +60,8 @@ rm -rf "$HOME/Library/Application Support/model-council-backup-"*
   `defaults.materialsIgnore` — names of files and folders that are skipped at any depth when a materials folder is attached; names only, no paths or patterns; initially `node_modules`, `dist`, `build`. `defaults.materialsChars` — the limit on the total text of materials in characters (UTF-16 units, like `contextChars`); initially 60000; when exceeded, the start is rejected, nothing is truncated. In an old `config.json` without these fields the initial values are used, and the file is not rewritten on read. `defaults.maxTotalTokens` — an optional ceiling on total tokens for new sessions (an integer of at least 1); if the field is absent there is no ceiling, and it is not in the initial file; see [docs/cli.md, "Token ceiling"](cli.md#token-ceiling).
 
 - `templates/` — user discussion templates (`*.json`; the template editor in the app also adds to them) and its own neutral framing (`neutral.md`); format — [docs/templates.md](templates.md). User templates have no language and are shown as written; built-in ones are taken from the set for the interface language.
-- `cli-verified.json` — the optional local record of verified CLI versions (see [Verified CLI versions](#verified-cli-versions-cli-verifiedjson)): next to `config.json`, written by no command in this version; no file means only the built-in record.
+- `cli-verified.json` — the optional local record of verified CLI versions (see [Verified CLI versions](#verified-cli-versions-cli-verifiedjson)): next to `config.json`, written through `addLocalEntry` by `council cli candidates` and the app's daily candidate check (level `interface`) and by `council cli accept` (level `real`); no file means only the built-in record.
+- `cli-reminder.json` — the planned CLI transition period and the result of the last candidate check (see [CLI transition reminder](#cli-transition-reminder-cli-reminderjson)): next to `config.json`, outside `cli/`. No file means the period 30 and no recorded check; reading never creates it.
 - `lineups.json` — named participant lineups (see [docs/cli.md, "Lineups"](cli.md#lineups)): a JSON array of `{ id, name, participants[] }`, with no keys or paths to materials. No file means no lineups; the program does not fix or replace a corrupted file, the owner edits or deletes it. Written under the `lineups.lock` lock.
 - `sessions/<id>/events.jsonl` — the session log: one JSON line per event, fields `seq`, `ts`, `type`; opens in any text editor. Reading stops at the first unreadable line and names the reason: `newer_version` (the line is intact but unknown to this version of the app: the log was appended by a newer version) or `corrupted` (a truncated or damaged record). Reading does not go past that line, the state is built from what was read, the log is not changed on reading, and the owner's sessions are not repaired.
 - `sessions/<id>/materials/m1.txt`, `m2.txt`, … — snapshots of the texts of the owner's materials, if attached; written before the start and not changed; for link materials, `sources.json` (origin) lies next to them.
@@ -98,9 +99,37 @@ Merge, per pair (`agent`, `version`): the higher level wins, then the later `che
 
 A local file with any invalid entry (bad schema, a duplicate pair, a wrong version or date format, an unknown agent or level, `modelCalls` wrong for the level, a bad `sha256`) is rejected as a whole; so is an unreadable file (no permission). The built-in record then applies, and the reason (the file name and the first invalid field, or the error code; no paths, no `sha256` values) is appended to the warning of every CLI provider and logged once per file state in `logs/app.log`. Nothing breaks: discovery, the provider listing and a session start continue.
 
-Reading never creates or changes files. Nothing in this version writes `cli-verified.json`; future acceptance commands will, through `addLocalEntry` (the same schema, an atomic write, a refusal to overwrite a damaged file, the level of a pair is raised without duplicates). A changed file takes effect on the next CLI lookup, also in a running MCP server or app (the lookup cache is keyed by the file's state).
+Reading never creates or changes files. `cli-verified.json` is written only through `addLocalEntry` (by `council cli candidates`, the app's daily candidate check and `council cli accept`): the same schema, an atomic write, a refusal to overwrite a damaged file, the level of a pair is raised without duplicates. A changed file takes effect on the next CLI lookup, also in a running MCP server or app (the lookup cache is keyed by the file's state).
 
 Warnings for the version reported by `--version`, by level: `real` — none; `interface` — "the interface is verified, a real acceptance run is missing"; not recorded — "newer" or "older" than the recorded range of this agent (for example `2.1.288–2.1.288`), or "not in the verified record" when it lies between recorded versions or none are recorded; undeterminable — "could not determine". Warnings never block a provider or a launch. `council providers` and `council doctor` show the level of each found CLI provider: [docs/cli.md, "The `council` command"](cli.md#the-council-command).
+
+## CLI transition reminder (`cli-reminder.json`)
+
+The app reminds the owner to move a CLI to a newer verified version, but never switches by itself. The state lives in `<data folder>/cli-reminder.json`, outside `cli/` (that folder is created only by `council cli install`):
+
+```json
+{ "schemaVersion": 1, "periodDays": 30,
+  "lastCheck": { "at": "2026-10-20T12:00:00Z",
+    "candidates": [ { "agent": "claude", "version": "2.1.302", "status": "violates", "recorded": false,
+                      "violations": [ { "code": "missing_flag", "name": "--tools" } ] } ],
+    "failures": [] } }
+```
+
+- `periodDays` — the planned transition period, an integer from 1 to 365 (30 by default). A pin older than this and a newer `real` version in the record make the "time for the planned transition" reminder.
+- `lastCheck` — `null` or the last attempt of the candidate check: `at` (UTC, whole seconds), `candidates[]` and `failures[]` in the shape of `council cli candidates --json`. The outcome is stored as a code (`source_unavailable`, `install_failed`, `record_failed`, `no_base`, `check_failed`), never as text, so the file does not depend on the interface language.
+- Unknown fields and values out of range make the file damaged.
+
+When the file exists: only by saving the period in "Settings" or by the first candidate check of an agent that has an active Osen pin. Reading (opening "Settings", the window state) never creates it; neither do `council` commands and sessions. Writes are atomic (a temporary file, then a rename); an existing read-only file is respected and the old bytes stay.
+
+A damaged file (not JSON, wrong schema, unreadable) is never overwritten by a check: the check does not run, "Settings" names the file and the reason, and the period shown is 30. Only saving the period replaces it (the last check is then lost).
+
+Daily candidate check. The app runs it at start and then hourly, but a check actually runs only if at least 24 hours have passed since the last attempt, failed attempts included (a failure is recorded with its code and one error line in `logs/app.log`, and is not retried earlier). It covers only CLIs with an active Osen pin (PATH and explicit-path CLIs are not checked), uses the 180 candidate check (installation into a temporary prefix that is removed, interface check, `interface` entries in `cli-verified.json`), makes no model calls and never installs anything into `cli/` or changes `pins.json`.
+
+Actions on the "Providers" tab of "Settings":
+
+- "Switch to <version>" — the newest installed `real` version newer than the active pin; "Roll back" — the previous pin. Both call `council cli use` / `council cli rollback` logic (176) after a confirmation that names the versions, says that only new launches change and that no model is called. Without a confirmation nothing is written.
+- They are unavailable while any session runs (the journal does not record the CLI version, so a switch under a running session would change the binary under the same journal); main checks this again before the call and refuses with a reason.
+- Nothing happens automatically: the reminder only shows. A newer `real` version that is not installed is shown as the command `council cli install <agent> --version <version>` with a copy button; the app does not install it.
 
 ## Interface language
 

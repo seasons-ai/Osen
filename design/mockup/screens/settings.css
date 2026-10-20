@@ -44,3 +44,10 @@
 .conn-dialog__title{margin:0;font-size:var(--fs-lg);font-weight:var(--fw-bold);line-height:var(--lh-tight)}
 .conn-dialog__text{margin:0;color:var(--text-dim);overflow-wrap:anywhere}
 .settings-card__name--wrap{white-space:normal}
+/* CLI transition (change 182): provider cards reuse .settings-card, alert, badge, chip, kv; no shadows, tokens only */
+.settings-cli{display:flex;flex-direction:column;gap:var(--sp-2);margin-bottom:var(--sp-4)}
+.settings-cli__title{margin:0;font-size:var(--fs-ui);font-weight:var(--fw-bold)}
+.settings-cli__row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--sp-3)}
+.settings-cli__row .field{flex:1;min-width:200px}
+.settings-cli__input[aria-invalid="true"]{border-color:var(--danger)}
+.settings-cli__refusal{display:inline-flex;align-items:center;gap:var(--sp-1);color:var(--danger);font-size:var(--fs-sm)}
