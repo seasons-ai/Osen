@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { accessSync, constants, existsSync } from "node:fs";
+import { accessSync, constants, existsSync, renameSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { createSession, SessionInputError } from "./engine.ts";
 import { cliMessages } from "./messages/cli.ts";
@@ -38,7 +38,8 @@ import type { SessionState } from "./protocol/state.ts";
 import { DataDirError, ensureDataDir, prepareDataDir } from "./store/data-dir.ts";
 import { envFilePath } from "./store/env.ts";
 import { readEvents, SessionExistsError } from "./store/journal.ts";
-import { LaunchFileError, readLaunchFile } from "./store/launch.ts";
+import { LaunchFileError, launchAcceptedPath, readLaunchFile } from "./store/launch.ts";
+import type { LaunchResumePayload } from "./store/launch.ts";
 import { createLogger } from "./store/log.ts";
 import type { Logger } from "./store/log.ts";
 import { runStoredSession } from "./store/run.ts";
@@ -378,6 +379,52 @@ function formatShow(events: SessionEvent[], status: StoredStatus, partial: Journ
   return out;
 }
 
+/** Resume kind of the launch file. A refusal before acceptance is one JSON line `{code, message}` first on stderr, for the MCP server to read. */
+async function runPreparedResume(p: LaunchResumePayload, dataDir: string, io: CliIo, log: Logger, fail: (message: string) => number): Promise<number> {
+  const id = p.sessionId;
+  try {
+    await ensureRegistry(dataDir, { env: io.env, deps: io.inspectDeps });
+    const registry = readRegistry(dataDir);
+    const plan = planResume(dataDir, id, {
+      ...(p.rounds !== undefined ? { rounds: p.rounds } : {}),
+      ...(p.maxTotalTokens !== undefined ? { maxTotalTokens: p.maxTotalTokens } : {}),
+      ...(p.replacements ? { replacements: p.replacements } : {}),
+      ...(p.message !== undefined ? { message: p.message } : {}),
+    });
+    if (plan.journalBytes !== p.journalBytes) throw new ResumeRejectedError("stale_plan", resumeMessages().journalChanged(id));
+    const driverOptions = { registry, env: io.env, dataDir, deps: io.inspectDeps, scenarioPath: (model: string) => p.scenarios[model] ?? null };
+    const { drivers } = await resumeDrivers(plan, driverOptions);
+    log.info(`Prepared resume: session ${id}`);
+    const run = await runResumedSession({
+      dataDir, plan, drivers, signal: io.signal, logger: log,
+      // under the lock, before any write: past the deadline the server has already answered with a timeout, so the resume must not start
+      // ponytail: a check at the lock, not at session_resumed; the gap is milliseconds, while the server waits a whole poll step past the deadline
+      revalidate: async () => {
+        if (Date.now() > Date.parse(p.deadline)) throw new ResumeRejectedError("stale_plan", cliMessages().launchExpired(p.deadline));
+        if (plan.replacements.length) await resumeDrivers(plan, driverOptions);
+      },
+      onAccepted: ({ droppedOwnerRequests }) => {
+        const path = launchAcceptedPath(dataDir, id);
+        const tmp = `${path}.${process.pid}.tmp`;
+        writeFileSync(tmp, JSON.stringify({ droppedOwnerRequests: droppedOwnerRequests.map((r) => ({ requestId: r.requestId, text: r.text, questionId: r.questionId ?? null })) }), { mode: 0o600 });
+        renameSync(tmp, path);
+      },
+    });
+    log.info(`Prepared resumed session finished: ${run.state.finish!.status}`);
+    return EXIT[run.state.finish!.status];
+  } catch (e) {
+    if (e instanceof ResumeRejectedError) {
+      log.error("Prepared resume rejected", `${e.reason}: ${e.message}`);
+      // the journal changed after this executor's check but before its lock: for the server this is still a plan made stale, not another executor
+      const code = e.reason === "busy" && e.message === resumeMessages().journalChanged(id) ? "stale_plan" : e.reason;
+      io.stderr(JSON.stringify({ code, message: e.message }));
+      return EXIT.usage;
+    }
+    if (e instanceof RegistryError) return fail(e.message);
+    throw e;
+  }
+}
+
 /** Internal command: runs a session prepared by the MCP server from a launch file (not listed in help). */
 async function runPrepared(file: string, dataDir: string, io: CliIo, log: Logger): Promise<number> {
   const t = cliMessages();
@@ -389,6 +436,7 @@ async function runPrepared(file: string, dataDir: string, io: CliIo, log: Logger
     if (e instanceof LaunchFileError) return fail(e.message);
     throw e;
   }
+  if (payload.kind === "resume") return runPreparedResume(payload, dataDir, io, log, fail);
   const { session, materials, workspace } = payload;
   try {
     let registry: Registry | undefined;

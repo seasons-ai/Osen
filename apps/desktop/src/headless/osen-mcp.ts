@@ -29,7 +29,7 @@ const ctx = {
   councilLaunch: { command: process.execPath, args: [paths.council], env: { ELECTRON_RUN_AS_NODE: "1" } },
 };
 
-// ponytail: abort() sends SIGTERM to participants synchronously, an immediate exit does not let the finish event be written — the session becomes interrupted; council_start sessions run in their own detached process and are not affected
+// ponytail: quit only exits the server and wakes its waits; every session (council_start, council_resume) runs in its own detached executor and survives
 const quit = (reason: string): void => {
   logger.info(`MCP server is stopping: ${reason}`);
   controller.abort();

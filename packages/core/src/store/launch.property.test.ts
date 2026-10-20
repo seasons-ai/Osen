@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { createSession } from "../engine.ts";
 import { readLaunchFile, writeLaunchFile } from "./launch.ts";
-import type { LaunchPayload } from "./launch.ts";
+import type { LaunchResumePayload, LaunchPayload } from "./launch.ts";
 import "../../scenarios/language-ru.ts";
 
 // Own seeded generator: fast-check is not wired in.
@@ -47,6 +47,35 @@ function generate(seed: number): LaunchPayload {
     ...(materials.length ? { materials } : {}), ...(workspace.length ? { workspace } : {}),
   };
 }
+
+function generateResume(seed: number): LaunchResumePayload {
+  const rnd = mulberry32(seed + 10_000);
+  const int = (lo: number, hi: number) => lo + Math.floor(rnd() * (hi - lo + 1));
+  const text = (maxLen: number) => Array.from({ length: int(0, maxLen) }, () => ALPHABET[int(0, ALPHABET.length - 1)]).join("");
+  const p: LaunchResumePayload = {
+    kind: "resume", sessionId: `s${seed}`, journalBytes: rnd() < 0.1 ? 0 : int(0, 5_000_000),
+    scenarios: Object.fromEntries(Array.from({ length: int(0, 4) }, (_, i) => [`m${i}${text(3)}`, `/abs/${seed}/${i}.json`])),
+    deadline: new Date(Date.now() + int(60, 100_000) * 1000).toISOString(),
+  };
+  if (rnd() < 0.5) p.rounds = int(1, 50);
+  if (rnd() < 0.5) p.maxTotalTokens = rnd() < 0.3 ? null : int(1, 10_000_000);
+  if (rnd() < 0.5) p.message = text(200);
+  if (rnd() < 0.5) {
+    p.replacements = Array.from({ length: int(0, 3) }, (_, i) => ({
+      participantId: `p${i + 1}`, providerId: `prov${int(0, 3)}`, model: `m${text(5)}`, ...(rnd() < 0.5 ? { name: `n${text(8)}` } : {}),
+    }));
+  }
+  return p;
+}
+
+describe("Внутренний запуск подготовленной сессии: round-trip of the resume kind", () => {
+  it("readLaunchFile(writeLaunchFile(p)) deep-equals p for 150 seeded resume payloads", () => {
+    for (let seed = 1; seed <= 150; seed++) {
+      const p = generateResume(seed);
+      expect(readLaunchFile(writeLaunchFile(dir, p)), `seed ${seed}`).toEqual(p);
+    }
+  });
+});
 
 describe("Internal start of a prepared session: round-trip property", () => {
   it("readLaunchFile(writeLaunchFile(p)) deep-equals p for 150 seeded payloads", () => {

@@ -16,7 +16,7 @@ export interface ToolContext {
   logger: Logger;
   builtinTemplatesDir: string;
   scenariosDir: string | null;         // null — scripted participants are off (no COUNCIL_DEV=1)
-  shutdown: AbortSignal;               // server shutdown: aborts the participant calls of sessions run in this process (council_resume); council_start sessions live in their own process
+  shutdown: AbortSignal;               // server stop: only wakes the waits of council_status; no session lives in the server process (council_start and council_resume run in their own executor)
   councilLaunch: { command: string; args: string[]; env: Record<string, string> }; // how to start `council`: args go before `run-prepared <file>`, env is merged over the executor environment
   startTimeoutMs?: number;             // for tests: wait for the first event of a started session, 15000 by default
   startPollMs?: number;                // for tests: the step of that wait, 100 by default

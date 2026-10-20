@@ -4,11 +4,13 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readd
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { setProcessLanguage, createScriptedDriver, createSession, draftPath, eventsPath, materialPath, ownerMessagesDir, readEvents, readSession, requestOwnerMessage, resumeLockPath, runStoredSession } from "@model-council/core";
+import { setProcessLanguage, createScriptedDriver, createSession, draftPath, eventsPath, launchAcceptedPath, materialPath, ownerMessagesDir, readEvents, readSession, requestOwnerMessage, requestStop, resumeLockPath, runStoredSession } from "@model-council/core";
 import type { CliLocation, Scenario, SessionEvent } from "@model-council/core";
+import { main } from "../../core/src/cli.ts";
 import { resumeScenarioPath, ToolError } from "./context.ts";
 import type { ToolContext } from "./context.ts";
 import { councilContinue } from "./owner.ts";
+import { mcpMessages } from "./messages.ts";
 import { councilResume } from "./resume.ts";
 import type { ResumeView } from "./resume.ts";
 import { councilStatus } from "./status.ts";
@@ -28,10 +30,13 @@ function ctxOf(dataDir: string, scn: string | null, over: Partial<ToolContext> =
   const logs: string[] = [];
   const ctrl = new AbortController();
   aborts.push(ctrl);
-  return {
+  const ctx: Ctx = {
     dataDir, env, councilLaunch: { command: process.execPath, args: [], env: {} }, pollMs: 20, shutdown: ctrl.signal, builtinTemplatesDir: "", scenariosDir: scn, inspectDeps: { locate: notFound },
     logger: { info: (m: string) => { logs.push(m); }, error: (m: string) => { logs.push(m); } } as ToolContext["logger"], logs, ...over,
   };
+  // the detached `council run-prepared` runs in this process: the stubs in inspectDeps cannot be handed to another one
+  ctx.spawnExecutor ??= (file, errPath) => main(["run-prepared", file], { stdout: () => {}, stderr: (t) => appendFileSync(errPath, t + "\n"), env: { ...env, COUNCIL_HOME: dataDir }, ...(ctx.inspectDeps ? { inspectDeps: ctx.inspectDeps } : {}) });
+  return ctx;
 }
 
 type Step = Scenario["steps"][number];
@@ -382,19 +387,33 @@ describe("council_resume: waiting for the owner", () => {
 });
 
 describe("council_resume: server shutdown and log journal", () => {
-  it("shutdown during a turn: the session is stopped, completed turns are preserved", async () => {
+  it("aborting ctx.shutdown does not stop a resumed session: it lives in the executor; a stop request ends it", async () => {
     const dir = tmp(), scn = tmp();
-    await prior(dir, scn, { id: "s", resumeSteps: [[agree()], [agree(5000)]] });
+    await prior(dir, scn, { id: "s", resumeSteps: [[agree()], [agree(1500)]] });
     const ctrl = new AbortController();
     const ctx = ctxOf(dir, scn, { shutdown: ctrl.signal });
     await exec(ctx, "s", { rounds: 1 });
     const done = () => count(dir, "s", "turn_completed");
     await until(() => done() === 3);
-    const kept = done();
     ctrl.abort();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(readSession(dir, "s", () => false)!.state.finish?.status).not.toBe("stopped");
+    expect(existsSync(resumeLockPath(dir, "s"))).toBe(true);
+    await until(() => count(dir, "s", "session_finished") === 2);
+    expect(readSession(dir, "s", () => false)!.status).toBe("consensus");
+  });
+
+  it("a stop request ends a resumed session as stopped, completed turns are preserved", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "s", resumeSteps: [[agree()], [agree(5000)]] });
+    const ctx = ctxOf(dir, scn);
+    await exec(ctx, "s", { rounds: 1 });
+    const done = () => count(dir, "s", "turn_completed");
+    await until(() => done() === 3);
+    const kept = done();
+    requestStop(dir, "s");
     await until(() => !existsSync(resumeLockPath(dir, "s")));
     const s = readSession(dir, "s", () => false)!;
-    // on a signal cut-off the core writes session_finished stopped instead of leaving the session interrupted
     expect(s.status).toBe("stopped");
     expect(s.state.turns).toHaveLength(kept);
   });
@@ -652,5 +671,126 @@ describe("council_resume: participant replacements", () => {
     expect(bad.reason.message).toMatch(/^(busy|running|stale_plan):/);
     expect(count(dir, "f", "session_resumed")).toBe(1);
     await finished(dir, "f");
+  });
+});
+
+describe("council_resume: detached executor", () => {
+  const launchLeft = (dir: string) => (existsSync(join(dir, "launch")) ? readdirSync(join(dir, "launch")) : []);
+  // spy: records each launch file the server hands over and lets `before` act between the server check and the executor
+  function spied(dir: string, scn: string, before: (file: string) => void = () => {}) {
+    const launches: any[] = [];
+    const base = ctxOf(dir, scn);
+    const run = base.spawnExecutor!;
+    const ctx = ctxOf(dir, scn, { spawnExecutor: (file, errPath) => { launches.push(JSON.parse(readFileSync(file, "utf8"))); before(file); return run(file, errPath); } });
+    return { ctx, launches };
+  }
+
+  it("execute hands a resume launch file to the executor; dropped owner requests come from the accepted file; launch/ is empty", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "s", maxRounds: 3 });
+    cut(dir, "s", (e) => e.type === "turn_completed");
+    mkdirSync(ownerMessagesDir(dir, "s"), { recursive: true });
+    const { requestId } = requestOwnerMessage(dir, "s", "старая реплика", { isAlive: () => true });
+    const { ctx, launches } = spied(dir, scn);
+    const size = bytes(dir, "s").length;
+    const v = await exec(ctx, "s", { rounds: 2, message: "Учтите бюджет" });
+    expect(launches).toHaveLength(1);
+    expect(launches[0]).toMatchObject({ kind: "resume", sessionId: "s", rounds: 2, message: "Учтите бюджет", journalBytes: size });
+    expect(Object.keys(launches[0].scenarios).sort()).toEqual(["s-p1.json", "s-p2.json"]);
+    expect(v.droppedOwnerRequests).toEqual([{ requestId, text: "старая реплика", questionId: null }]);
+    expect(count(dir, "s", "session_resumed")).toBe(1);
+    expect(launchLeft(dir)).toEqual([]);
+    await finished(dir, "s");
+  });
+
+  it("consensus session with a message and rounds 1: owner_message right after session_resumed, through the executor", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "c", first: [amend("v1"), agree()] });
+    const { ctx, launches } = spied(dir, scn);
+    const v = await exec(ctx, "c", { rounds: 1, message: "Учтите ещё бюджет" });
+    expect(v.accepted).toBe(true);
+    expect(launches.map((l) => l.kind)).toEqual(["resume"]);
+    const all = evs(dir, "c");
+    const i = all.findIndex((e) => e.type === "session_resumed");
+    expect(all[i + 1]).toMatchObject({ type: "owner_message", text: "Учтите ещё бюджет" });
+    await finished(dir, "c");
+    expect(launchLeft(dir)).toEqual([]);
+  });
+
+  it("the journal changed between the server check and the executor: stale_plan with the usual text, nothing written, launch/ empty", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "s" });
+    let grown = 0;
+    const { ctx } = spied(dir, scn, () => {
+      // a harmless change of the journal bytes: the pid of the first event
+      const all = evs(dir, "s");
+      all[0]!.pid = 9999999;
+      writeFileSync(eventsPath(dir, "s"), all.map((e) => JSON.stringify(e)).join("\n") + "\n");
+      grown = bytes(dir, "s").length;
+    });
+    const e = await rejected(exec(ctx, "s", { rounds: 1 }));
+    expect(e).toBeInstanceOf(ToolError);
+    expect(e.message).toBe(`stale_plan: ${mcpMessages().resumeStale}`);
+    expect(count(dir, "s", "session_resumed")).toBe(0);
+    expect(bytes(dir, "s").length).toBe(grown);
+    expect(launchLeft(dir)).toEqual([]);
+    expect(existsSync(resumeLockPath(dir, "s"))).toBe(false);
+  });
+
+  it("the lock is held when the executor starts: busy; a scenario removed before it starts: stale_plan", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "s" });
+    const lock = resumeLockPath(dir, "s");
+    const held = spied(dir, scn, () => writeFileSync(lock, String(process.ppid)));
+    const before = bytes(dir, "s");
+    const e = await rejected(exec(held.ctx, "s", { rounds: 1 }));
+    expect(e).toBeInstanceOf(ToolError);
+    expect(e.message).toMatch(/^busy:/);
+    expect(bytes(dir, "s").equals(before)).toBe(true);
+    expect(launchLeft(dir)).toEqual([]);
+    rmSync(lock, { force: true });
+    const gone = spied(dir, scn, () => rmSync(join(scn, "s-p2.json")));
+    const f = await rejected(exec(gone.ctx, "s", { rounds: 1 }));
+    expect(f.message).toMatch(/^stale_plan:/);
+    expect(bytes(dir, "s").equals(before)).toBe(true);
+    expect(launchLeft(dir)).toEqual([]);
+  });
+
+  it("executor start failure and timeout: ToolError, journal unchanged, launch/ empty", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "s" });
+    const before = bytes(dir, "s");
+    const failing = ctxOf(dir, scn, { spawnExecutor: async (_f, errPath) => { appendFileSync(errPath, "Error: cannot start the executor\n"); return 2; }, startPollMs: 20 });
+    const e = await rejected(exec(failing, "s", { rounds: 1 }));
+    expect(e).toBeInstanceOf(ToolError);
+    expect(e.message).toContain("cannot start the executor");
+    expect(bytes(dir, "s").equals(before)).toBe(true);
+    expect(launchLeft(dir)).toEqual([]);
+    const silent = ctxOf(dir, scn, { spawnExecutor: () => new Promise<number>(() => {}), startTimeoutMs: 300, startPollMs: 20 });
+    const t = await rejected(exec(silent, "s", { rounds: 1 }));
+    expect(t).toBeInstanceOf(ToolError);
+    expect(t.message).toBe(mcpMessages().startExecutorTimeout(0));
+    expect(bytes(dir, "s").equals(before)).toBe(true);
+    expect(launchLeft(dir)).toEqual([]);
+  });
+
+  it("acceptance counts only with session_resumed in the journal: an accepted file without it, or a stale one from before, is a ToolError", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "s" });
+    const before = bytes(dir, "s");
+    const accepted = launchAcceptedPath(dir, "s");
+    // the executor wrote the accepted file and died before session_resumed
+    const dying = ctxOf(dir, scn, { spawnExecutor: async () => { writeFileSync(accepted, JSON.stringify({ droppedOwnerRequests: [] })); return 1; }, startPollMs: 20 });
+    const e = await rejected(exec(dying, "s", { rounds: 1 }));
+    expect(e).toBeInstanceOf(ToolError);
+    expect(bytes(dir, "s").equals(before)).toBe(true);
+    expect(launchLeft(dir)).toEqual([]);
+    // a leftover accepted file from an earlier server is not taken for this launch
+    mkdirSync(join(dir, "launch"), { recursive: true });
+    writeFileSync(accepted, JSON.stringify({ droppedOwnerRequests: [{ requestId: "old", text: "old", questionId: null }] }));
+    const v = await exec(ctxOf(dir, scn), "s", { rounds: 1 });
+    expect(v.droppedOwnerRequests).toEqual([]);
+    expect(count(dir, "s", "session_resumed")).toBe(1);
+    await finished(dir, "s");
   });
 });

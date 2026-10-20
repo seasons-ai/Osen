@@ -7,12 +7,14 @@ import type { Session } from "../protocol/schema.ts";
 import type { CollectedMaterial } from "../materials.ts";
 import type { FolderFile } from "../protocol/folder.ts";
 import { isValidSessionId } from "./journal.ts";
+import type { ReplacementInput } from "./resume.ts";
 
 /**
  * Launch file: the MCP server prepares a session and hands it to a detached `council run-prepared` process.
  * It holds no secrets: participants are rebuilt from the registry and the environment of the executor.
  */
 export interface LaunchPayload {
+  kind?: "start";
   session: Session;
   materials?: CollectedMaterial[];
   workspace?: FolderFile[];
@@ -21,6 +23,25 @@ export interface LaunchPayload {
   /** ISO time after which the file is stale and is not run. */
   deadline: string;
 }
+
+/** Resume kind: the MCP server hands `council_resume` to a detached `council run-prepared` process. */
+export interface LaunchResumePayload {
+  kind: "resume";
+  sessionId: string;
+  rounds?: number;
+  /** null = no cap; absent = keep as in the plan. */
+  maxTotalTokens?: number | null;
+  replacements?: ReplacementInput[];
+  message?: string;
+  /** ResumePlan.journalBytes at the time of the MCP plan. */
+  journalBytes: number;
+  /** Scripted participant `model` value → absolute scenario path. */
+  scenarios: Record<string, string>;
+  /** ISO time after which the file is stale and is not run. */
+  deadline: string;
+}
+
+export type LaunchFile = LaunchPayload | LaunchResumePayload;
 
 export class LaunchFileError extends Error {
   constructor(message: string) {
@@ -32,17 +53,34 @@ export class LaunchFileError extends Error {
 export const launchDir = (dataDir: string): string => join(dataDir, "launch");
 export const launchFilePath = (dataDir: string, id: string): string => join(launchDir(dataDir), `${id}.json`);
 export const launchErrPath = (dataDir: string, id: string): string => join(launchDir(dataDir), `${id}.err`);
+export const launchAcceptedPath = (dataDir: string, id: string): string => join(launchDir(dataDir), `${id}.accepted.json`);
+
+const scenariosSchema = z.record(z.string(), z.string().refine((p) => isAbsolute(p)));
+const deadlineSchema = z.string().refine((d) => !Number.isNaN(Date.parse(d)));
 
 const LaunchSchema = z.object({
+  kind: z.literal("start").optional(),
   session: SessionSchema,
   materials: z.array(z.object({ id: z.string(), name: z.string(), chars: z.number().int().min(0), sha256: z.string(), text: z.string() }).strict()).optional(),
   workspace: z.array(z.object({ name: z.string(), text: z.string() }).strict()).optional(),
-  scenarios: z.record(z.string(), z.string().refine((p) => isAbsolute(p))),
-  deadline: z.string().refine((d) => !Number.isNaN(Date.parse(d))),
+  scenarios: scenariosSchema,
+  deadline: deadlineSchema,
 }).strict();
 
-export function writeLaunchFile(dataDir: string, payload: LaunchPayload): string {
-  const id = payload.session.id;
+const LaunchResumeSchema = z.object({
+  kind: z.literal("resume"),
+  sessionId: z.string().refine(isValidSessionId),
+  rounds: z.number().int().min(1).optional(),
+  maxTotalTokens: z.number().int().min(1).nullable().optional(),
+  replacements: z.array(z.object({ participantId: z.string(), providerId: z.string(), model: z.string(), name: z.string().optional() }).strict()).optional(),
+  message: z.string().optional(),
+  journalBytes: z.number().int().min(0),
+  scenarios: scenariosSchema,
+  deadline: deadlineSchema,
+}).strict();
+
+export function writeLaunchFile(dataDir: string, payload: LaunchFile): string {
+  const id = payload.kind === "resume" ? payload.sessionId : payload.session.id;
   if (!isValidSessionId(id)) throw new LaunchFileError(cliMessages().launchBadId(id));
   mkdirSync(launchDir(dataDir), { recursive: true, mode: 0o700 });
   const path = launchFilePath(dataDir, id);
@@ -53,7 +91,7 @@ export function writeLaunchFile(dataDir: string, payload: LaunchPayload): string
 }
 
 /** Reads and always deletes the file; any problem is a LaunchFileError with the reason. */
-export function readLaunchFile(path: string, now: Date = new Date()): LaunchPayload {
+export function readLaunchFile(path: string, now: Date = new Date()): LaunchFile {
   const t = cliMessages();
   let raw: string;
   try {
@@ -68,8 +106,9 @@ export function readLaunchFile(path: string, now: Date = new Date()): LaunchPayl
   } catch {
     throw new LaunchFileError(t.launchDamaged(path));
   }
-  const parsed = LaunchSchema.safeParse(json);
+  const resume = typeof json === "object" && json !== null && (json as { kind?: unknown }).kind === "resume";
+  const parsed = resume ? LaunchResumeSchema.safeParse(json) : LaunchSchema.safeParse(json);
   if (!parsed.success) throw new LaunchFileError(t.launchInvalid(path, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")));
   if (now.getTime() > Date.parse(parsed.data.deadline)) throw new LaunchFileError(t.launchExpired(parsed.data.deadline));
-  return parsed.data as LaunchPayload;
+  return parsed.data as LaunchFile;
 }

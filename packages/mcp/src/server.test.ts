@@ -65,11 +65,11 @@ async function waitExit(pid: number, ms = 5000) {
 }
 
 // session no_consensus (p1 amend, p2 object), scenarios — absolute paths; on resume p2 waits delayMs
-async function priorSession(dir: string, ownerWait?: { pauseAfterRound: boolean; timeoutSec: number }, signal?: AbortSignal) {
+async function priorSession(dir: string, ownerWait?: { pauseAfterRound: boolean; timeoutSec: number }, signal?: AbortSignal, resumeDelayMs = 60000) {
   const sc = tmp();
   const step = (stance: string, solution: string | null, delayMs?: number) => ({ response: { stance, reasoning: "r", solution, answers: [], questions: [] }, ...(delayMs ? { delayMs } : {}) });
   const first = [step("amend", "v1"), step("object", null)];
-  const models = [[first[0], step("agree", null)], [first[1], step("agree", null, 60000)]].map((steps, i) => { const f = join(sc, `p${i + 1}.json`); writeFileSync(f, JSON.stringify({ steps })); return f; });
+  const models = [[first[0], step("agree", null)], [first[1], step("agree", null, resumeDelayMs)]].map((steps, i) => { const f = join(sc, `p${i + 1}.json`); writeFileSync(f, JSON.stringify({ steps })); return f; });
   const id = "20200101-000000-resume";
   const session = createSession({
     topic: "Имя кота", framing: "", origin: "mcp", ...(ownerWait ? { ownerWait } : {}),
@@ -250,23 +250,35 @@ describe("MCP server osen", () => {
     expect(listSessions(dir)).toEqual([]);
   });
 
-  it("server shutdown in the middle of a resumed turn leaves the session interrupted", async () => {
-    const dir = tmp();
-    const id = await priorSession(dir);
-    const { client, pid } = await connect(dir);
-    const plan = json(await call(client, "council_resume", { sessionId: id, rounds: 1 }));
-    expect(json(await call(client, "council_resume", { sessionId: id, rounds: 1, execute: true, planToken: plan.planToken })).accepted).toBe(true);
-    const done = () => evCount(dir, id, "turn_completed");
-    await poll(() => done() === 3);
-    process.kill(pid, "SIGTERM");
-    expect(await waitExit(pid)).toBe(true);
-    const s = readSession(dir, id)!;
-    expect(s.status).toBe("interrupted");
-    expect(s.state.turns).toHaveLength(3);
-    expect(evCount(dir, id, "session_resumed")).toBe(1);
-  }, 40000);
+  // council_resume sessions run in a detached executor too: the server exit does not touch them
+  const lockOf = (dir: string, id: string) => join(dir, "sessions", id, "resume.lock");
+  for (const [name, stop] of [
+    ["закрытие stdin", async (c: Client) => { await c.close(); }],
+    ["SIGTERM", async (_c: Client, pid: number) => { process.kill(pid, "SIGTERM"); }],
+  ] as const) {
+    it(`Завершение сервера: server stop in the middle of a resumed turn (${name}) keeps the resumed session running in its executor`, async () => {
+      const dir = tmp();
+      const id = await priorSession(dir, undefined, undefined, 4000);
+      const { client, pid } = await connect(dir);
+      const plan = json(await call(client, "council_resume", { sessionId: id, rounds: 1 }));
+      expect(json(await call(client, "council_resume", { sessionId: id, rounds: 1, execute: true, planToken: plan.planToken })).accepted).toBe(true);
+      const executor = Number(readFileSync(lockOf(dir, id), "utf8").trim());
+      expect(executor).not.toBe(pid);
+      await poll(() => evCount(dir, id, "turn_completed") === 3);
+      await stop(client, pid);
+      expect(await waitExit(pid)).toBe(true);
+      expect(alive(executor)).toBe(true);
+      expect(readSession(dir, id)!.status).not.toBe("interrupted");
+      await poll(() => readSession(dir, id)!.state.finish !== null && evCount(dir, id, "session_finished") === 2, 30000);
+      const s = readSession(dir, id)!;
+      expect(s.status).toBe("consensus");
+      expect(s.state.turns.length).toBeGreaterThan(3);
+      expect(evCount(dir, id, "session_resumed")).toBe(1);
+      expect(await waitExit(executor, 10000)).toBe(true);
+    }, 60000);
+  }
 
-  it("server shutdown during a resumed owner wait keeps the wait", async () => {
+  it("Завершение сервера: server stop during a resumed owner wait keeps the wait and the executor; a stop request ends it as stopped", async () => {
     const dir = tmp();
     const ctl = new AbortController();
     const p = priorSession(dir, { pauseAfterRound: true, timeoutSec: 3600 }, ctl.signal);
@@ -284,15 +296,22 @@ describe("MCP server osen", () => {
     const plan = json(await call(client, "council_resume", { sessionId: id, rounds: 2 }));
     expect(plan.waiting).toMatchObject({ waitId: waiting.waitId, expired: false });
     expect(json(await call(client, "council_resume", { sessionId: id, rounds: 2, execute: true, planToken: plan.planToken })).accepted).toBe(true);
+    const executor = Number(readFileSync(lockOf(dir, id), "utf8").trim());
+    expect(executor).not.toBe(pid);
     await sleep(300);
     process.kill(pid, "SIGTERM");
     expect(await waitExit(pid)).toBe(true);
+    expect(alive(executor)).toBe(true);
     const s = readSession(dir, id)!;
-    expect(s.status).toBe("interrupted");
+    expect(s.status).not.toBe("interrupted");
     expect(s.state.waiting).toMatchObject({ waitId: waiting.waitId, deadline: waiting.deadline });
     expect(s.state.turns).toHaveLength(turns);
     expect(evCount(dir, id, "session_resumed")).toBe(1);
-  }, 40000);
+    requestStop(dir, id);
+    expect(await waitExit(executor, 15000)).toBe(true);
+    expect(readSession(dir, id)!.status).toBe("stopped");
+    expect(existsSync(lockOf(dir, id))).toBe(false);
+  }, 60000);
 
   it("council_stop stops its own session and returns the latest version of the decision", async () => {
     const { client } = await connect(tmp());
