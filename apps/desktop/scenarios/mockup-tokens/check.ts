@@ -19,6 +19,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { connect, type Cdp } from "./cdp.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../../..");
@@ -50,23 +51,7 @@ function failList(items: string[], head: string) {
   if (!verbose && items.length > 40) console.log(`  … ${items.length - 40} more (--verbose)`);
 }
 
-// ---------- CDP (as in session-feed/measure.ts) ----------
-type Cdp = { send: (method: string, params?: object) => Promise<any>; close: () => void };
-async function connect(ws: string): Promise<Cdp> {
-  const sock = new WebSocket(ws);
-  await new Promise((ok, bad) => { sock.onopen = ok; sock.onerror = bad; });
-  let id = 0;
-  const wait = new Map<number, (m: any) => void>();
-  sock.onmessage = (e) => { const m = JSON.parse(String(e.data)); wait.get(m.id)?.(m); wait.delete(m.id); };
-  return {
-    send: (method, params = {}) => new Promise((ok, bad) => {
-      const n = ++id;
-      wait.set(n, (m) => (m.error ? bad(new Error(`${method}: ${m.error.message}`)) : ok(m.result)));
-      sock.send(JSON.stringify({ id: n, method, params }));
-    }),
-    close: () => sock.close(),
-  };
-}
+// ---------- CDP (client in cdp.ts) ----------
 async function evaluate(cdp: Cdp, expression: string): Promise<any> {
   const r = await cdp.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
   if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
