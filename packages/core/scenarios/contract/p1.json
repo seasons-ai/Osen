@@ -1,0 +1,31 @@
+{
+  "steps": [
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Предлагаю короткое имя.",
+        "solution": "Назвать кота Мурзик.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Меняю имя.",
+        "solution": "Назвать кота Барсик.",
+        "answers": [],
+        "questions": []
+      }
+    },
+    {
+      "response": {
+        "stance": "amend",
+        "reasoning": "Снова меняю имя.",
+        "solution": "Назвать кота Васька.",
+        "answers": [],
+        "questions": []
+      }
+    }
+  ]
+}

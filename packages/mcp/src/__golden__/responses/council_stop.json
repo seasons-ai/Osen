@@ -1,0 +1,78 @@
+{
+  "isError": false,
+  "body": {
+    "sessionId": "<sessionId>",
+    "status": "stopped",
+    "statusText": "остановлена",
+    "journal": null,
+    "topic": "<text>",
+    "materials": {
+      "names": [],
+      "chars": 0
+    },
+    "folder": null,
+    "filesRead": [],
+    "round": 2,
+    "maxRounds": 3,
+    "turns": 4,
+    "maxTotalTokens": null,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "incomplete": true
+    },
+    "participants": [
+      {
+        "id": "p1",
+        "name": "<text>",
+        "state": "active",
+        "lastStance": "amend"
+      },
+      {
+        "id": "p2",
+        "name": "<text>",
+        "state": "active",
+        "lastStance": "object"
+      }
+    ],
+    "agreed": [
+      "p1"
+    ],
+    "openQuestions": 0,
+    "ownerQuestions": [],
+    "waiting": null,
+    "ownerMessages": [
+      {
+        "requestId": "<token>",
+        "afterTurn": 2,
+        "answered": []
+      }
+    ],
+    "solution": {
+      "version": 2,
+      "authorId": "p1",
+      "text": "<text>"
+    },
+    "drafts": null,
+    "reason": null,
+    "reasonCode": null,
+    "objectors": [
+      {
+        "participantId": "p2",
+        "name": "<text>",
+        "reasoning": "<text>"
+      }
+    ],
+    "stats": {
+      "rounds": 2,
+      "turns": 4,
+      "drafts": 0,
+      "durationMs": "<duration>",
+      "inputTokens": null,
+      "outputTokens": null,
+      "costUsd": 0
+    },
+    "message": "<text>"
+  }
+}

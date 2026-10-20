@@ -1,0 +1,41 @@
+{
+  "isError": false,
+  "body": {
+    "sessionId": "<sessionId>",
+    "mode": "plan",
+    "accepted": false,
+    "planToken": "<token>",
+    "status": "stopped",
+    "source": "mcp",
+    "topic": "<text>",
+    "addedRounds": 1,
+    "maxRounds": 3,
+    "maxCalls": 6,
+    "draftCalls": 0,
+    "maxTotalTokens": null,
+    "spentTokens": 0,
+    "participants": [
+      {
+        "id": "p1",
+        "name": "<text>",
+        "providerId": "scripted",
+        "model": "contract/p1.json",
+        "role": null,
+        "billing": "free"
+      },
+      {
+        "id": "p2",
+        "name": "<text>",
+        "providerId": "scripted",
+        "model": "contract/p2.json",
+        "role": null,
+        "billing": "free"
+      }
+    ],
+    "replacements": [],
+    "agreementReset": false,
+    "requiresConsent": false,
+    "waiting": null,
+    "next": "<text>"
+  }
+}
