@@ -142,10 +142,20 @@ describe("Stop probe", () => {
   }, LONG_TIMEOUT);
 
   it("an interruption of the command is not the stop probe's failure", async () => {
+    // Abort once the stub reports its start (STUB_LOG), not after a fixed delay: a fixed 500 ms raced the stop itself,
+    // which finished first wherever the stub starts fast (Linux CI). The claude stub stays silent for 60 s and the stop
+    // timer is 20 s, so nothing but the abort can end this probe.
     const controller = new AbortController();
-    setTimeout(() => controller.abort(), 500);
-    const r = await runProbe("stop", ctxFor("codex", "good", controller.signal));
-    expect(r.reason).toBe(m.interrupted);
+    const log = join(root, "launches.log");
+    let abortedAt = 0;
+    const poll = setInterval(() => {
+      if (existsSync(log) && readFileSync(log, "utf8").trim()) { clearInterval(poll); abortedAt = Date.now(); controller.abort(); }
+    }, 10);
+    const ctx = ctxFor("claude", "good", controller.signal);
+    const r = await runProbe("stop", { ...ctx, env: { ...ctx.env, STUB_LOG: log }, stopAfterMs: 20_000 }).finally(() => clearInterval(poll));
+    expect(r).toMatchObject({ ok: false, calls: 1, reason: m.interrupted });
+    // the abort itself ends the command: well before the 20 s stop timer could
+    expect(Date.now() - abortedAt).toBeLessThan(10_000);
   }, LONG_TIMEOUT);
 });
 
