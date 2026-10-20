@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, rmSync, statSync } from "node:fs";
-import { ensureRegistry, eventsPath, launchAcceptedPath, planResume, logRegistryLoaded, readRegistry, ResumeRejectedError, resumeDrivers } from "@model-council/core";
+import { ensureRegistry, eventsPath, planResume, logRegistryLoaded, readRegistry, ResumeRejectedError, resumeDrivers } from "@model-council/core";
 import type { ResumePlan } from "@model-council/core";
 import { z } from "zod";
 import { defineTool, resumeScenarioPath, ROUNDS_BOUNDS, SCRIPTED_PROVIDER_ID, ToolError } from "./context.ts";
@@ -168,14 +168,13 @@ export const councilResume = defineTool({
       const path = p.providerId === SCRIPTED_PROVIDER_ID ? resumeScenarioPath(ctx.scenariosDir, p.model) : null;
       if (path !== null) scenarios[p.model] = path;
     }
-    const acceptedFile = launchAcceptedPath(ctx.dataDir, sessionId);
-    rmSync(acceptedFile, { force: true }); // a leftover of an earlier server is not this launch's acceptance
     const journal = eventsPath(ctx.dataDir, sessionId);
-    // accepted = the executor wrote its accepted file and session_resumed is in the journal
-    const ready = (): boolean => { try { return existsSync(acceptedFile) && statSync(journal).size > plan.journalBytes; } catch { return false; } };
+    // accepted = this launch's executor wrote its accepted file and session_resumed is in the journal
+    const ready = (accepted: string): boolean => { try { return existsSync(accepted) && statSync(journal).size > plan.journalBytes; } catch { return false; } };
     let dropped: NonNullable<ResumeView["droppedOwnerRequests"]> = [];
+    let acceptedFile: string | null = null;
     try {
-      await launchExecutor(ctx, sessionId, {
+      acceptedFile = await launchExecutor(ctx, sessionId, {
         kind: "resume", sessionId,
         ...(rounds !== undefined ? { rounds } : {}),
         ...(maxTotalTokens !== undefined ? { maxTotalTokens } : {}),
@@ -187,7 +186,7 @@ export const councilResume = defineTool({
     } catch (e) {
       return staleOrRefuse(sessionId, e);
     } finally {
-      rmSync(acceptedFile, { force: true });
+      if (acceptedFile !== null) rmSync(acceptedFile, { force: true });
     }
     ctx.logger.info(`Resume of session ${sessionId} from MCP accepted: ${plan.addedRounds} more rounds, call bound ${plan.maxCalls}, unapplied messages removed ${dropped.length}`);
     return {

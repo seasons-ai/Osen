@@ -4,7 +4,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readd
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { setProcessLanguage, createScriptedDriver, createSession, draftPath, eventsPath, launchAcceptedPath, materialPath, ownerMessagesDir, readEvents, readSession, requestOwnerMessage, requestStop, resumeLockPath, runStoredSession } from "@model-council/core";
+import { setProcessLanguage, createScriptedDriver, createSession, draftPath, eventsPath, launchAcceptedPath, materialPath, ownerMessagesDir, readEvents, readSession, requestOwnerMessage, requestStop, resumeLockPath, runStoredSession, launchFilePath } from "@model-council/core";
 import type { CliLocation, Scenario, SessionEvent } from "@model-council/core";
 import { main } from "../../core/src/cli.ts";
 import { resumeScenarioPath, ToolError } from "./context.ts";
@@ -774,23 +774,73 @@ describe("council_resume: detached executor", () => {
     expect(launchLeft(dir)).toEqual([]);
   });
 
+  // change 187: two launches of one session must not share launch files
+  const busyLine = JSON.stringify({ code: "busy", message: "held by another executor" }) + "\n";
+
+  it("the loser's busy survives the winner's cleanup: the second launch is refused with busy, not as a start failure; launch/ is empty", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "s" });
+    const p = await go(ctxOf(dir, scn), "s", { rounds: 1 });
+    const call = (ctx: ToolContext) => resume(ctx, { sessionId: "s", rounds: 1, execute: true, planToken: p.planToken });
+    let release!: (code: number) => void;
+    let started!: () => void;
+    const bStarted = new Promise<void>((r) => { started = r; });
+    // B's executor has already printed its busy refusal and exits only after A is accepted and has cleaned up
+    const ctxB = ctxOf(dir, scn, { startPollMs: 20, spawnExecutor: (_f, errPath) => { appendFileSync(errPath, busyLine); started(); return new Promise<number>((r) => { release = r; }); } });
+    const b = rejected(call(ctxB));
+    await bStarted;
+    const a = await call(ctxOf(dir, scn));
+    expect(a.accepted).toBe(true);
+    release(2);
+    const e = await b;
+    expect(e).toBeInstanceOf(ToolError);
+    expect(e.message).toMatch(/^busy:/);
+    expect(count(dir, "s", "session_resumed")).toBe(1);
+    await finished(dir, "s");
+    expect(launchLeft(dir)).toEqual([]);
+  });
+
+  it("a second launch while the first waits for acceptance does not remove the first's accepted file: the first is accepted at once", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "s" });
+    const p = await go(ctxOf(dir, scn), "s", { rounds: 1 });
+    const call = (ctx: ToolContext) => resume(ctx, { sessionId: "s", rounds: 1, execute: true, planToken: p.planToken });
+    const ctxB = ctxOf(dir, scn, { startPollMs: 20, spawnExecutor: async (_f, errPath) => { appendFileSync(errPath, busyLine); return 2; } });
+    let second: Error | undefined;
+    // A's executor wrote its accepted file; B starts (it passes the plan check: the journal is unchanged) and is refused completely before A's session_resumed
+    const ctxA = ctxOf(dir, scn, { startTimeoutMs: 3000, startPollMs: 20, spawnExecutor: async (file) => {
+      writeFileSync(launchAcceptedPath(file), JSON.stringify({ droppedOwnerRequests: [] }));
+      second = await rejected(call(ctxB));
+      appendFileSync(eventsPath(dir, "s"), "\n"); // stand-in for session_resumed: the journal grows
+      return new Promise<number>(() => {});
+    } });
+    const t0 = Date.now();
+    const a = await call(ctxA);
+    expect(a.accepted).toBe(true);
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(second?.message).toMatch(/^busy:/);
+    expect(launchLeft(dir)).toEqual([]);
+  });
+
   it("acceptance counts only with session_resumed in the journal: an accepted file without it, or a stale one from before, is a ToolError", async () => {
     const dir = tmp(), scn = tmp();
     await prior(dir, scn, { id: "s" });
     const before = bytes(dir, "s");
-    const accepted = launchAcceptedPath(dir, "s");
     // the executor wrote the accepted file and died before session_resumed
-    const dying = ctxOf(dir, scn, { spawnExecutor: async () => { writeFileSync(accepted, JSON.stringify({ droppedOwnerRequests: [] })); return 1; }, startPollMs: 20 });
+    const dying = ctxOf(dir, scn, { spawnExecutor: async (file) => { writeFileSync(launchAcceptedPath(file), JSON.stringify({ droppedOwnerRequests: [] })); return 1; }, startPollMs: 20 });
     const e = await rejected(exec(dying, "s", { rounds: 1 }));
     expect(e).toBeInstanceOf(ToolError);
     expect(bytes(dir, "s").equals(before)).toBe(true);
     expect(launchLeft(dir)).toEqual([]);
-    // a leftover accepted file from an earlier server is not taken for this launch
+    // accepted files of an earlier version (no launchId) and of another launch of this session are neither taken nor removed
     mkdirSync(join(dir, "launch"), { recursive: true });
-    writeFileSync(accepted, JSON.stringify({ droppedOwnerRequests: [{ requestId: "old", text: "old", questionId: null }] }));
+    const old = JSON.stringify({ droppedOwnerRequests: [{ requestId: "old", text: "old", questionId: null }] });
+    const foreign = [join(dir, "launch", "s.accepted.json"), launchAcceptedPath(launchFilePath(dir, "s", "other-launch"))];
+    for (const f of foreign) writeFileSync(f, old);
     const v = await exec(ctxOf(dir, scn), "s", { rounds: 1 });
     expect(v.droppedOwnerRequests).toEqual([]);
     expect(count(dir, "s", "session_resumed")).toBe(1);
+    expect(foreign.every((f) => readFileSync(f, "utf8") === old)).toBe(true);
     await finished(dir, "s");
   });
 });

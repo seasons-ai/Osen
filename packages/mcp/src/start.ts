@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { closeSync, existsSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { checkLineup, collectSessionMaterials, createSession, eventsPath, launchAcceptedPath, launchErrPath, launchFilePath, ResumeRejectedError, writeLaunchFile, DEFAULT_MODEL, ensureRegistry, envFilePath, FOLDER_LIMITS, folderStats, inspectProvider, LineupsError, maxCallsBound, loadTemplates, logRegistryLoaded, MaterialsError, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, readLineups, readRegistry, readScenario, ScriptedUnavailableError, scriptedDevOnlyMessage, SessionInputError, templateSessionInput, UnknownTemplateError, userTemplatesDir } from "@model-council/core";
@@ -52,17 +53,20 @@ const START_TIMEOUT_MS = 15_000;
 type Prepared = Omit<LaunchPayload, "deadline"> | Omit<LaunchResumePayload, "deadline">;
 
 // Hands the prepared launch file to a detached executor and waits until isReady(); any other outcome is a ToolError (or ResumeRejectedError) and leaves no launch files.
-// On success the .accepted.json file stays for the caller to read and delete.
-export async function launchExecutor(ctx: ToolContext, id: string, payload: Prepared, isReady: () => boolean, waitingFor: string): Promise<void> {
+// Every launch has its own files (launchId): a parallel launch of the same session never reads, overwrites or deletes them.
+// isReady gets this launch's .accepted.json path; on success that file stays for the caller to read and delete, and its path is returned.
+export async function launchExecutor(ctx: ToolContext, id: string, payload: Prepared, isReady: (acceptedFile: string) => boolean, waitingFor: string): Promise<string> {
   const m = mcpMessages();
   const timeoutMs = ctx.startTimeoutMs ?? START_TIMEOUT_MS;
   const pollMs = ctx.startPollMs ?? 100;
-  const file = launchFilePath(ctx.dataDir, id);
-  const errPath = launchErrPath(ctx.dataDir, id);
+  const launchId = randomUUID();
+  const file = launchFilePath(ctx.dataDir, id, launchId);
+  const errPath = launchErrPath(file);
+  const acceptedFile = launchAcceptedPath(file);
   const cleanup = (): void => { rmSync(file, { force: true }); rmSync(errPath, { force: true }); };
   let failure: string | null = null;
   try {
-    writeLaunchFile(ctx.dataDir, { ...payload, deadline: new Date(Date.now() + timeoutMs).toISOString() });
+    writeLaunchFile(ctx.dataDir, { ...payload, deadline: new Date(Date.now() + timeoutMs).toISOString() }, launchId);
     const reason = (code: number | null): string => {
       let text = "";
       try { text = readFileSync(errPath, "utf8").trim(); } catch { /* no .err file */ }
@@ -87,7 +91,7 @@ export async function launchExecutor(ctx: ToolContext, id: string, payload: Prep
     }
     ctx.logger.info(`Executor started for session ${id}, waiting for ${waitingFor} up to ${timeoutMs} ms`);
     const end = Date.now() + timeoutMs;
-    while (!isReady()) {
+    while (!isReady(acceptedFile)) {
       if (failure !== null) {
         ctx.logger.error(`Executor of session ${id} failed before ${waitingFor}`, failure);
         throw rejection(failure) ?? new ToolError(m.startExecutorFailed(failure));
@@ -99,9 +103,10 @@ export async function launchExecutor(ctx: ToolContext, id: string, payload: Prep
       await new Promise((r) => setTimeout(r, pollMs));
     }
     cleanup();
+    return acceptedFile;
   } catch (e) {
     cleanup();
-    rmSync(launchAcceptedPath(ctx.dataDir, id), { force: true });
+    rmSync(acceptedFile, { force: true });
     throw e;
   }
 }

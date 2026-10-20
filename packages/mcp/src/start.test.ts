@@ -2,7 +2,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { setProcessLanguage, createLogger, FOLDER_LIMITS, listSessions, loadTemplates, readSession, readEvents, requestStop, launchErrPath, launchFilePath } from "@model-council/core";
+import { setProcessLanguage, createLogger, FOLDER_LIMITS, listSessions, loadTemplates, readSession, readEvents, requestStop } from "@model-council/core";
 import type { CliLocation } from "@model-council/core";
 import { configPath, initialRegistry, lineupsPath, saveLineup } from "@model-council/core";
 import { main } from "../../core/src/cli.ts";
@@ -701,7 +701,6 @@ describe("council_start: detached executor", () => {
   const noLaunchFiles = (ctx: ToolContext, id?: string) => {
     const dir = join(ctx.dataDir, "launch");
     expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);
-    if (id) { expect(existsSync(launchFilePath(ctx.dataDir, id))).toBe(false); expect(existsSync(launchErrPath(ctx.dataDir, id))).toBe(false); }
   };
   const script = (body: string) => { const f = join(tmp(), "exec.mjs"); writeFileSync(f, body); return f; };
   const withScript = (body: string, over: Partial<ToolContext> = {}) => ctxOf({ councilLaunch: { command: process.execPath, args: [script(body)], env: {} }, ...over });
