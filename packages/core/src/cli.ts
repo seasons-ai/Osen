@@ -3,6 +3,7 @@ import { accessSync, constants, existsSync, renameSync, writeFileSync } from "no
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { createSession, SessionInputError } from "./engine.ts";
 import { cliMessages } from "./messages/cli.ts";
+import { providerMessages } from "./messages/providers.ts";
 import { doctorJson, JSON_COMMANDS, lineupsJson, listJson, providersJson, showJson, statusJson, templatesJson } from "./cli-json.ts";
 import { resumeMessages } from "./messages/resume.ts";
 import { attachedFolderPrefixes, collectSessionMaterials, MaterialsError } from "./materials.ts";
@@ -21,11 +22,13 @@ import { DRAFT_CONTEXT_LIMIT_REASON, INSUFFICIENT_ACTIVE_REASON_CODE, MAX_TURN_T
 import type { SessionEvent } from "./protocol/schema.ts";
 import { createCliDriver } from "./cli-agents/driver.ts";
 import { resetDiscoveryCache } from "./cli-agents/discovery.ts";
-import { npmSource } from "./cli-agents/npm-source.ts";
+import { npmReleases, npmSource } from "./cli-agents/npm-source.ts";
+import { candidatesJson, checkCandidates } from "./cli-agents/candidates.ts";
+import type { ReleaseSource } from "./cli-agents/candidates.ts";
 import { installPin, listPins, rollbackPin, usePin } from "./cli-agents/pins.ts";
 import type { PackageSource } from "./cli-agents/pins.ts";
 import { loadVerifiedRecord } from "./cli-agents/verified-record.ts";
-import type { VerifiedRecord } from "./cli-agents/verified-record.ts";
+import type { VerifiedEntry, VerifiedRecord } from "./cli-agents/verified-record.ts";
 import { createHttpDriver } from "./http/driver.ts";
 import { CLI_AGENTS, DEFAULT_MODEL } from "./cli-agents/types.ts";
 import { FOLDER_LIMITS, folderStats } from "./protocol/folder.ts";
@@ -70,7 +73,7 @@ export interface CliIo {
   urlWorker?: string; // for packaging: path of the HTML text extraction worker
   appVersion?: string; // application version, passed by the entry point (doctor)
   processVersions?: Partial<NodeJS.ProcessVersions>; // for tests: replacement of process.versions (doctor)
-  cliPin?: { source?: PackageSource; record?: VerifiedRecord }; // for the stand and tests: replacement of the package source and of the verified-versions record (cli install, use, list)
+  cliPin?: { source?: PackageSource; record?: VerifiedRecord; releases?: ReleaseSource; builtin?: readonly VerifiedEntry[] }; // for the stand and tests: replacement of the package source, of the verified-versions record (cli install, use, list), of the release source and of the built-in record (cli candidates)
 }
 
 export const help = (): string => cliMessages().help;
@@ -517,6 +520,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           synthesizer: { type: "string" },
           version: { type: "string" },
           candidate: { type: "boolean" },
+          agent: { type: "string" },
         },
       }));
     } catch (e) {
@@ -530,9 +534,10 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     const [cmd = "run", ...rest] = positionals;
     if (values.answer !== undefined && cmd !== "say") return usageFail(t.answerOnlySay);
     if (!["run", "providers", "list", "show", "stop", "say", "status", "continue", "resume", "home", "templates", "lineups", "doctor", "run-prepared", "cli"].includes(cmd)) return usageFail(t.unknownCommand(cmd));
+    if (values.agent !== undefined && !(cmd === "cli" && rest[0] === "candidates")) return usageFail(t.agentOnlyCandidates);
     if (cmd !== "cli" && (values.version !== undefined || values.candidate)) return usageFail(t.cliFlagOnlyCli(values.version !== undefined ? "--version" : "--candidate"));
     if (values.json) {
-      const jsonCmd = cmd === "lineups" && rest.length ? "lineups save" : cmd;
+      const jsonCmd = cmd === "lineups" && rest.length ? "lineups save" : cmd === "cli" && rest[0] === "candidates" ? "cli candidates" : cmd;
       if (!JSON_COMMANDS.includes(jsonCmd)) return usageFail(t.jsonNotSupported(jsonCmd));
     }
     if (cmd === "run" && positionals.length) return usageFail(t.unknownCommand(cmd));
@@ -541,15 +546,17 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     } else if (cmd === "cli") {
       const [sub = "", ...args] = rest;
       const usages: Record<string, string> = { install: "<agent> [--version <X>] [--candidate]", use: "<agent> <version>", rollback: "<agent>" };
-      const need = { install: 1, list: 0, use: 2, rollback: 1 }[sub];
+      const need = { install: 1, list: 0, use: 2, rollback: 1, candidates: 0 }[sub];
       if (!rest.length) return usageFail(t.cliUsage);
       if (need === undefined) return usageFail(t.cliUnknownSub(sub));
       if (sub !== "install") {
         const flag = values.version !== undefined ? "--version" : values.candidate ? "--candidate" : undefined;
         if (flag) return usageFail(t.cliFlagNotAllowed(flag, sub));
       }
-      if (Object.entries(values).some(([k, v]) => v !== undefined && v !== false && k !== "version" && k !== "candidate")) return usageFail(t.cliUsage);
-      if (args.length !== need) return usageFail(sub === "list" ? t.noArgs("cli list") : t.cliWrongArgs(sub, usages[sub]!));
+      const allowed = sub === "candidates" ? ["agent", "json"] : ["version", "candidate"];
+      if (Object.entries(values).some(([k, v]) => v !== undefined && v !== false && !allowed.includes(k))) return usageFail(t.cliUsage);
+      if (values.agent !== undefined && !(CLI_AGENTS as readonly string[]).includes(values.agent)) return usageFail(t.cliUnknownAgent(values.agent, CLI_AGENTS.join(", ")));
+      if (args.length !== need) return usageFail(sub === "list" || sub === "candidates" ? t.noArgs(`cli ${sub}`) : t.cliWrongArgs(sub, usages[sub]!));
       if (need > 0 && !(CLI_AGENTS as readonly string[]).includes(args[0]!)) return usageFail(t.cliUnknownAgent(args[0]!, CLI_AGENTS.join(", ")));
     } else if (cmd === "lineups") {
       if (rest.length && !(rest[0] === "save" && rest.length === 2)) return usageFail(t.lineupsUsage);
@@ -658,6 +665,34 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       let registry: Registry | undefined, registryState: "created" | "exists" = "exists";
       if (cmd === "run-prepared") return runPrepared(rest[0]!, dataDir, io, log);
       if (cmd === "cli") {
+        if (rest[0] === "candidates") {
+          const pm = providerMessages();
+          const agents = values.agent ? [values.agent as (typeof CLI_AGENTS)[number]] : CLI_AGENTS;
+          const report = await checkCandidates(dataDir, agents, { releases: io.cliPin?.releases ?? npmReleases(io.env), source: io.cliPin?.source ?? npmSource(io.env), builtin: io.cliPin?.builtin, env: io.env, signal: io.signal, osenVersion: io.appVersion });
+          if (report.interrupted) {
+            io.stderr(t.candidatesInterrupted);
+            return EXIT.internal;
+          }
+          const violationText = (v: { code: string; name: string }) => v.code === "missing_flag" ? pm.violationMissingFlag(v.name) : v.code === "missing_feature" ? pm.violationMissingFeature(v.name)
+            : v.code === "features_unread" ? pm.violationFeaturesUnread : v.code === "help_unread" ? pm.violationHelpUnread(v.name) : pm.violationVersionUnparsed;
+          if (values.json) io.stdout(JSON.stringify(candidatesJson(report)));
+          else {
+            for (const agent of agents) {
+              const base = report.bases[agent];
+              if (base === undefined) continue;
+              io.stdout(`${t.candidatesHeader(agent, base)}`);
+              const mine = report.candidates.filter((c) => c.agent === agent);
+              if (!mine.length && !report.failures.some((f) => f.agent === agent)) io.stdout(`  ${t.candidatesNone}`);
+              for (const c of mine) {
+                const label = c.status === "ok" ? t.candidatesFits : c.status === "violates" ? t.candidatesViolates : t.candidatesAlreadyRecorded;
+                io.stdout(`  ${c.version}  ${label}${c.status === "ok" && !c.recorded ? ` (${t.candidatesNotRecorded})` : ""}`);
+                for (const v of c.violations) io.stdout(`    ${violationText(v)}`);
+              }
+            }
+          }
+          for (const f of report.failures) io.stderr(f.reason);
+          return report.code;
+        }
         // the only place that may install a pinned CLI: an explicit command
         const [sub, agent, version] = rest as [string, string, string];
         const record = io.cliPin?.record ?? loadVerifiedRecord(dataDir);

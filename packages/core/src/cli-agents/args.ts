@@ -25,7 +25,7 @@ export interface LaunchInput {
 
 export type LaunchPlan = { ok: true; args: string[]; structured: boolean } | { ok: false; reason: string };
 
-const REQUIRED: Record<CliAgent, readonly string[]> = {
+export const REQUIRED_FLAGS: Record<CliAgent, readonly string[]> = {
   claude: ["--print", "--output-format", "--tools", "--strict-mcp-config", "--setting-sources", "--system-prompt", "--no-session-persistence"],
   codex: ["--sandbox", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--json", "--disable"],
 };
@@ -35,7 +35,7 @@ export function planLaunch(input: LaunchInput): LaunchPlan {
   const { agent, flags, version, model, schema, features, language, pinned } = input;
   const m = providerMessages();
   const who = version ? m.whoVersion(agent, version) : m.whoInstalled(agent);
-  const missing = REQUIRED[agent].filter((f) => !flags.has(f));
+  const missing = REQUIRED_FLAGS[agent].filter((f) => !flags.has(f));
   if (missing.length) return { ok: false, reason: m.missingIsolationFlags(who, missing.join(", ")) };
   if (agent === "codex") {
     // Isolation is confirmed only if the list was read and contains every capability that can be disabled.

@@ -1,0 +1,100 @@
+Run Codex without a terminal (reworded usage text)
+
+Usage: codex exec [FLAGS] [TEXT]
+
+Options:
+  -V, --version
+          Reworded text 1.
+
+
+  -h, --help
+          Reworded text 1.
+
+  -o, --output-last-message <FILE>
+          Reworded text 1.
+
+      --json
+          Reworded text 1.
+
+      --color <COLOR>
+          Reworded text 1.
+          Reworded text 2.
+          Reworded text 3.
+          Reworded text 4.
+
+      --output-schema <FILE>
+          Reworded text 1.
+
+      --ignore-rules
+          Reworded text 1.
+
+      --ignore-user-config
+          Reworded text 1.
+
+      --ephemeral
+          Reworded text 1.
+
+      --skip-git-repo-check
+          Reworded text 1.
+
+      --thread-source <SOURCE>
+          Reworded text 1.
+
+      --add-dir <DIR>
+          Reworded text 1.
+
+      --worktree
+          Reworded text 1.
+
+  -C, --cd <DIR>
+          Reworded text 1.
+
+      --dangerously-bypass-hook-trust
+          Reworded text 1.
+          Reworded text 2.
+
+      --dangerously-bypass-approvals-and-sandbox
+          Reworded text 1.
+          Reworded text 2.
+
+      --approve-for-me
+          Reworded text 1.
+
+  -s, --sandbox <SANDBOX_MODE>
+          Reworded text 1.
+          Reworded text 2.
+          Reworded text 3.
+
+  -p, --profile <CONFIG_PROFILE_V2>
+          Reworded text 1.
+
+      --local-provider <OSS_PROVIDER>
+          Reworded text 1.
+          Reworded text 2.
+
+      --oss
+          Reworded text 1.
+
+  -m, --model <MODEL>
+          Reworded text 1.
+
+  -i, --image <FILE>...
+          Reworded text 1.
+
+      --strict-config
+          Reworded text 1.
+          Reworded text 2.
+
+      --disable <FEATURE>
+          Reworded text 1.
+
+      --enable <FEATURE>
+          Reworded text 1.
+
+  -c, --config <key=value>
+          Reworded text 1.
+          Reworded text 2.
+          Reworded text 3.
+          Reworded text 4.
+          Reworded text 5.
+          Reworded text 6.

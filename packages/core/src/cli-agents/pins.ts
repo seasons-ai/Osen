@@ -111,7 +111,7 @@ export function pinsFileState(dataDir: string): string {
 }
 
 export interface PackageSource {
-  fetch(agent: CliAgent, version: string, dir: string): Promise<{ executable: string; source: string }>;
+  fetch(agent: CliAgent, version: string, dir: string, signal?: AbortSignal): Promise<{ executable: string; source: string }>;
 }
 export interface PinDeps {
   source: PackageSource;
