@@ -426,18 +426,22 @@ const resumeWith = (old?: string): Body =>
   ({ type: "session_resumed", pid: 2, maxRounds: 5, ...(old ? { replacements: [{ oldParticipantId: old, participant: newbie }] } : {}) }) as Body;
 
 describe("FeedView: participant replacement", () => {
-  const text = (h: string) => h.replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+  const who = (n: number, name: string) => `<span class="session-who"><span class="avatar avatar--sm">${n}</span> ${name}</span>`;
+  const replaced = (from: string, to: string, reason: string) => `<span>Заменён: </span>${from}<span> → </span>${to}<span class="muted"> · ${reason}</span>`;
+  const reset = "<span>Согласия сброшены: участники подтверждают версию заново</span>";
+  const turnHead = (n: number, name: string) => `session-turn" data-p="${n}"><header class="session-turn__head"><span class="avatar" data-p="${n}">${n}</span><span class="session-turn__name">${name}</span>`;
   const dropped = [created(), started(1, "p1"), done(1, "p1", "amend", 1), started(2, "p2"), done(2, "p2", "agree", 1), drop("p2"), finishedFail];
   it("replacement of a departed one: both names, departure reason and reset of agreements under the separator", () => {
     const h = view(fold([...dropped, resumeWith("p2")]), { running: false });
     expect(h).toContain("feed-replaced");
     expect(h.indexOf("Продолжено")).toBeLessThan(h.indexOf("feed-replaced"));
-    expect(text(h)).toContain("Заменён: 2 Имя2 → 4 Новый · выбыл: таймаут ответа");
-    expect(text(h)).toContain("Согласия сброшены: участники подтверждают версию заново");
+    const row = h.indexOf(replaced(who(2, "Имя2"), who(4, "Новый"), "выбыл: таймаут ответа"));
+    expect(row).toBeGreaterThan(h.indexOf("feed-replaced__line"));
+    expect(h.indexOf(reset)).toBeGreaterThan(row);
   });
   it("replacement of an active one: «was unavailable»", () => {
-    const h = text(view(fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), finishedFail, resumeWith("p3")]), { running: false }));
-    expect(h).toContain("Заменён: 3 Имя3 → 4 Новый · был недоступен");
+    const h = view(fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), finishedFail, resumeWith("p3")]), { running: false });
+    expect(h).toContain(replaced(who(3, "Имя3"), who(4, "Новый"), "был недоступен"));
     expect(h).not.toContain("выбыл:");
   });
   it("a mark without replacements: markup as before", () => {
@@ -452,11 +456,11 @@ describe("FeedView: participant replacement", () => {
     expect(h).toContain("закрыт: участник заменён");
   });
   it("turns: the previous author is kept, after continuation — the new one", () => {
-    const h = text(view(fold([...dropped, resumeWith("p2"), started(3, "p4"), done(3, "p4", "agree", 1)]), { running: false }));
-    expect(h).toContain("2 Имя2");
-    expect(h.indexOf("Новый", h.indexOf("Продолжено") + 40)).toBeGreaterThan(-1);
-    const turn3 = view(fold([...dropped, resumeWith("p2"), started(3, "p4"), done(3, "p4", "agree", 1)]), { running: false });
-    expect(turn3).toMatch(/session-turn" data-p="4"><header[^>]*><span class="avatar" data-p="4">4<\/span><span class="session-turn__name">Новый/);
+    const h = view(fold([...dropped, resumeWith("p2"), started(3, "p4"), done(3, "p4", "agree", 1)]), { running: false });
+    const resumed = h.indexOf("Продолжено");
+    expect(h.indexOf(turnHead(2, "Имя2"))).toBeGreaterThan(-1);
+    expect(h.indexOf(turnHead(2, "Имя2"))).toBeLessThan(resumed);
+    expect(h.indexOf(turnHead(4, "Новый"))).toBeGreaterThan(resumed);
   });
 });
 
