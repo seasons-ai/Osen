@@ -5,7 +5,7 @@ export async function connect(ws: string): Promise<Cdp> {
   await new Promise((ok, fail) => { sock.onopen = ok; sock.onerror = fail; });
   let id = 0;
   const wait = new Map<number, (m: any) => void>();
-  sock.onmessage = (e) => { const m = JSON.parse(String(e.data)); wait.get(m.id)?.(m); wait.delete(m.id); };
+  sock.onmessage = (e) => { const m = JSON.parse(String(e.data)); const cb = wait.get(m.id); wait.delete(m.id); if (typeof cb === "function") cb(m); };
   return {
     send: (method, params = {}) => new Promise((ok, fail) => {
       const n = ++id;
