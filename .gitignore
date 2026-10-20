@@ -36,6 +36,7 @@ docs/*
 !docs/releases.md
 !docs/templates.md
 !docs/clients.md
+!docs/cli-pinning.md
 !docs/images/
 design/mockup-osen/SPEC.md
 /*.md
