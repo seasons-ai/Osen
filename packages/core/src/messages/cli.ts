@@ -35,6 +35,7 @@ export const cliMessages = defineMessages({
   council cli use <agent> <version>
   council cli rollback <agent>
   council cli candidates [--agent <agent>] [--json]
+  council cli accept <agent> <version> [--candidate] [--model <id>] [--max-calls <N>] [--save-fixture <folder>]
   council home
   council --help
 
@@ -55,6 +56,7 @@ Subcommands:
   cli list   pinned installs, the active one and the previous one
   cli use <agent> <version>  make an installed verified version active
   cli rollback <agent>  return to the previous active version (one step)
+  cli accept <agent> <version> [--candidate] [--model <id>] [--max-calls <N>] [--save-fixture <folder>]  check an installed version with the real probes; without --max-calls only the plan and the exact bound of model calls are printed, no call is made; the version is recorded as real only when all probes pass; --save-fixture saves the anonymized valid turn to the folder
   home       data folder path
 
 Flags:
@@ -268,11 +270,15 @@ Example:
     launchExpired: (deadline: string) => `Launch file is stale: its deadline ${deadline} has passed.`,
     launchUsage: "council run-prepared <launch-file>",
     noArgs: (cmd: string) => `Command ${cmd} takes no arguments.`,
-    cliUsage: "Command cli: install <agent> [--version <X>] [--candidate] | list | use <agent> <version> | rollback <agent> | candidates [--agent <agent>] [--json].",
-    cliUnknownSub: (sub: string) => `Unknown cli subcommand «${sub}». Expected: install, list, use, rollback, candidates.`,
+    cliUsage: "Command cli: install <agent> [--version <X>] [--candidate] | list | use <agent> <version> | rollback <agent> | candidates [--agent <agent>] [--json] | accept <agent> <version> [--candidate] [--model <id>] [--max-calls <N>] [--save-fixture <folder>].",
+    cliUnknownSub: (sub: string) => `Unknown cli subcommand «${sub}». Expected: install, list, use, rollback, candidates, accept.`,
     cliWrongArgs: (sub: string, usage: string) => `Command cli ${sub} takes: ${usage}.`,
     cliFlagNotAllowed: (flag: string, sub: string) => `The ${flag} flag is not allowed for cli ${sub}.`,
     cliFlagOnlyCli: (flag: string) => `The ${flag} flag applies only to the command cli install.`,
+    cliFlagOnlyInstallAccept: (flag: string) => `The ${flag} flag applies only to the commands cli install and cli accept.`,
+    cliFlagOnlyAccept: (flag: string) => `The ${flag} flag applies only to the command cli accept.`,
+    maxCallsRange: (value: string) => `--max-calls must be an integer of at least 1, got «${value}».`,
+    flagNeedsValue: (flag: string) => `The ${flag} flag needs a value.`,
     agentOnlyCandidates: "The --agent flag applies only to the command cli candidates.",
     candidatesInterrupted: "The check was interrupted; temporary installs were removed, nothing was recorded.",
     candidatesHeader: (agent: string, base: string) => `${agent} (base ${base})`,
@@ -416,6 +422,7 @@ Example:
   council cli use <agent> <version>
   council cli rollback <agent>
   council cli candidates [--agent <agent>] [--json]
+  council cli accept <agent> <version> [--candidate] [--model <id>] [--max-calls <N>] [--save-fixture <папка>]
   council home
   council --help
 
@@ -436,6 +443,7 @@ Example:
   cli list   закреплённые установки, активная и предыдущая версии
   cli use <agent> <version>  сделать активной установленную проверенную версию
   cli rollback <agent>  вернуться к предыдущей активной версии (один шаг)
+  cli accept <agent> <version> [--candidate] [--model <id>] [--max-calls <N>] [--save-fixture <папка>]  проверить установленную версию реальными пробами; без --max-calls печатаются только план и точная граница вызовов модели, вызовов не делается; версия записывается как real, только если пройдены все пробы; --save-fixture сохраняет обезличенный валидный ход в папку
   home       путь папки данных
 
 Флаги:
@@ -642,11 +650,15 @@ history-pins.json в ней — закрепления экрана «Истор
     launchExpired: (deadline: string) => `Файл запуска устарел: срок ${deadline} прошёл.`,
     launchUsage: "council run-prepared <launch-file>",
     noArgs: (cmd: string) => `Команда ${cmd} не принимает аргументов.`,
-    cliUsage: "Команда cli: install <agent> [--version <X>] [--candidate] | list | use <agent> <version> | rollback <agent> | candidates [--agent <agent>] [--json].",
-    cliUnknownSub: (sub: string) => `Неизвестная подкоманда cli «${sub}». Ожидается: install, list, use, rollback, candidates.`,
+    cliUsage: "Команда cli: install <agent> [--version <X>] [--candidate] | list | use <agent> <version> | rollback <agent> | candidates [--agent <agent>] [--json] | accept <agent> <version> [--candidate] [--model <id>] [--max-calls <N>] [--save-fixture <папка>].",
+    cliUnknownSub: (sub: string) => `Неизвестная подкоманда cli «${sub}». Ожидается: install, list, use, rollback, candidates, accept.`,
     cliWrongArgs: (sub: string, usage: string) => `Команда cli ${sub} принимает: ${usage}.`,
     cliFlagNotAllowed: (flag: string, sub: string) => `Флаг ${flag} не допускается у cli ${sub}.`,
     cliFlagOnlyCli: (flag: string) => `Флаг ${flag} относится только к команде cli install.`,
+    cliFlagOnlyInstallAccept: (flag: string) => `Флаг ${flag} относится только к командам cli install и cli accept.`,
+    cliFlagOnlyAccept: (flag: string) => `Флаг ${flag} относится только к команде cli accept.`,
+    maxCallsRange: (value: string) => `--max-calls должен быть целым числом не меньше 1, получено «${value}».`,
+    flagNeedsValue: (flag: string) => `Флаг ${flag} требует значение.`,
     agentOnlyCandidates: "Флаг --agent применяется только у команды cli candidates.",
     candidatesInterrupted: "Проверка прервана; временные установки удалены, ничего не записано.",
     candidatesHeader: (agent: string, base: string) => `${agent} (база ${base})`,

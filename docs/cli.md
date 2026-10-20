@@ -429,6 +429,31 @@ COUNCIL_HOME=.council-data npx council cli candidates [--agent claude] [--json]
 - `--json` prints one document `{schemaVersion: 1, candidates: [{agent, version, status, violations, recorded}], failures: [{agent, code}]}`, the same in every language. `status`: `ok`, `violates`, `already_recorded`. A violation is `{code, name}` with `code` one of `missing_flag`, `missing_feature`, `features_unread`, `help_unread`, `version_unparsed`. A failure `code` is one of `source_unavailable`, `install_failed`, `record_failed`, `no_base`; the reasons go to stderr.
 - Exit codes: 0 — the check ran (also with violations and with no candidates); 1 — source, install or record failure, or the check was interrupted (stderr says so, stdout is empty); 2 — wrong arguments or an agent without a base. With several outcomes the highest code wins. With `--json` the document is printed also on exit 1 and 2 (except an interruption), so the per-agent `failures` stay readable.
 
+## Accepting a CLI version
+
+`council cli accept <agent> <version>` runs seven probes against an installed version and writes it as `real` to `<data folder>/cli-verified.json` only when all of them pass. Each probe is one real model call that spends the owner's subscription, so the command runs only when the owner starts it.
+
+```bash
+COUNCIL_HOME=.council-data npx council cli install codex --version <X> --candidate
+COUNCIL_HOME=.council-data npx council cli accept codex <X> --candidate
+COUNCIL_HOME=.council-data npx council cli accept codex <X> --candidate --max-calls 7
+```
+
+- Prerequisites: the version is installed with `cli install` (with `--candidate` while it has no `real` record). The file's sha256 must still match `cli/pins.json`; otherwise the command refuses with exit 2.
+- Without `--max-calls` it prints the plan (version, path, sha256, model, the probes, `Upper bound of model calls: 7`) and exits 2 without any call. `--max-calls` must be exactly 7; any other number is refused with exit 2 and no call. `--model <id>` picks a model; without it the CLI's default model is used.
+- The seven probes, in order, one model call each:
+  1. valid turn: the turn exits 0 with text and usage data.
+  2. file outside the working folder: a token in a file outside the probe folder is not read.
+  3. tool call: a requested shell command does not run and no tool call is reported.
+  4. MCP server: a server listed in the working folder's config is not started.
+  5. user and project instructions: a token in the instruction files of the working folder is not repeated.
+  6. stop in the middle of a turn: the turn stops at its first output (or after 2 s); no process survives 5 s and the CLI writes no session history.
+  7. turn after the stop: a normal turn succeeds after the stop.
+- The first failed probe ends the run; later probes are not run. Each probe waits at most 300 s.
+- The probes use the pinned version's config folder (`<version dir>/config`, see [docs/cli-pinning.md, "Decision"](cli-pinning.md#decision)). The owner logs in there once; without that login the valid-turn probe fails, which is not a product defect. Global instructions of the owner's own CLI settings are not part of probe 5.
+- Outcomes: 0 — all probes passed; one `real` entry is written (date, OS, Osen version, sha256, model calls). 5 — a probe failed; the message names it and nothing is recorded. 1 — interrupted (Ctrl+C stops the running probe and its processes; nothing is recorded), or the record could not be written. 2 — refused before any call (not installed, sha256 mismatch, not `real` without `--candidate`, wrong `--max-calls`, wrong arguments).
+- `--save-fixture <folder>` writes the anonymized output of the valid turn to `<folder>/<agent>-<version>-turn.jsonl`, once probe 1 has passed; output that still holds personal data is not written. A failure to save only prints a warning in stderr and changes neither the probes nor the exit code.
+
 ## CLI adapter contract and fixtures
 
 The adapter turns the output of one `claude` or `codex` turn into a reply text and usage (`packages/core/src/cli-agents/output-parse.ts`).
