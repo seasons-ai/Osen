@@ -12,7 +12,11 @@ export interface UrlCollectOptions { transport?: UrlTransport; now?: () => Date;
 
 /** Name of a link material: host and path without "/". */
 export function urlMaterialName(url: URL): string {
-  return (url.host + url.pathname).replace(/\/+$/, "").replaceAll("/", "_");
+  // One backward scan instead of /\/+$/, which retries at every slash of a long run (CodeQL js/polynomial-redos).
+  const raw = url.host + url.pathname;
+  let end = raw.length;
+  while (end > 0 && raw.charCodeAt(end - 1) === 47) end--;
+  return raw.slice(0, end).replaceAll("/", "_");
 }
 
 export async function collectUrlMaterials(urls: readonly string[], options: UrlCollectOptions = {}): Promise<UrlMaterial[]> {
