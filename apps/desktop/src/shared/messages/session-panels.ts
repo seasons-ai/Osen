@@ -52,6 +52,11 @@ export const panels = defineMessages({
     messageHint: "After a message all participants confirm their agreement again",
     cancelAnswer: "Cancel answer",
     send: "Send",
+    draftLabel: "Message draft",
+    draftSaved: "The session finished while you were writing. The text is saved.",
+    copyDraft: "Copy text",
+    deleteDraft: "Delete draft",
+    draftCopied: "Text copied to the clipboard",
 
     // Screen shell
     sessionTitle: "Session",
@@ -106,6 +111,11 @@ export const panels = defineMessages({
     messageHint: "После реплики все участники подтверждают согласие заново",
     cancelAnswer: "Отменить ответ",
     send: "Отправить",
+    draftLabel: "Черновик реплики",
+    draftSaved: "Сессия завершилась, пока вы писали. Текст сохранён.",
+    copyDraft: "Скопировать текст",
+    deleteDraft: "Удалить черновик",
+    draftCopied: "Текст скопирован в буфер обмена",
 
     sessionTitle: "Сессия",
     loading: "Загрузка…",

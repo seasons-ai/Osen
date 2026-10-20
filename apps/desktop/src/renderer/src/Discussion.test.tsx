@@ -28,6 +28,7 @@ const fold = (bodies: Body[]): SessionState => foldEvents(mk(bodies));
 const noop = () => {};
 import type { StoredStatus } from "@model-council/core";
 import { Discussion } from "./Discussion.tsx";
+import { saveDraft } from "./OwnerComposer.tsx";
 
 const view = (state: SessionState, o: { status?: StoredStatus; confirming?: boolean; stopping?: boolean } = {}) =>
   renderToStaticMarkup(
@@ -449,5 +450,32 @@ describe("Discussion: journal read only partially", () => {
     expect(h).not.toContain("Обсуждение прервано");
     expect(h).toContain('role="status"');
     expect(html(waiting, null, "interrupted")).toContain("Прервано во время ожидания владельца");
+  });
+});
+
+describe("Discussion: finished session with an unfinished owner message", () => {
+  const draftId = "s1";
+  afterEach(() => saveDraft(draftId, null));
+  const finishedView = (s: SessionState, status: StoredStatus = "consensus") => renderToStaticMarkup(
+    <Discussion state={s} status={status} live={null} confirming={false} stopping={false} id={draftId}
+      onStopAsk={noop} onStopCancel={noop} onStopConfirm={noop} onResult={noop} />,
+  );
+  const ended = fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), fin("consensus")]);
+  const ownerMsg: Body = { type: "owner_message", id: "o1", text: "Уточняю", afterTurn: 2, requestId: "r1" } as unknown as Body;
+  const endedWithReply = fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), ownerMsg, fin("consensus")]);
+
+  it("draft field instead of the caption; the tail with the result button stays", () => {
+    saveDraft(draftId, { text: "Ещё учтите бюджет", answerTo: null });
+    const h = finishedView(endedWithReply);
+    expect(h).toContain(">Ещё учтите бюджет</textarea>");
+    expect(h).not.toContain("Сессия завершена: реплики");
+    expect(h).not.toContain(">Отправить<");
+    expect(h).toContain("К итогу");
+  });
+  it("blank draft: the old behaviour, caption only with owner messages", () => {
+    saveDraft(draftId, { text: "   ", answerTo: null });
+    expect(finishedView(endedWithReply)).toContain("Сессия завершена: реплики");
+    expect(finishedView(endedWithReply)).not.toContain("<textarea");
+    expect(finishedView(ended)).not.toContain("<textarea");
   });
 });

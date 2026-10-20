@@ -8,7 +8,7 @@ import { OWNER_ID } from "@model-council/core/protocol";
 import { DroppedNotice, Feed } from "./Feed.tsx";
 import type { DraftTexts } from "./session-drafts.ts";
 import type { PendingReply } from "./Feed.tsx";
-import { OwnerComposer } from "./OwnerComposer.tsx";
+import { FinishedDraft, OwnerComposer, hasOwnerDraft } from "./OwnerComposer.tsx";
 import { WaitInterruptedNote, WaitPanel } from "./WaitPanel.tsx";
 import { Icon } from "./icons.tsx";
 import { useLanguage, useMessages } from "./language.tsx";
@@ -71,8 +71,11 @@ export function Discussion({ state, status, live, expired, confirming, stopping,
         onReply={() => { textRef.current?.focus(); textRef.current?.scrollIntoView({ block: "nearest" }); }} />}
       <OwnerComposer id={id} state={state} textRef={textRef} pending={pending} onSent={(r) => onOwnerSent?.(r)} partial={partial} />
     </>;
-  } else if (state.ownerMessages.length > 0 || state.questions.some((q) => q.to === OWNER_ID)) {
-    footer = <div className="session-owner-box"><p className="session-composer__closed muted"><Icon name="i-info" size="sm" /> {t.sessionClosed}</p></div>;
+  } else {
+    const closed = state.ownerMessages.length > 0 || state.questions.some((q) => q.to === OWNER_ID)
+      ? <div className="session-owner-box"><p className="session-composer__closed muted"><Icon name="i-info" size="sm" /> {t.sessionClosed}</p></div>
+      : undefined;
+    footer = id !== undefined && hasOwnerDraft(id) ? <FinishedDraft id={id} fallback={closed} /> : closed;
   }
   if (view === null && status === "interrupted" && state.waiting !== null) footer = <><WaitInterruptedNote state={state} />{footer}</>;
   return (

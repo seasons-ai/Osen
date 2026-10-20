@@ -30,9 +30,10 @@ const done = (
 const fold = (bodies: Body[]): SessionState => foldEvents(mk(bodies));
 const noop = () => {};
 import type { HistoryItem } from "../../shared/bridge.ts";
-import { SessionScreen, noStop, openedPanel, sessionStatus, stopFlags, stopMarks } from "./SessionScreen.tsx";
+import { SessionScreen, feedAtFinish, noStop, openedPanel, sessionStatus, stopFlags, stopMarks } from "./SessionScreen.tsx";
 import type { StopAction, StopMarks } from "./SessionScreen.tsx";
 import { Discussion } from "./Discussion.tsx";
+import { saveDraft } from "./OwnerComposer.tsx";
 import { WaitPanelView } from "./WaitPanel.tsx";
 import { openResume, submitChoice, submitResume } from "./Result.tsx";
 import type { ResumeView } from "../../shared/bridge.ts";
@@ -353,5 +354,39 @@ describe("Session stop: flags belong to the segment", () => {
     const old = renderToStaticMarkup(<WaitPanelView state={s} now={Date.parse("2026-01-01T00:01:00Z")} sending={false} error={null} {...stopFlags(m, 0)}
       onContinue={noop} onReply={noop} onStopAsk={noop} onStopCancel={noop} onStopConfirm={noop} />);
     for (const b of old.match(/<button[^>]*>/g)!) expect(b).toContain('disabled=""');
+  });
+});
+
+describe("SessionScreen: unfinished owner message at the finish", () => {
+  afterEach(() => saveDraft("s1", null));
+  it("running -> final with a non-blank draft keeps the feed; blank or no draft goes to the result", () => {
+    saveDraft("s1", { text: "Ещё учтите бюджет", answerTo: null });
+    expect(feedAtFinish("running", "consensus", "s1")).toBe(true);
+    expect(feedAtFinish("loading", "stopped", "s1")).toBe(true);
+    saveDraft("s1", { text: " \n ", answerTo: null });
+    expect(feedAtFinish("running", "consensus", "s1")).toBe(false);
+    saveDraft("s1", null);
+    expect(feedAtFinish("running", "failed", "s1")).toBe(false);
+  });
+  it("other transitions do not touch the feed flag", () => {
+    saveDraft("s1", { text: "Текст", answerTo: null });
+    expect(feedAtFinish("running", "running", "s1")).toBeNull();
+    expect(feedAtFinish("running", "loading", "s1")).toBeNull();
+    expect(feedAtFinish("consensus", "consensus", "s1")).toBeNull();
+  });
+  it("a finished session with a saved draft opens on the feed with the draft field", () => {
+    saveDraft("s1", { text: "Ещё учтите бюджет", answerTo: null });
+    const h = html(finished, item("consensus"));
+    expect(h).toContain(">Ещё учтите бюджет</textarea>");
+    expect(h).toContain("К итогу");
+    expect(h).not.toContain("Итоговое решение");
+    expect(h).not.toContain(">Отправить<");
+  });
+  it("whitespace-only draft or none: the result; after deleting the draft: the result", () => {
+    saveDraft("s1", { text: "  ", answerTo: null });
+    expect(html(finished, item("consensus"))).toContain("Итоговое решение");
+    saveDraft("s1", { text: "Текст", answerTo: null });
+    saveDraft("s1", null);
+    expect(html(finished, item("consensus"))).toContain("Итоговое решение");
   });
 });

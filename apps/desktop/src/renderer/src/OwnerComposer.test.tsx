@@ -6,7 +6,7 @@ import type { Language } from "@model-council/core/i18n";
 import { LanguageProvider } from "./language.tsx";
 import { initialState } from "@model-council/core/protocol";
 import type { QuestionState, Session } from "@model-council/core/protocol";
-import { OwnerComposer, OwnerComposerView, saveDraft, sendOwner } from "./OwnerComposer.tsx";
+import { FinishedDraft, FinishedDraftView, OwnerComposer, OwnerComposerView, copyDraft, deleteFinishedDraft, hasOwnerDraft, readDraft, saveDraft, saveFinishedText, sendOwner } from "./OwnerComposer.tsx";
 import type { OwnerComposerViewProps } from "./OwnerComposer.tsx";
 
 const session = {
@@ -194,5 +194,64 @@ describe("OwnerComposerView: osen look (89)", () => {
   it("«Questions to you»: question block with warn tone, 22 px avatar and name without the model", () => {
     const h = view({ questions: [q()] });
     expect(h).toContain('<div class="session-owner-q" data-tone="warn"><div class="session-owner-q__head"><span class="mono">q3</span><span class="session-who"><span class="avatar avatar--sm">1</span> Имя1</span></div>');
+  });
+});
+
+describe("finished-session draft field", () => {
+  const draftId = "fd1";
+  afterEach(() => saveDraft(draftId, null));
+  const field = (fallback: ReactNode = null) => renderToStaticMarkup(<FinishedDraft id={draftId} fallback={fallback} />);
+
+  it("hasOwnerDraft: only a non-blank text counts", () => {
+    expect(hasOwnerDraft(draftId)).toBe(false);
+    saveDraft(draftId, { text: " \n ", answerTo: null });
+    expect(hasOwnerDraft(draftId)).toBe(false);
+    saveDraft(draftId, { text: "Учтите бюджет", answerTo: null });
+    expect(hasOwnerDraft(draftId)).toBe(true);
+  });
+  it("shows the text in an editable field, caption and buttons, no Send", () => {
+    saveDraft(draftId, { text: "Учтите бюджет", answerTo: null });
+    const h = field();
+    expect(h).toContain('data-state="finished-draft"');
+    expect(h).toMatch(/<textarea[^>]*>Учтите бюджет<\/textarea>/);
+    expect(h).not.toMatch(/<textarea[^>]*disabled/);
+    expect(h).toContain("Сессия завершилась, пока вы писали. Текст сохранён.");
+    expect(h).toContain(">Скопировать текст<");
+    expect(h).toContain(">Удалить черновик<");
+    expect(h).not.toContain(">Отправить<");
+    expect(h).not.toContain('type="submit"');
+  });
+  it("answer binding is dropped: no label, stored answerTo becomes null, text kept", () => {
+    saveDraft(draftId, { text: "Ответ про цену", answerTo: "q2" });
+    const h = field();
+    expect(h).not.toContain("Ответ на вопрос q2");
+    expect(h).toContain("Ответ про цену");
+    expect(readDraft(draftId)).toEqual({ text: "Ответ про цену", answerTo: null });
+  });
+  it("editing is saved into the same map", () => {
+    saveDraft(draftId, { text: "Было", answerTo: null });
+    saveFinishedText(draftId, "Стало");
+    expect(field()).toContain(">Стало</textarea>");
+  });
+  it("copy: success and refusal", async () => {
+    const calls: string[] = [];
+    expect(await copyDraft(async (t) => { calls.push(t); }, "Текст")).toEqual({ ok: true });
+    expect(calls).toEqual(["Текст"]);
+    expect(await copyDraft(async () => { throw new Error("Буфер недоступен"); }, "Текст")).toEqual({ ok: false, error: "Буфер недоступен" });
+  });
+  it("view: confirmation has role status, refusal has role alert", () => {
+    const base = { text: "т", copied: false, error: null, onText: () => {}, onCopy: () => {}, onDelete: () => {} };
+    const ok = renderToStaticMarkup(<FinishedDraftView {...base} copied />);
+    expect(ok).toMatch(/role="status"[^>]*>Текст скопирован в буфер обмена/);
+    const bad = renderToStaticMarkup(<FinishedDraftView {...base} error="Буфер недоступен" />);
+    expect(bad).toMatch(/role="alert"/);
+    expect(bad).toContain("Буфер недоступен");
+    expect(renderToStaticMarkup(<FinishedDraftView {...base} />)).not.toMatch(/role="(status|alert)"/);
+  });
+  it("delete removes the draft from the map", () => {
+    saveDraft(draftId, { text: "Учтите", answerTo: null });
+    deleteFinishedDraft(draftId);
+    expect(hasOwnerDraft(draftId)).toBe(false);
+    expect(readDraft(draftId)).toBeNull();
   });
 });

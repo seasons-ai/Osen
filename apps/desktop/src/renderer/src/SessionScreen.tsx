@@ -8,6 +8,7 @@ import { panels } from "../../shared/messages/session-panels.ts";
 import { Discussion } from "./Discussion.tsx";
 import type { PendingReply } from "./Feed.tsx";
 import { useMessages } from "./language.tsx";
+import { hasOwnerDraft } from "./OwnerComposer.tsx";
 import { useSessionDrafts } from "./session-drafts.ts";
 import { chosenVersion } from "../../shared/final-version.ts";
 import { Result, ResumePanel, finalVersion, openResume } from "./Result.tsx";
@@ -44,6 +45,10 @@ export function stopMarks(m: StopMarks, a: StopAction): StopMarks {
 export const stopFlags = (m: StopMarks, segment: number): { confirming: boolean; stopping: boolean } =>
   ({ confirming: m.confirming === segment, stopping: m.stopping === segment });
 
+/** At the finish (from "running" or "loading" to a final status) stay on the feed when the owner has an unfinished message; null — no finish. */
+export const feedAtFinish = (prev: StoredStatus | "loading", next: StoredStatus | "loading", id: string): boolean | null =>
+  (prev === "running" || prev === "loading") && next !== "running" && next !== "loading" ? hasOwnerDraft(id) : null;
+
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function SessionScreen({ id, item, state, live, pending, expired, onOwnerSent, onNew, onError, onRerun }: {
@@ -52,7 +57,8 @@ export function SessionScreen({ id, item, state, live, pending, expired, onOwner
   expired?: readonly WaitExpiry[];
   onNew(): void; onError(message: string): void; onRerun?(withDecision: boolean): Promise<void> | void;
 }): ReactNode {
-  const [feed, setFeed] = useState(false);
+  const [feed, setFeed] = useState(() => hasOwnerDraft(id)); // a finished session with a saved draft opens on the feed
+  const [prevStatus, setPrevStatus] = useState<StoredStatus | "loading" | null>(null);
   const [marks, dispatch] = useReducer(stopMarks, noStop);
   const [rerunBusy, setRerunBusy] = useState(false);
   const [notice, setNotice] = useState<ResultProps["notice"]>(null);
@@ -63,6 +69,12 @@ export function SessionScreen({ id, item, state, live, pending, expired, onOwner
   const status = sessionStatus(state, item);
   const drafts = useSessionDrafts(id, state);
   const t = useMessages(panels);
+  // Adjusted during render so that the result is never flashed; the composer has already written the draft to the map.
+  if (prevStatus !== status) {
+    setPrevStatus(status);
+    const f = prevStatus === null ? null : feedAtFinish(prevStatus, status, id);
+    if (f !== null) setFeed(f);
+  }
 
   if (status === "loading") {
     return (

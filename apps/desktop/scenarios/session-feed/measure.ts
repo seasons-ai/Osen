@@ -149,6 +149,13 @@ function inPage(width: number, reduced: boolean) {
     const label = box.querySelector(".field__label"), area = box.querySelector("textarea"), hint = box.querySelector(".session-composer__row .field__hint"), btn = box.querySelector('.session-composer__row button[type="submit"]');
     if (!area) continue;
     if (!label || label.getBoundingClientRect().bottom > area.getBoundingClientRect().top + 1) fail(".session-composer", "label is not above the field", box);
+    // the draft of a finished session (change 172): hint and two buttons in one row inside the block, no "Send"
+    if (box.querySelector('[data-state="finished-draft"]')) {
+      const bs = [...box.querySelectorAll(".session-composer__row button")].map((b) => b.getBoundingClientRect());
+      if (!hint || bs.length !== 2 || btn) fail(".session-composer[data-state=finished-draft]", `hint ${!!hint}, buttons ${bs.length} (expected 2), submit ${!!btn} (expected none)`, box);
+      else if (Math.abs(bs[0]!.top - bs[1]!.top) > 1 || bs.some((b) => b.right > box.getBoundingClientRect().right + 0.5)) fail(".session-composer[data-state=finished-draft]", "buttons are not in one row inside the block", box);
+      continue;
+    }
     if (!hint || !btn) { fail(".session-composer__row", "no hint or button", box); continue; }
     const h = hint.getBoundingClientRect(), b = btn.getBoundingClientRect(), row = btn.parentElement!.getBoundingClientRect();
     // hint on the left, button on the right; in a narrow row (answer mode with "Cancel answer") the buttons wrap under the hint but stay on the right
