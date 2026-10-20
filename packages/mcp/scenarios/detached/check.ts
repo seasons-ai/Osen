@@ -328,6 +328,27 @@ async function main() {
   check(launchLeft().length === 0, "R6: no files left in launch/", launchLeft().join(","));
   check(!existsSync(resumeLockPath(home, R6)), "R6: no resume.lock");
 
+  console.log("-- 187: two simultaneous council_resume of one session (two stdio servers), 20 repetitions");
+  const [sp1, sp2] = [await connect(), await connect()];
+  let raceOk = 0;
+  const raceBad: string[] = [];
+  for (let i = 1; i <= 20; i++) {
+    const id = noConsensus(`race${i}`, 1000); // the resumed second turn lasts 1 s: the loser meets a running session, not a finished one
+    const pl = await call(sp1.client, "council_resume", { sessionId: id, rounds: 2 });
+    const token = JSON.parse(body(pl)).planToken as string;
+    const go = (s: Srv) => call(s.client, "council_resume", { sessionId: id, rounds: 2, execute: true, planToken: token });
+    const rs = await Promise.all([go(sp1), go(sp2)]);
+    const left = launchLeft();
+    const refusals = rs.filter((r) => !accepted(r)).map(body);
+    const good = rs.filter(accepted).length === 1 && refusals.length === 1 && /^(busy|running|stale_plan):/.test(refusals[0]!) && evCount(id, "session_resumed") === 1 && left.length === 0;
+    if (good) raceOk++;
+    else raceBad.push(`#${i}: accepted ${rs.filter(accepted).length}, refusal ${refusals.map((t) => t.slice(0, 90)).join(" | ")}, session_resumed ${evCount(id, "session_resumed")}, launch/ ${left.join(",")}`);
+    await until(`race${i} finished`, () => readSession(home, id)?.state.finish, 30000);
+  }
+  check(raceOk === 20, "187: 20 of 20 repetitions: one accepted, the other busy/running/stale_plan (never an executor start failure), one session_resumed, launch/ empty", raceBad.join("; "));
+  check(launchLeft().length === 0, "187: launch/ empty after all repetitions", launchLeft().join(","));
+  for (const s of [sp1, sp2]) await s.client.close();
+
   console.log("-- 184.5: council stop after the client is closed");
   const R7 = noConsensus("r7", 20000);
   const sr7 = await connect();

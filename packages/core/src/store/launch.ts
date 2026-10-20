@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { z } from "zod";
@@ -51,9 +52,11 @@ export class LaunchFileError extends Error {
 }
 
 export const launchDir = (dataDir: string): string => join(dataDir, "launch");
-export const launchFilePath = (dataDir: string, id: string): string => join(launchDir(dataDir), `${id}.json`);
-export const launchErrPath = (dataDir: string, id: string): string => join(launchDir(dataDir), `${id}.err`);
-export const launchAcceptedPath = (dataDir: string, id: string): string => join(launchDir(dataDir), `${id}.accepted.json`);
+/** One launch = one launchId: parallel launches of the same session never share, overwrite or delete each other's files. */
+export const launchFilePath = (dataDir: string, id: string, launchId: string): string => join(launchDir(dataDir), `${id}.${launchId}.json`);
+/** The executor's stderr file and the accepted file are named after the launch file. */
+export const launchErrPath = (launchFile: string): string => launchFile.replace(/\.json$/, ".err");
+export const launchAcceptedPath = (launchFile: string): string => launchFile.replace(/\.json$/, ".accepted.json");
 
 const scenariosSchema = z.record(z.string(), z.string().refine((p) => isAbsolute(p)));
 const deadlineSchema = z.string().refine((d) => !Number.isNaN(Date.parse(d)));
@@ -79,11 +82,11 @@ const LaunchResumeSchema = z.object({
   deadline: deadlineSchema,
 }).strict();
 
-export function writeLaunchFile(dataDir: string, payload: LaunchFile): string {
+export function writeLaunchFile(dataDir: string, payload: LaunchFile, launchId: string = randomUUID()): string {
   const id = payload.kind === "resume" ? payload.sessionId : payload.session.id;
   if (!isValidSessionId(id)) throw new LaunchFileError(cliMessages().launchBadId(id));
   mkdirSync(launchDir(dataDir), { recursive: true, mode: 0o700 });
-  const path = launchFilePath(dataDir, id);
+  const path = launchFilePath(dataDir, id, launchId);
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(payload), { mode: 0o600 });
   renameSync(tmp, path);
