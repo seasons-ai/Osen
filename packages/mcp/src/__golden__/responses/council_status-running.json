@@ -1,0 +1,66 @@
+{
+  "isError": false,
+  "body": {
+    "sessionId": "<sessionId>",
+    "status": "running",
+    "statusText": "<text>",
+    "journal": null,
+    "topic": "<text>",
+    "materials": {
+      "names": [],
+      "chars": 0
+    },
+    "folder": null,
+    "filesRead": [],
+    "round": 1,
+    "maxRounds": 3,
+    "turns": 2,
+    "maxTotalTokens": null,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "incomplete": true
+    },
+    "participants": [
+      {
+        "id": "p1",
+        "name": "<text>",
+        "state": "active",
+        "lastStance": "amend"
+      },
+      {
+        "id": "p2",
+        "name": "<text>",
+        "state": "active",
+        "lastStance": "object"
+      }
+    ],
+    "agreed": [
+      "p1"
+    ],
+    "openQuestions": 0,
+    "ownerQuestions": [],
+    "waiting": {
+      "waitId": "<token>",
+      "reasons": [
+        "round_boundary"
+      ],
+      "questionIds": [],
+      "deadline": "<time>"
+    },
+    "ownerMessages": [],
+    "solution": {
+      "version": 1,
+      "authorId": "p1",
+      "text": "<text>"
+    },
+    "drafts": null,
+    "wait": {
+      "requestedSec": 0,
+      "appliedSec": 0,
+      "truncated": false,
+      "changed": false
+    }
+  }
+}

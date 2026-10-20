@@ -1,0 +1,35 @@
+{
+  "isError": false,
+  "body": {
+    "templates": [
+      {
+        "id": "<string>",
+        "title": "<string>",
+        "category": "<string>",
+        "description": "<string>"
+      }
+    ],
+    "providers": [
+      {
+        "id": "<string>",
+        "kind": "<string>",
+        "label": "<string>",
+        "available": "<boolean>",
+        "reason": null,
+        "models": [
+          "<string>"
+        ],
+        "defaultModel": null
+      }
+    ],
+    "defaults": {
+      "maxRounds": 5,
+      "maxParticipants": 8,
+      "materialsChars": 60000,
+      "maxTotalTokens": null,
+      "participants": []
+    },
+    "lineups": [],
+    "lineupsError": null
+  }
+}

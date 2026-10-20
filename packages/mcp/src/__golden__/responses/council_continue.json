@@ -1,0 +1,10 @@
+{
+  "isError": false,
+  "body": {
+    "sessionId": "<sessionId>",
+    "requestId": "<token>",
+    "waitId": "<token>",
+    "queued": true,
+    "next": "<text>"
+  }
+}

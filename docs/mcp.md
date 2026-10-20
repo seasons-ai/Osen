@@ -106,6 +106,27 @@ A live stand for named lineups (0 model calls): real `council` processes and the
 COUNCIL_DEV=1 COUNCIL_HOME="$PWD/.council-data/acceptance-44-$(date +%Y%m%d-%H%M%S)" node packages/mcp/scenarios/lineups/check.ts
 ```
 
+### Pinned contract
+
+Claude Code and Codex update often and may change how they call MCP servers, so the contract of `osen` is pinned on the Osen side (change 179):
+
+- Protocol version: `EXPECTED_PROTOCOL_VERSION` in `packages/mcp/src/contract.ts` (`2025-11-25`), a literal and not the SDK constant. The server must answer `initialize` with it both for a client sending this version and for a client sending an unknown one (then the server answers with its own latest version).
+- SDK: `@modelcontextprotocol/sdk` in `packages/mcp/package.json` is an exact version equal to `package-lock.json`; a range fails the contract test.
+- Tool list, descriptions, schemas and instructions: `packages/mcp/src/__golden__/ru-server.json`.
+- Response shapes: `packages/mcp/src/__golden__/responses/<snapshot>.json`, one per tool (`council_status` twice: a running session at the owner wait and a finished one), taken on scripted participants in Russian. Keys, nesting, value types, `isError` and identifier-like values are compared strictly; session ids, times, paths, tokens, process ids, durations and free text are replaced by markers (`<sessionId>`, `<time>`, `<path>`, `<token>`, `<pid>`, `<duration>`, `<text>`); in `council_options` every list keeps only its first element with its values reduced to types (`<string>`, `<number>`, `<boolean>`), because templates, providers and scenario files are data. The rules are listed at the top of `contract.ts`.
+
+The tests are `packages/mcp/src/contract.test.ts` (part of `npm test`).
+
+After updating Claude Code or Codex, run the stand (0 model calls, the folder must be new):
+
+```bash
+COUNCIL_DEV=1 COUNCIL_HOME="$PWD/.council-data/contract-$(date +%Y%m%d-%H%M%S)" node packages/mcp/scenarios/contract/check.ts
+```
+
+It starts the real server over stdio and prints `ok` or `FAIL` for the SDK pin, the protocol version, the tool list and schemas, the instructions and each response shape (a failure names the tool and the key path). Then it runs the read-only `claude mcp get osen` and `codex mcp get osen --json` from the repository root and prints one state per host: `connected` (the entry runs this repository's `packages/mcp/src/main.ts`; a relative path is resolved against the repository root), `not connected` (the host has no entry), `mismatch` (the entry runs another file or command, for example the installed app's `osen-mcp`; both are printed), `not checked` (the host is missing, did not answer within 15 s or printed something unrecognized). Only the entry's command and arguments are printed, never its environment. Exit code: 1 on any contract failure or a `mismatch`, otherwise 0; `not connected` and `not checked` are warnings, because connecting a host is the owner's step (`skill/install.ts`) and the stand never changes host settings.
+
+Updating the reference is a dedicated change only (for example an SDK upgrade together with the new protocol constant): change the constant, run `UPDATE_MCP_GOLDEN=1 npx vitest run packages/mcp/src/contract.test.ts`, review the diff of `__golden__/responses/` and describe it in that change.
+
 ## Skill for agents
 
 The `osen` skill teaches an agent to convene a discussion of several models at the owner's request: "собери совет моделей" ("convene a council of models"), "обсуди с несколькими моделями" ("discuss with several models"), "пусть модели поспорят" ("let the models argue"), "мозговой штурм моделей" ("brainstorm of models"). The agent takes templates and providers from the server, names the topic, the participants, the round limit and the upper bound on the number of calls (participants × rounds × 3), waits for consent if the participants consume a subscription or money, starts the session, quietly waits for the result and brings back a report: status, lineup with the limit and the number of calls, decision, objections, spend and a pointer to open the session in the app. The skill does not trigger on an ordinary brainstorm with the agent itself. If the server is not connected, the agent says so and names the install command instead of answering for several models.

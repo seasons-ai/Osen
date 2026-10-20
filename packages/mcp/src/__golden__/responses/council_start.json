@@ -1,0 +1,44 @@
+{
+  "isError": false,
+  "body": {
+    "sessionId": "<sessionId>",
+    "templateId": null,
+    "maxRounds": 3,
+    "maxCalls": 18,
+    "maxTotalTokens": null,
+    "participants": [
+      {
+        "id": "p1",
+        "name": "<text>",
+        "providerId": "scripted",
+        "model": "contract/p1.json",
+        "role": null
+      },
+      {
+        "id": "p2",
+        "name": "<text>",
+        "providerId": "scripted",
+        "model": "contract/p2.json",
+        "role": null
+      }
+    ],
+    "materials": {
+      "count": 0,
+      "chars": 0,
+      "skipped": [],
+      "left": {
+        "count": 0,
+        "items": []
+      }
+    },
+    "folder": null,
+    "ownerWait": {
+      "pauseAfterRound": true,
+      "waitForOwner": false,
+      "timeoutSec": 600
+    },
+    "lineup": null,
+    "drafts": null,
+    "next": "<text>"
+  }
+}
