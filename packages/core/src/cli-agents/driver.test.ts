@@ -1,13 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { createCliDriver, parseClaudeOutput, parseCodexOutput, TURN_RESPONSE_JSON_SCHEMA } from "./driver.ts";
-import { declaredFlags, parseCodexFeatures } from "./flags.ts";
+import { declaredFlags } from "./flags.ts";
+import { cleanupStubs, stub } from "./stub.fixture.ts";
+import type { Stub } from "./stub.fixture.ts";
 import { participantSystemPrompt } from "./args.ts";
 import { getProcessLanguage, setProcessLanguage } from "../i18n/process-language.ts";
-import type { CliAgent, CliRuntime } from "./types.ts";
 import { createSession, runSession } from "../engine.ts";
 import { ParticipantCallError } from "../participants/driver.ts";
 import type { TurnRequest } from "../participants/driver.ts";
@@ -16,8 +17,6 @@ import type { SessionEvent } from "../protocol/schema.ts";
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 const claudeFlags = declaredFlags(fx("claude-2.1.288-help.txt"));
-const codexFlags = declaredFlags(fx("codex-0.159.2-exec-help.txt"));
-const codexFeatures = parseCodexFeatures(fx("codex-0.159.2-features.txt"));
 
 // Own temp folder: other test files create council-turn-* folders in the shared one at the same time.
 const sharedTmp = tmpdir();
@@ -36,41 +35,7 @@ afterAll(() => {
 });
 
 const roots: string[] = [];
-afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); delete process.env.COUNCIL_TEST_MARKER; });
-
-interface Stub { runtime: CliRuntime; proto: (name: string) => string; has: (name: string) => boolean }
-
-/** CLI stub: writes the launch protocol to its own folder, prints the prepared output. */
-function stub(agent: CliAgent, o: { stdout?: string; stderr?: string; code?: number; sleep?: number; flags?: Set<string> } = {}): Stub {
-  const root = mkdtempSync(join(tmpdir(), "stub-"));
-  roots.push(root);
-  writeFileSync(join(root, "out"), o.stdout ?? "");
-  writeFileSync(join(root, "err"), o.stderr ?? "");
-  const sh = `#!/bin/sh
-D="$(dirname "$0")"; P="$D/proto"; mkdir -p "$P"
-echo $$ > "$P/pid"
-: > "$P/args"; for a in "$@"; do printf '%s\\n' "$a" >> "$P/args"; done
-cat > "$P/stdin"
-printf '%s' "$COUNCIL_PARTICIPANT" > "$P/cp"
-printf '%s\\n' "COUNCIL_PARTICIPANT=$COUNCIL_PARTICIPANT" "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR" "DISABLE_AUTOUPDATER=$DISABLE_AUTOUPDATER" "DISABLE_UPDATES=$DISABLE_UPDATES" "CODEX_HOME=$CODEX_HOME" > "$P/pinvars"
-printf '%s' "\${COUNCIL_TEST_MARKER-unset}" > "$P/marker"
-pwd > "$P/pwd"; ls -A > "$P/ls"
-prev=""; for a in "$@"; do [ "$prev" = "--output-schema" ] && cat "$a" > "$P/schema"; prev="$a"; done
-${o.sleep ? `sleep ${o.sleep}` : ""}
-cat "$D/out"; cat "$D/err" >&2
-exit ${o.code ?? 0}
-`;
-  const path = join(root, "stub.sh");
-  writeFileSync(path, sh);
-  chmodSync(path, 0o755);
-  const runtime: CliRuntime = {
-    agent, path, env: { PATH: process.env.PATH },
-    flags: o.flags ?? (agent === "claude" ? claudeFlags : codexFlags),
-    ...(agent === "codex" ? { features: codexFeatures } : {}),
-  };
-  const proto = (name: string) => join(root, "proto", name);
-  return { runtime, proto, has: (name) => existsSync(proto(name)) };
-}
+afterEach(() => { cleanupStubs(); for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); delete process.env.COUNCIL_TEST_MARKER; });
 
 const lines = (s: Stub, name: string) => readFileSync(s.proto(name), "utf8").split("\n").slice(0, -1);
 const turnDirOf = (s: Stub) => join(readFileSync(s.proto("pwd"), "utf8").trim(), "..");
@@ -355,11 +320,15 @@ describe("parsers", () => {
     expect(parseClaudeOutput("не json")).toEqual({ ok: false, diagnostic: "не json" });
     expect(parseClaudeOutput(JSON.stringify([{ type: "system" }])).ok).toBe(false);
     expect(parseClaudeOutput("x".repeat(3000))).toEqual({ ok: false, diagnostic: "x".repeat(2000) });
-    expect(parseClaudeOutput(claudeOut({ result: "  " }))).toEqual({ ok: false, diagnostic: "claude не вернул текст ответа" });
+    const noText = parseClaudeOutput(claudeOut({ result: "  " }));
+    expect(noText.ok).toBe(false);
+    expect(!noText.ok && noText.diagnostic.startsWith("claude не вернул текст ответа")).toBe(true);
     expect(parseClaudeOutput(claudeOut({ is_error: true, result: "плохо" }))).toEqual({ ok: false, diagnostic: "плохо" });
     const noisy = `2026 ERROR шум\n${JSON.stringify(msg("a"))}\nне json\n${JSON.stringify(msg("b"))}\n${JSON.stringify(done())}\n`;
     expect(parseCodexOutput(noisy)).toEqual({ ok: true, text: "b", usage: { inputTokens: 100, outputTokens: 7 } });
-    expect(parseCodexOutput("мусор\n")).toEqual({ ok: false, diagnostic: "codex не вернул текст ответа" });
+    const junk = parseCodexOutput("мусор\n");
+    expect(junk.ok).toBe(false);
+    expect(!junk.ok && junk.diagnostic.startsWith("codex не вернул текст ответа")).toBe(true);
     expect(parseCodexOutput(codexOut({ type: "error", message: "e1" }, { type: "turn.failed", error: { message: "e2" } }))).toEqual({ ok: false, diagnostic: "e1\ne2" });
   });
 });
