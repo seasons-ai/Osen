@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="../mockup-osen/brand/components-osen.css">
   <link rel="stylesheet" href="screens/session.css">
 </head>
-<body data-screen="session" data-nav="new" data-variants="live:Идёт обсуждение;agreed:Согласие достигнуто;max:Восемь участников;diff:Сравнение версий;owner:Реплика владельца;owner-question:Вопрос владельцу;owner-answer-sent:Ответ отправлен;wait:Ждём владельца;wait-error:Отказ продолжения;wait-expired:Срок ожидания истёк;owner-readonly:Завершённая с репликами;resumed:Продолжено;replaced:Замена участника;cap:Расход и потолок;cap-stopped:Остановлена потолком;drafts:Независимые черновики;drafts-done:Черновики приняты;drafts-failed:Сбой синтезатора;newer-version:Нужна новая версия;corrupted:Журнал повреждён">
+<body data-screen="session" data-nav="new" data-variants="live:Идёт обсуждение;agreed:Согласие достигнуто;max:Восемь участников;diff:Сравнение версий;owner:Реплика владельца;owner-question:Вопрос владельцу;owner-answer-sent:Ответ отправлен;wait:Ждём владельца;wait-error:Отказ продолжения;wait-expired:Срок ожидания истёк;owner-readonly:Завершённая с репликами;finished-draft:Завершено с черновиком;resumed:Продолжено;replaced:Замена участника;cap:Расход и потолок;cap-stopped:Остановлена потолком;drafts:Независимые черновики;drafts-done:Черновики приняты;drafts-failed:Сбой синтезатора;newer-version:Нужна новая версия;corrupted:Журнал повреждён">
   <div class="app">
     <nav class="rail" data-rail></nav>
     <div class="main">
@@ -16,17 +16,17 @@
         <div class="session-titlebar">
           <h1 class="topbar__title">Цена и тарифы</h1>
           <span class="badge" data-tone="accent" data-variant="live resumed max diff owner owner-question owner-answer-sent wait wait-error wait-expired cap drafts drafts-done replaced"><span class="dots"><i></i></span> идёт</span>
-          <span class="badge" data-tone="info" data-variant="agreed owner-readonly"><svg class="icon icon--sm"><use href="#i-check"></use></svg> согласие достигнуто</span>
+          <span class="badge" data-tone="info" data-variant="agreed owner-readonly finished-draft"><svg class="icon icon--sm"><use href="#i-check"></use></svg> согласие достигнуто</span>
           <span class="badge" data-tone="warn" data-variant="newer-version"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> нужна новая версия</span>
           <span class="badge" data-tone="warn" data-variant="corrupted"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> журнал повреждён</span>
           <span class="badge" data-tone="danger" data-variant="drafts-failed"><svg class="icon icon--sm"><use href="#i-x"></use></svg> сбой</span>
           <span class="badge" data-tone="warn" data-variant="cap-stopped"><svg class="icon icon--sm"><use href="#i-coins"></use></svg> остановлена · потолок токенов</span>
         </div>
         <div class="topbar__actions">
-          <span class="session-counter mono"><span data-variant="live resumed replaced agreed diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly cap cap-stopped newer-version corrupted">круг 3 из 4 · 9 ходов · 31.2k tok</span><span data-variant="max">круг 2 из 4 · 16 ходов · 48.0k tok</span><span data-variant="drafts-done">круг 1 из 4 · 3 хода · 9.4k tok</span><span data-variant="drafts drafts-failed">черновики · 0 ходов · 4.1k tok</span></span>
+          <span class="session-counter mono"><span data-variant="live resumed replaced agreed diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly cap cap-stopped newer-version corrupted finished-draft">круг 3 из 4 · 9 ходов · 31.2k tok</span><span data-variant="max">круг 2 из 4 · 16 ходов · 48.0k tok</span><span data-variant="drafts-done">круг 1 из 4 · 3 хода · 9.4k tok</span><span data-variant="drafts drafts-failed">черновики · 0 ходов · 4.1k tok</span></span>
           <button type="button" class="btn" disabled title="итог появится после завершения" data-variant="live resumed max diff owner owner-question owner-answer-sent wait wait-error wait-expired cap drafts drafts-done replaced newer-version corrupted">К итогу</button>
           <span data-variant="live resumed max diff owner owner-question owner-answer-sent wait wait-error wait-expired cap drafts drafts-done replaced newer-version corrupted"><a class="btn btn--danger" href="result.html#stopped"><svg class="icon icon--sm"><use href="#i-stop"></use></svg> Остановить</a></span>
-          <a class="btn btn--primary" data-variant="agreed owner-readonly" href="result.html#consensus">К итогу <svg class="icon icon--sm"><use href="#i-chevron-right"></use></svg></a>
+          <a class="btn btn--primary" data-variant="agreed owner-readonly finished-draft" href="result.html#consensus">К итогу <svg class="icon icon--sm"><use href="#i-chevron-right"></use></svg></a>
           <a class="btn btn--primary" data-variant="drafts-failed" href="result.html#failed">К итогу <svg class="icon icon--sm"><use href="#i-chevron-right"></use></svg></a>
           <a class="btn btn--primary" data-variant="cap-stopped" href="result.html#cap-stopped">К итогу <svg class="icon icon--sm"><use href="#i-chevron-right"></use></svg></a>
         </div>
@@ -60,7 +60,7 @@
     <div class="participant session-p" data-p="3"><span class="avatar avatar--sm">3</span><div><div class="participant__name">OpenRouter <span class="tag">llama-3.3-70b</span></div><div class="participant__meta">Финансист</div><div class="session-p__state"><span class="badge" data-tone="muted"><svg class="icon icon--sm"><use href="#i-clock"></use></svg> ждёт хода</span></div></div></div>
     <div class="participant session-p participant--off" data-p="4"><span class="avatar avatar--off" data-p="4">4</span><div><div class="participant__name">Локальный <span class="tag">qwen3</span></div><div class="participant__meta">без роли</div><div class="session-p__state"><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-user-off"></use></svg> выбыл</span><span class="muted session-p__reason">таймаут ответа, повтор не помог</span></div></div></div>
   </div>
-  <div class="session-people scroll-y" data-variant="agreed owner-readonly">
+  <div class="session-people scroll-y" data-variant="agreed owner-readonly finished-draft">
     <div class="participant session-p" data-p="1"><span class="avatar" data-p="1" data-tone="info">1</span><div><div class="participant__name">Claude Code <span class="tag">sonnet</span></div><div class="participant__meta">Защитник высокой цены</div><div class="session-p__state"><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> согласен</span></div></div></div>
     <div class="participant session-p" data-p="2"><span class="avatar" data-p="2" data-tone="info">2</span><div><div class="participant__name">Codex <span class="tag">gpt-5.6-luna</span></div><div class="participant__meta">Сторонник низкого входа</div><div class="session-p__state"><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> согласен</span></div></div></div>
     <div class="participant session-p" data-p="3"><span class="avatar" data-p="3" data-tone="info">3</span><div><div class="participant__name">OpenRouter <span class="tag">llama-3.3-70b</span></div><div class="participant__meta">Финансист</div><div class="session-p__state"><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> согласен</span></div></div></div>
@@ -104,7 +104,7 @@
     <div class="session-meter__line"><svg class="icon icon--sm"><use href="#i-info"></use></svg> согласие сброшено репликой владельца</div>
     <details class="disclosure session-materials"><summary>материалы: <span class="mono">3</span></summary><ul class="disclosure__list"><li><span class="mono">topic.txt</span><span class="muted">420 знаков</span></li><li><span class="mono">folder/a.txt</span><span class="muted">1240 знаков</span></li><li><span class="mono">folder/sub/b.txt</span><span class="muted">16760 знаков</span></li></ul></details>
   </div>
-  <div class="session-meter" data-variant="agreed owner-readonly">
+  <div class="session-meter" data-variant="agreed owner-readonly finished-draft">
     <div class="meter" data-tone="info" style="--value:100%"><span class="meter__label"><span>согласны</span><span class="mono session-meter__count">3 из 3</span></span><span class="meter__fill"></span></div>
     <div class="session-meter__line">открытых вопросов: <span class="mono">0</span></div>
     <details class="disclosure session-materials"><summary>материалы: <span class="mono">3</span></summary><ul class="disclosure__list"><li><span class="mono">topic.txt</span><span class="muted">420 знаков</span></li><li><span class="mono">folder/a.txt</span><span class="muted">1240 знаков</span></li><li><span class="mono">folder/sub/b.txt</span><span class="muted">16760 знаков</span></li></ul></details>
@@ -150,7 +150,7 @@
   <div class="alert feed-dropped" data-tone="warn" role="status" data-variant="resumed"><svg class="icon"><use href="#i-info"></use></svg><div class="alert__text"><strong>Удалён 1 запрос реплики</strong><ul class="feed-dropped__list"><li>уточнение: экспорт идёт в 03:00</li></ul><span class="muted">Реплика не была применена до продолжения. Отправьте её заново.</span></div><button type="button" class="btn btn--ghost btn--sm feed-dropped__close" aria-label="Закрыть сообщение"><svg class="icon icon--sm"><use href="#i-x"></use></svg></button></div>
   <div class="alert" data-tone="warn" role="status" data-variant="newer-version"><svg class="icon"><use href="#i-alert"></use></svg><div class="alert__text">Сессия записана более новой версией приложения. Показано начало журнала до события №42. Обновите приложение, чтобы увидеть её целиком.</div></div>
   <div class="alert" data-tone="warn" role="status" data-variant="corrupted"><svg class="icon"><use href="#i-alert"></use></svg><div class="alert__text">Журнал повреждён: показано начало до события №17</div></div>
-  <div class="session-feed scroll-y" data-variant="live agreed max diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly resumed cap cap-stopped replaced newer-version corrupted">
+  <div class="session-feed scroll-y" data-variant="live agreed max diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly resumed cap cap-stopped replaced newer-version corrupted finished-draft">
     <div class="session-round">круг 1</div>
     <article class="session-turn" data-p="1">
       <header class="session-turn__head"><span class="avatar avatar--sm">1</span><span class="session-turn__name">Claude Code</span><span class="mono muted">ход 1</span><span class="badge" data-tone="muted"><svg class="icon icon--sm"><use href="#i-edit"></use></svg> правит</span><span class="chip mono">версия 1</span></header>
@@ -160,7 +160,7 @@
     <article class="session-turn" data-p="2">
       <header class="session-turn__head"><span class="avatar avatar--sm">2</span><span class="session-turn__name">Codex</span><span class="mono muted">ход 2</span><span class="badge" data-tone="danger"><svg class="icon icon--sm"><use href="#i-x"></use></svg> возражает</span><span data-variant="owner-question owner-answer-sent wait wait-error wait-expired"><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-question"></use></svg> вопрос владельцу · q1</span></span></header>
       <p class="session-turn__text">Один тариф для отдела на 5 и на 20 человек — это либо переплата для малых, либо убыток на больших. Низкий вход нужен, чтобы первые клиенты вообще согласились попробовать.</p>
-      <div data-variant="live resumed agreed max diff owner owner-readonly cap cap-stopped replaced newer-version corrupted"><div class="session-question"><div class="session-question__head"><span class="mono">вопрос q1 →</span><span class="session-who"><span class="avatar avatar--sm">3</span> OpenRouter</span><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> отвечен</span></div><p class="session-question__text">Какова себестоимость на клиента при 40 часах записей в месяц?</p></div></div><div data-variant="owner-question owner-answer-sent wait wait-error wait-expired"><div class="session-question"><div class="session-question__head"><span class="mono">вопрос q1 →</span><span class="session-who session-owner__who"><span class="avatar avatar--sm session-owner__avatar"><svg class="icon icon--sm"><use href="#i-key"></use></svg></span> Владелец</span><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> отвечен</span></div><p class="session-question__text">Какова себестоимость на клиента при 40 часах записей в месяц?</p></div></div>
+      <div data-variant="live resumed agreed max diff owner owner-readonly cap cap-stopped replaced newer-version corrupted finished-draft"><div class="session-question"><div class="session-question__head"><span class="mono">вопрос q1 →</span><span class="session-who"><span class="avatar avatar--sm">3</span> OpenRouter</span><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> отвечен</span></div><p class="session-question__text">Какова себестоимость на клиента при 40 часах записей в месяц?</p></div></div><div data-variant="owner-question owner-answer-sent wait wait-error wait-expired"><div class="session-question"><div class="session-question__head"><span class="mono">вопрос q1 →</span><span class="session-who session-owner__who"><span class="avatar avatar--sm session-owner__avatar"><svg class="icon icon--sm"><use href="#i-key"></use></svg></span> Владелец</span><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> отвечен</span></div><p class="session-question__text">Какова себестоимость на клиента при 40 часах записей в месяц?</p></div></div>
     </article>
     <article class="session-turn session-owner" data-variant="owner-question owner-answer-sent wait wait-error wait-expired">
       <header class="session-turn__head"><span class="avatar avatar--sm session-owner__avatar"><svg class="icon icon--sm"><use href="#i-key"></use></svg></span><span class="session-turn__name">Владелец</span><span class="mono muted">o1</span></header>
@@ -168,7 +168,7 @@
     </article>
     <article class="session-turn" data-p="3">
       <header class="session-turn__head"><span class="avatar avatar--sm">3</span><span class="session-turn__name">OpenRouter</span><span class="mono muted">ход 3</span><span class="badge" data-tone="muted"><svg class="icon icon--sm"><use href="#i-edit"></use></svg> правит</span><span class="chip mono">версия 2</span></header>
-      <div data-variant="live resumed agreed max diff owner owner-readonly cap cap-stopped replaced newer-version corrupted"><div class="session-answer"><div class="session-quote"><span class="mono">ответ на q1</span><span class="session-who"><span class="avatar avatar--sm">2</span> Codex</span><span>Какова себестоимость на клиента при 40 часах записей в месяц?</span></div><p class="session-answer__text">≈ 1 840 ₽: 1 600 ₽ расшифровка + 15 % поддержка и хостинг.</div></div>
+      <div data-variant="live resumed agreed max diff owner owner-readonly cap cap-stopped replaced newer-version corrupted finished-draft"><div class="session-answer"><div class="session-quote"><span class="mono">ответ на q1</span><span class="session-who"><span class="avatar avatar--sm">2</span> Codex</span><span>Какова себестоимость на клиента при 40 часах записей в месяц?</span></div><p class="session-answer__text">≈ 1 840 ₽: 1 600 ₽ расшифровка + 15 % поддержка и хостинг.</div></div>
       <p class="session-turn__text">При таких затратах 1 490 ₽ дают убыток 350 ₽ на клиента. Предлагаю два тарифа: «Старт» 990 ₽ до 15 часов и «Отдел» 2 490 ₽ до 60 часов.</p>
       <div data-variant="replaced"><div class="session-question"><div class="session-question__head"><span class="mono">вопрос q2 →</span><span class="session-who"><span class="avatar avatar--sm">2</span> Codex</span><span class="badge" data-tone="muted"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> закрыт: участник заменён</span></div><p class="session-question__text">Чем подтверждается, что предоплату второго месяца внесут?</p></div></div>
     </article>
@@ -182,13 +182,13 @@
       <header class="session-turn__head"><span class="avatar avatar--sm session-owner__avatar"><svg class="icon icon--sm"><use href="#i-key"></use></svg></span><span class="session-turn__name">Владелец</span><span class="mono muted">o1</span></header>
       <p class="session-turn__text">Бесплатный тариф не предлагаем, считайте только платные варианты.</p>
     </article>
-    <div class="session-tail" data-variant="live resumed agreed diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly cap cap-stopped replaced newer-version corrupted">
+    <div class="session-tail" data-variant="live resumed agreed diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly cap cap-stopped replaced newer-version corrupted finished-draft">
     <div class="session-round">круг 2</div>
     <article class="session-turn" data-p="1">
       <header class="session-turn__head"><span class="avatar avatar--sm">1</span><span class="session-turn__name">Claude Code</span><span class="mono muted">ход 5</span><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> согласен</span></header>
       <p class="session-turn__text">Версия 2 снимает мой главный страх — продажу ниже себестоимости. «Отдел» за 2 490 ₽ остаётся ценой с запасом, согласен.</p>
     </article>
-    <article class="session-turn" data-p="2" data-variant="live agreed max diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly resumed cap cap-stopped newer-version corrupted">
+    <article class="session-turn" data-p="2" data-variant="live agreed max diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly resumed cap cap-stopped newer-version corrupted finished-draft">
       <header class="session-turn__head"><span class="avatar avatar--sm">2</span><span class="session-turn__name">Codex</span><span class="mono muted">ход 6</span><span class="badge" data-tone="muted"><svg class="icon icon--sm"><use href="#i-edit"></use></svg> правит</span><span class="chip mono">версия 3</span></header>
       <p class="session-turn__text">Добавляю пилот: первый месяц за 1 ₽ в обмен на предоплату второго. Так низкий вход не бьёт по марже, а мы быстро узнаём, кто готов платить.</p>
     </article>
@@ -200,7 +200,7 @@
       <header class="session-turn__head"><span class="avatar avatar--sm">3</span><span class="session-turn__name">OpenRouter</span><span class="mono muted">ход 7</span><span class="badge" data-tone="danger"><svg class="icon icon--sm"><use href="#i-x"></use></svg> возражает</span><span data-variant="owner-question owner-answer-sent wait wait-error wait-expired owner-readonly"><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-question"></use></svg> вопрос владельцу · q2</span></span></header>
       <p class="session-turn__text">Пилот за 1 ₽ — это 1 839 ₽ убытка на каждом клиенте, который не продлит. Нужен способ отсечь тех, кто не заплатит.</p>
       <div data-variant="live resumed max diff owner cap cap-stopped newer-version corrupted"><div class="session-question"><div class="session-question__head"><span class="mono">вопрос q2 →</span><span class="session-who"><span class="avatar avatar--sm">2</span> Codex</span><span class="badge" data-tone="warn"><svg class="icon icon--sm"><use href="#i-clock"></use></svg> ждёт ответа</span></div><p class="session-question__text">Чем подтверждается, что предоплату второго месяца внесут?</p></div></div>
-      <div data-variant="agreed"><div class="session-question"><div class="session-question__head"><span class="mono">вопрос q2 →</span><span class="session-who"><span class="avatar avatar--sm">2</span> Codex</span><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> отвечен</span></div><p class="session-question__text">Чем подтверждается, что предоплату второго месяца внесут?</p></div></div>
+      <div data-variant="agreed finished-draft"><div class="session-question"><div class="session-question__head"><span class="mono">вопрос q2 →</span><span class="session-who"><span class="avatar avatar--sm">2</span> Codex</span><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> отвечен</span></div><p class="session-question__text">Чем подтверждается, что предоплату второго месяца внесут?</p></div></div>
       <div data-variant="owner-question owner-answer-sent wait wait-error wait-expired"><div class="session-question"><div class="session-question__head"><span class="mono">вопрос q2 →</span><span class="session-who session-owner__who"><span class="avatar avatar--sm session-owner__avatar"><svg class="icon icon--sm"><use href="#i-key"></use></svg></span> Владелец</span><span class="badge" data-tone="muted"><svg class="icon icon--sm"><use href="#i-alert"></use></svg> закрыт без ответа</span></div><p class="session-question__text">Чем подтверждается, что предоплату второго месяца внесут?</p></div></div>
       <div data-variant="owner-readonly"><div class="session-question"><div class="session-question__head"><span class="mono">вопрос q2 →</span><span class="session-who session-owner__who"><span class="avatar avatar--sm session-owner__avatar"><svg class="icon icon--sm"><use href="#i-key"></use></svg></span> Владелец</span><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> отвечен</span></div><p class="session-question__text">Чем подтверждается, что предоплату второго месяца внесут?</p></div></div>
     </article>
@@ -233,10 +233,10 @@
       <span class="muted">текст хода приходит по мере ответа</span>
     </article>
     </div>
-    <div class="session-tail" data-variant="agreed owner-readonly">
+    <div class="session-tail" data-variant="agreed owner-readonly finished-draft">
     <article class="session-turn" data-p="2">
       <header class="session-turn__head"><span class="avatar avatar--sm">2</span><span class="session-turn__name">Codex</span><span class="mono muted">ход 10</span><span class="badge" data-tone="info"><svg class="icon icon--sm"><use href="#i-check"></use></svg> согласен</span></header>
-      <div data-variant="agreed"><div class="session-answer"><div class="session-quote"><span class="mono">ответ на q2</span><span class="session-who"><span class="avatar avatar--sm">3</span> OpenRouter</span><span>Чем подтверждается, что предоплату второго месяца внесут?</span></div><p class="session-answer__text">Пилот предлагаем только тем, кто вносит предоплату второго месяца до старта — это и есть подтверждение.</div></div>
+      <div data-variant="agreed finished-draft"><div class="session-answer"><div class="session-quote"><span class="mono">ответ на q2</span><span class="session-who"><span class="avatar avatar--sm">3</span> OpenRouter</span><span>Чем подтверждается, что предоплату второго месяца внесут?</span></div><p class="session-answer__text">Пилот предлагаем только тем, кто вносит предоплату второго месяца до старта — это и есть подтверждение.</div></div>
       <p class="session-turn__text" data-variant="owner-readonly">Принимаю ответ владельца: пилот только для тех, кто внёс предоплату второго месяца.</p>
     </article>
     <article class="session-turn" data-p="3">
@@ -432,10 +432,23 @@
       </div>
     </form>
   </div>
+  <div class="session-owner-box" data-variant="finished-draft">
+    <div class="session-composer" data-state="finished-draft">
+      <label class="field">
+        <span class="field__label">Черновик реплики</span>
+        <textarea class="textarea" rows="2">Ещё учтите бюджет: на пилот не больше 150 тысяч.</textarea>
+      </label>
+      <div class="session-composer__row">
+        <span class="field__hint">Сессия завершилась, пока вы писали. Текст сохранён.</span>
+        <button type="button" class="btn btn--sm">Скопировать текст</button>
+        <button type="button" class="btn btn--ghost btn--sm">Удалить черновик</button>
+      </div>
+    </div>
+  </div>
   <div class="session-owner-box" data-variant="owner-readonly cap-stopped"><p class="session-composer__closed muted"><svg class="icon icon--sm"><use href="#i-info"></use></svg> Сессия завершена: реплики и ответы не принимаются</p></div>
   </section>
 
-  <section class="session-col" aria-label="Панель решения" data-tabs data-variant="live agreed max diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly resumed cap cap-stopped replaced newer-version corrupted">
+  <section class="session-col" aria-label="Панель решения" data-tabs data-variant="live agreed max diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly resumed cap cap-stopped replaced newer-version corrupted finished-draft">
   <div class="session-col__head session-col__head--solution"><span class="eyebrow">Решение</span>
     <div class="tabs solution-tabs" role="tablist"><button type="button" class="tab mono" role="tab" data-tab="v1" aria-selected="false">v1</button><button type="button" class="tab mono" role="tab" data-tab="v2" aria-selected="false">v2</button><button type="button" class="tab mono" role="tab" data-tab="v3" aria-selected="true">v3</button></div>
   </div>
@@ -447,7 +460,7 @@
   <div class="session-panel" data-panel="v3">
     <div class="session-meta">
       <div class="session-meta__version mono">версия 3 · текущая</div>
-      <div class="session-meta__row" data-variant="live agreed max diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly resumed cap cap-stopped drafts drafts-done drafts-failed newer-version corrupted"><span class="session-meta__label">автор</span><span class="session-who" data-p="2"><span class="avatar avatar--sm">2</span> Codex (gpt-5.6-luna)</span></div>
+      <div class="session-meta__row" data-variant="live agreed max diff owner owner-question owner-answer-sent wait wait-error wait-expired owner-readonly resumed cap cap-stopped drafts drafts-done drafts-failed newer-version corrupted finished-draft"><span class="session-meta__label">автор</span><span class="session-who" data-p="2"><span class="avatar avatar--sm">2</span> Codex (gpt-5.6-luna)</span></div>
       <div class="session-meta__row" data-variant="replaced"><span class="session-meta__label">автор</span><span class="session-who" data-p="5"><span class="avatar avatar--sm">5</span> Codex (gpt-5.6-terra)</span></div>
       <div class="session-meta__row" data-view="diff"><strong class="muted">Изменения: версия 3 против 2</strong></div>
       <div class="session-meta__row" data-view="diff"><span class="diff-count" data-tone="ok">Добавлено слов: 114</span><span class="diff-count" data-tone="danger">Убрано слов: 31</span></div>
@@ -455,7 +468,7 @@
       <div class="session-meta__row" data-variant="live resumed diff owner-question owner-answer-sent wait wait-error wait-expired cap cap-stopped newer-version corrupted"><span class="session-meta__label">согласны</span><span class="session-votes" data-tone="info"><span class="avatar avatar--sm" data-tone="info" title="Codex (gpt-5.6-luna)">2</span><span class="avatar avatar--sm" data-tone="info" title="Claude Code (sonnet)">1</span><span class="session-votes__mark" aria-hidden="true">✓</span></span></div>
       <div class="session-meta__row" data-variant="replaced"><span class="session-meta__label">согласны</span><span class="muted">никто</span></div>
       <div class="session-meta__row" data-variant="max"><span class="session-meta__label">согласны</span><span class="session-votes" data-tone="info"><span class="avatar avatar--sm" data-tone="info" title="Codex (gpt-5.6-luna)">2</span><span class="avatar avatar--sm" data-tone="info" title="Claude Code (haiku)">5</span><span class="session-votes__mark" aria-hidden="true">✓</span></span></div>
-      <div class="session-meta__row" data-variant="agreed owner-readonly"><span class="session-meta__label">согласны</span><span class="session-votes" data-tone="info"><span class="avatar avatar--sm" data-tone="info" title="Claude Code (sonnet)">1</span><span class="avatar avatar--sm" data-tone="info" title="Codex (gpt-5.6-luna)">2</span><span class="avatar avatar--sm" data-tone="info" title="OpenRouter (llama-3.3-70b)">3</span><span class="session-votes__mark" aria-hidden="true">✓</span></span></div>
+      <div class="session-meta__row" data-variant="agreed owner-readonly finished-draft"><span class="session-meta__label">согласны</span><span class="session-votes" data-tone="info"><span class="avatar avatar--sm" data-tone="info" title="Claude Code (sonnet)">1</span><span class="avatar avatar--sm" data-tone="info" title="Codex (gpt-5.6-luna)">2</span><span class="avatar avatar--sm" data-tone="info" title="OpenRouter (llama-3.3-70b)">3</span><span class="session-votes__mark" aria-hidden="true">✓</span></span></div>
       <div class="session-meta__row" data-variant="live resumed max diff owner-question owner-answer-sent wait wait-error wait-expired cap cap-stopped newer-version corrupted"><span class="session-meta__label">возражает</span><span class="session-votes" data-tone="danger"><span class="avatar avatar--sm" data-tone="danger" title="OpenRouter (llama-3.3-70b)">3</span><span class="session-votes__mark" aria-hidden="true">×</span></span></div>
     </div>
     <ol class="prose session-view__text solution-list" data-view="clean">

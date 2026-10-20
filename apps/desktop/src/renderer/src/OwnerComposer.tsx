@@ -87,6 +87,7 @@ export function OwnerComposer({ id, state, onSent, textRef, pending = [], partia
     void sendOwner((i, t, a) => window.council.sendOwnerMessage(i, t, a), id, text, answerTo).then((r) => {
       setSending(false);
       if (!r.ok) return setError(r.error);
+      saveDraft(id, null); // the composer may already be unmounted by the finish: the sent text must not stay as a draft
       setText(""); setAnswerTo(null); setError(null);
       onSent({ requestId: r.requestId, ...sent });
     });
@@ -96,5 +97,56 @@ export function OwnerComposer({ id, state, onSent, textRef, pending = [], partia
       session={state.session} questions={openOwnerQuestions(state).filter((q) => !pending.some((r) => r.answerTo === q.id))} text={text} answerTo={answerTo} error={error} sending={sending} blocked={blocked} textRef={textRef}
       onText={setText} onAnswer={setAnswerTo} onCancelAnswer={() => setAnswerTo(null)} onSubmit={submit}
     />
+  );
+}
+
+export const hasOwnerDraft = (id: string): boolean => (drafts.get(id)?.text.trim() ?? "") !== "";
+export const readDraft = (id: string): { text: string; answerTo: string | null } | null => drafts.get(id) ?? null;
+/** Edits in the field of a finished session: only the text, the answer binding is gone. */
+export const saveFinishedText = (id: string, text: string): void => saveDraft(id, { text, answerTo: null });
+export const deleteFinishedDraft = (id: string): void => saveDraft(id, null);
+
+export function copyDraft(copy: (text: string) => Promise<unknown>, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  return copy(text).then(
+    () => ({ ok: true as const }),
+    (e: unknown) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }),
+  );
+}
+
+export function FinishedDraftView({ text, copied, error, onText, onCopy, onDelete }: {
+  text: string; copied: boolean; error: string | null; onText(text: string): void; onCopy(): void; onDelete(): void;
+}): ReactNode {
+  const t = useMessages(panels);
+  return (
+    <div className="session-owner-box">
+      <div className="session-composer" data-state="finished-draft">
+        <label className="field">
+          <span className="field__label">{t.draftLabel}</span>
+          <textarea className="textarea" rows={2} value={text} onChange={(e) => onText(e.target.value)} />
+        </label>
+        <div className="session-composer__row">
+          <span className="field__hint">{t.draftSaved}</span>
+          <button type="button" className="btn btn--sm" onClick={onCopy}>{t.copyDraft}</button>
+          <button type="button" className="btn btn--ghost btn--sm" onClick={onDelete}>{t.deleteDraft}</button>
+        </div>
+        {copied && <div className="field__hint" role="status" data-tone="ok">{t.draftCopied}</div>}
+        {error !== null && <div className="session-composer__error" data-tone="danger" role="alert"><Icon name="i-alert" size="sm" /> {error}</div>}
+      </div>
+    </div>
+  );
+}
+
+/** The unfinished message under the feed of a finished session: kept in the window, no sending. After deleting it shows `fallback`. */
+export function FinishedDraft({ id, fallback }: { id: string; fallback: ReactNode }): ReactNode {
+  const [text, setText] = useState(() => { const t = drafts.get(id)?.text ?? ""; saveFinishedText(id, t); return t; });
+  const [deleted, setDeleted] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (deleted) return fallback;
+  return (
+    <FinishedDraftView text={text} copied={copied} error={error}
+      onText={(v) => { setText(v); saveFinishedText(id, v); setCopied(false); }}
+      onCopy={() => void copyDraft((v) => window.council.copyText(v), text).then((r) => { setCopied(r.ok); setError(r.ok ? null : r.error); })}
+      onDelete={() => { deleteFinishedDraft(id); setDeleted(true); }} />
   );
 }

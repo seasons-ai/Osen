@@ -102,6 +102,7 @@
 .session-composer .textarea{min-height:0;max-width:100%;resize:vertical}
 .session-composer__row{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:var(--sp-2)}
 .session-composer__row .field__hint{flex:1 1 12rem;min-width:0}
+.session-composer[data-state="finished-draft"] .session-composer__row .field__hint{flex-basis:100%}
 .session-composer__error{display:flex;align-items:flex-start;gap:var(--sp-2);color:var(--c);font-size:var(--fs-sm)}
 .session-composer__error > .icon{margin-top:calc(var(--sp-1) / 2)}
 .session-composer__closed{display:flex;align-items:center;gap:var(--sp-2);margin:0;font-size:var(--fs-sm)}
