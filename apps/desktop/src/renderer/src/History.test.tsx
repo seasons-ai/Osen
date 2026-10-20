@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { parseFragment, type DefaultTreeAdapterMap } from "parse5";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StoredStatus } from "@model-council/core";
 import type { HistoryItem } from "../../shared/bridge.ts";
@@ -19,7 +20,19 @@ const html = (sessions: HistoryItem[] | null, filter: HistoryFilter = ALL, busy:
   renderToStaticMarkup(<HistoryView sessions={sessions} filter={filter} busy={new Set(busy)} onFilter={() => {}} onOpen={() => {}} onPin={() => {}} onNew={() => {}} usage={usage} />);
 const row = (o?: Partial<HistoryItem>) => html([item(o)]);
 // Summary text without markup: numbers wrapped in .mono, part «running now» in .history-summary__live (change 92).
-const summaryText = (h: string) => `>${(h.match(/<p class="muted history-summary">(.*?)<\/p>/)?.[1] ?? "").replace(/<[^>]+>/g, "")}<`;
+// Parsed with parse5 (change 155): exactly one <p class="… history-summary …">, all descendant text nodes, entities decoded.
+type P5Node = DefaultTreeAdapterMap["node"];
+const summaryText = (h: string): string => {
+  const found: P5Node[] = [];
+  const walk = (n: P5Node): void => {
+    if ("tagName" in n && n.tagName === "p" && n.attrs.some((a) => a.name === "class" && a.value.split(/\s+/).includes("history-summary"))) found.push(n);
+    if ("childNodes" in n) n.childNodes.forEach(walk);
+  };
+  walk(parseFragment(h));
+  if (found.length !== 1) throw new Error(`expected one p.history-summary, found ${found.length}`);
+  const text = (n: P5Node): string => (n.nodeName === "#text" ? (n as DefaultTreeAdapterMap["textNode"]).value : "childNodes" in n ? n.childNodes.map(text).join("") : "");
+  return text(found[0]!);
+};
 
 describe("History", () => {
   it.each([
@@ -76,11 +89,11 @@ describe("History", () => {
 
   it("summary row", () => {
     const many = (n: number, status: StoredStatus = "consensus") => Array.from({ length: n }, (_, i) => item({ id: String(i), status }));
-    expect(summaryText(html(many(1)))).toBe(">1 сессия<");
-    expect(summaryText(html(many(2)))).toBe(">2 сессии<");
-    expect(summaryText(html(many(5)))).toBe(">5 сессий<");
-    expect(summaryText(html([...many(6), item({ id: "r", status: "running" })]))).toBe(">7 сессий · 1 идёт сейчас<");
-    expect(summaryText(html([item({ id: "r1", status: "running" }), item({ id: "r2", status: "running" })]))).toBe(">2 сессии · 2 идут сейчас<");
+    expect(summaryText(html(many(1)))).toBe("1 сессия");
+    expect(summaryText(html(many(2)))).toBe("2 сессии");
+    expect(summaryText(html(many(5)))).toBe("5 сессий");
+    expect(summaryText(html([...many(6), item({ id: "r", status: "running" })]))).toBe("7 сессий · 1 идёт сейчас");
+    expect(summaryText(html([item({ id: "r1", status: "running" }), item({ id: "r2", status: "running" })]))).toBe("2 сессии · 2 идут сейчас");
   });
 
   it("size", () => {
@@ -107,6 +120,25 @@ describe("History", () => {
   it("no delete and no edit", () => {
     const h = row();
     for (const x of ["Удалить", "Изменить", "i-trash"]) expect(h).not.toContain(x);
+  });
+});
+
+describe("History summary counts, filters and language", () => {
+  const p = (inner: string) => `<p class="muted history-summary">${inner}</p>`;
+  it("projection keeps nested .mono and .history-summary__live text, decodes entities, skips comments", () => {
+    expect(summaryText(p('<span class="mono">7</span><!-- --> сессий · <span class="history-summary__live"><span class="mono">1</span> идёт сейчас</span>'))).toBe("7 сессий · 1 идёт сейчас");
+    expect(summaryText(p("a &amp; b &lt;b&gt;x&lt;/b&gt; &quot;q&quot;"))).toBe('a & b <b>x</b> "q"');
+    expect(summaryText(p(""))).toBe("");
+  });
+  it("projection rejects an absent, duplicate or wrong summary element", () => {
+    expect(() => summaryText("<div></div>")).toThrow("found 0");
+    expect(() => summaryText(p("1") + p("2"))).toThrow("found 2");
+    expect(() => summaryText('<div class="history-summary">1</div><p class="history-summary-x">2</p>')).toThrow("found 0");
+    expect(summaryText(`<p class="muted">no</p>${p("yes")}`)).toBe("yes");
+  });
+  it("recorded text that looks like markup stays text and does not create a second summary", () => {
+    const h = html([item({ topic: '<p class="muted history-summary">x</p>' })]);
+    expect(summaryText(h)).toBe("1 сессия");
   });
 });
 
@@ -242,7 +274,7 @@ describe("HistoryView: groups and states", () => {
     expect(h).toContain("По запросу «нет такого» ничего нет");
     expect(h).toContain("history-tools");
     expect(h).not.toContain("Обсуждений пока нет");
-    expect(summaryText(h)).toBe(">найдено 0 из 6 сессий<");
+    expect(summaryText(h)).toBe("найдено 0 из 6 сессий");
     expect(html(S, q("импорт", "failed"))).toContain("По запросу «импорт» среди сессий со статусом «сбой» ничего нет");
   });
   it("empty history: no filter panel and no «Nothing found»", () => {
@@ -415,10 +447,10 @@ describe("History: language en", () => {
     expect(h).not.toMatch(/[А-Яа-я]/);
   });
   it("number forms", () => {
-    expect(summaryText(he(many(1)))).toBe(">1 session<");
-    expect(summaryText(he(many(2)))).toBe(">2 sessions<");
-    expect(summaryText(he(many(2), { query: "Тема", status: "all" }))).toBe(">Found 2 of 2 sessions<");
-    expect(summaryText(he(many(1), { query: "Тема", status: "all" }))).toBe(">Found 1 of 1 session<");
+    expect(summaryText(he(many(1)))).toBe("1 session");
+    expect(summaryText(he(many(2)))).toBe("2 sessions");
+    expect(summaryText(he(many(2), { query: "Тема", status: "all" }))).toBe("Found 2 of 2 sessions");
+    expect(summaryText(he(many(1), { query: "Тема", status: "all" }))).toBe("Found 1 of 1 session");
   });
   it("incomplete accounting and the empty state", () => {
     expect(he([item({ status: "stopped", tokenCapStop: true, tokensIncomplete: true })])).toContain("usage incomplete");
@@ -461,8 +493,8 @@ describe("History: language en", () => {
       expect(h).toContain('value="Тема"');
       expect(h).toMatch(/aria-checked="true"[^>]*>(<svg.*?<\/svg>)?(consensus|согласие)</);
     }
-    expect(summaryText(view("en"))).toBe(">Found 1 of 1 session<");
-    expect(summaryText(view("ru"))).toBe(">найдена 1 из 1 сессии<");
+    expect(summaryText(view("en"))).toBe("Found 1 of 1 session");
+    expect(summaryText(view("ru"))).toBe("найдена 1 из 1 сессии");
   });
 });
 
