@@ -73,6 +73,19 @@ describe("inspectProvider cli", () => {
       await inspectProvider(codex, { env: env(), deps: { ...noModels, locate: pinLoc("codex", true), readHelp } });
       expect(seen[0]?.CODEX_HOME).toBe("/cfg");
     });
+    it("status.source carries the location source for explicit / pin / path", async () => {
+      fakeClaude();
+      for (const source of ["explicit", "pin", "path"] as const) {
+        const locate = async (): Promise<CliLocation> => ({ agent: "claude", found: true, path: join(dir, "claude"), searchPath: dir, version: "2.1.288", source, ...(source === "pin" ? { pin: { version: "x", configDir: "/cfg" } } : {}) });
+        const r = await inspectProvider(claude, { env: env(), deps: { ...noModels, locate } });
+        expect(r.status.source).toBe(source);
+      }
+    });
+    it("status.source stays unset when the location has no source", async () => {
+      fakeClaude();
+      const locate = async (): Promise<CliLocation> => ({ agent: "claude", found: true, path: join(dir, "claude"), searchPath: dir, version: "2.1.288" });
+      expect((await inspectProvider(claude, { env: env(), deps: { ...noModels, locate } })).status.source).toBeUndefined();
+    });
     it("PATH binary: no pin keys, pinned unset", async () => {
       fakeClaude();
       const r = await inspectProvider(claude, { env: env(), deps: { ...noModels, locate: pinLoc("claude", false) } });

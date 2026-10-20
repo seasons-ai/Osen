@@ -1,8 +1,11 @@
 import { useEffect, useReducer, useRef } from "react";
 import type { ReactNode } from "react";
 import type { DefaultsValues, ProviderInput, SettingsProvider, SettingsView } from "../../shared/settings.ts";
+import { CliDueBanner, CliPeriodBlock, createCliActions, initialCliUi, noCliHandlers, reduceCliUi } from "./CliTransition.tsx";
+import type { CliAction, CliHandlers, CliUi } from "./CliTransition.tsx";
 import { ConnectionsTab } from "./ConnectionsTab.tsx";
 import { DefaultsPanel } from "./DefaultsPanel.tsx";
+import type { Bridge } from "../../shared/bridge.ts";
 import { settings } from "../../shared/messages/settings.ts";
 import { shell } from "../../shared/messages/shell.ts";
 import { Icon } from "./icons.tsx";
@@ -27,6 +30,7 @@ export interface SettingsState {
   form: { input: ProviderInput; saving: boolean; error: string | null } | null;
   actionError: string | null;
   defaults: { draft: DefaultsValues; saving: boolean; error: string | null } | null;
+  cli: CliUi; // CLI transition: confirmation, refusal, period draft
 }
 
 export type SettingsAction =
@@ -50,11 +54,13 @@ export type SettingsAction =
   | { type: "defaultsChange"; draft: DefaultsValues }
   | { type: "defaultsSaving" }
   | { type: "defaultsFailed"; message: string }
-  | { type: "defaultsSaved"; view: SettingsView };
+  | { type: "defaultsSaved"; view: SettingsView }
+  | { type: "cli"; action: CliAction }
+  | { type: "cliApplied"; view: SettingsView }; // a transition action returned a view
 
 export const initialSettings = (): SettingsState => ({
   view: null, loadError: null, tab: "providers", rechecking: false, busy: {}, drafts: {}, tests: {},
-  deleting: null, form: null, actionError: null, defaults: null,
+  deleting: null, form: null, actionError: null, defaults: null, cli: initialCliUi(),
 });
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -124,6 +130,8 @@ export function reduceSettings(state: SettingsState, action: SettingsAction): Se
     case "defaultsSaving": return state.defaults ? { ...state, defaults: { ...state.defaults, saving: true, error: null } } : state;
     case "defaultsFailed": return state.defaults ? { ...state, defaults: { ...state.defaults, saving: false, error: action.message } } : state;
     case "defaultsSaved": return applyView(state, action.view, true);
+    case "cli": return { ...state, cli: reduceCliUi(state.cli, action.action) };
+    case "cliApplied": return { ...applyView(state, action.view, false), cli: reduceCliUi(state.cli, { type: "applied" }) };
   }
 }
 
@@ -145,12 +153,13 @@ export interface SettingsHandlers {
   onTest(id: string, action: TestAction): void;
   onDefaultsChange(draft: DefaultsValues): void;
   onDefaultsSave(): void;
+  cli: CliHandlers;
 }
 
 const noHandlers: SettingsHandlers = {
   onRecheck() {}, onTab() {}, onOpenForm() {}, onFormChange() {}, onFormSave() {}, onFormClose() {}, onAskDelete() {},
   onCancelDelete() {}, onDelete() {}, onDraft() {}, onAddModel() {}, onRemoveModel() {}, onRefreshModels() {},
-  onResetModels() {}, onTest() {}, onDefaultsChange() {}, onDefaultsSave() {},
+  onResetModels() {}, onTest() {}, onDefaultsChange() {}, onDefaultsSave() {}, cli: noCliHandlers,
 };
 
 function RecheckButton({ rechecking, onRecheck }: { rechecking: boolean; onRecheck(): void }): ReactNode {
@@ -241,6 +250,8 @@ function Body({ state, now, on }: { state: SettingsState; now: Date; on: Setting
           <Icon name="i-plus" size="sm" /> {t.addHttpProvider}
         </button>
       </div>
+      <CliDueBanner providers={view.providers} />
+      {(view.providers.some((p) => p.cli !== null) || view.transition.fileError !== null) && <CliPeriodBlock transition={view.transition} ui={state.cli} on={on.cli} />}
       {down.length > 0 && (
         <div className="settings-banner">
           <div className="alert" data-tone="danger">
@@ -280,6 +291,10 @@ function Body({ state, now, on }: { state: SettingsState; now: Date; on: Setting
                   onRemove={(m) => on.onRemoveModel(p, m)} onRefresh={() => on.onRefreshModels(p.id)} onReset={() => on.onResetModels(p.id)}
                 />
               }
+              cli={{
+                running: view.transition.running, busy: state.cli.busy, on: on.cli, confirm: state.cli.confirm?.agent === p.cli?.agent ? state.cli.confirm : null,
+                refusal: state.cli.refusal?.agent === p.cli?.agent ? state.cli.refusal?.message ?? null : null, copied: state.cli.copied === p.cli?.agent,
+              }}
               test={ts === undefined || ts.phase === "idle" ? null : <TestPanel provider={p} state={ts} dispatch={(a) => on.onTest(p.id, a)} />}
               onTest={() => on.onTest(p.id, { type: "ask" })} onRecheck={on.onRecheck}
               onEdit={() => on.onOpenForm(p)} onAskDelete={() => on.onAskDelete(p.id)}
@@ -310,7 +325,18 @@ export function SettingsScreen({ state, now, on = noHandlers }: { state: Setting
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-export function Settings(): ReactNode {
+/** A finished background candidate check changes the reminder lines: ask main for the view again. */
+export function followCliTransition(council: Pick<Bridge, "subscribe">, reload: () => void): () => void {
+  return council.subscribe((e) => { if (e.type === "cli-transition") reload(); });
+}
+
+/** The history poll knows about sessions started anywhere (also from the terminal) sooner than the last settings() call: it decides whether a session is running. */
+export function withSessionsRunning(state: SettingsState, running: boolean | undefined): SettingsState {
+  if (running === undefined || state.view === null || state.view.transition.running === running) return state;
+  return { ...state, view: { ...state.view, transition: { ...state.view.transition, running } } };
+}
+
+export function Settings({ sessionsRunning }: { sessionsRunning?: boolean } = {}): ReactNode {
   const [state, dispatch] = useReducer(reduceSettings, undefined, initialSettings);
   const ref = useRef(state);
   ref.current = state;
@@ -331,6 +357,14 @@ export function Settings(): ReactNode {
     return () => { alive.current = false; };
   }, [language]);
 
+  useEffect(() => followCliTransition(window.council, () => void load(() => window.council.settings())), []);
+
+  const cliActions = createCliActions(() => window.council, {
+    get: () => ref.current.cli,
+    dispatch: (action) => { if (alive.current) dispatch({ type: "cli", action }); },
+    apply: (view) => { if (alive.current) dispatch({ type: "cliApplied", view }); },
+  });
+
   const act = (id: string, call: () => Promise<SettingsView>, clearDraft?: string) => {
     const s = ref.current;
     if (s.busy[id] || s.rechecking) return;
@@ -342,6 +376,7 @@ export function Settings(): ReactNode {
   };
 
   const on: SettingsHandlers = {
+    cli: cliActions,
     onRecheck() {
       if (ref.current.rechecking) return;
       dispatch({ type: "recheck" });
@@ -403,5 +438,5 @@ export function Settings(): ReactNode {
     },
   };
 
-  return <SettingsScreen state={state} now={new Date()} on={on} />;
+  return <SettingsScreen state={withSessionsRunning(state, sessionsRunning)} now={new Date()} on={on} />;
 }

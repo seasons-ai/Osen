@@ -2,6 +2,7 @@ import { DEFAULT_MODEL, RegistryError, configPath, getProcessLanguage, createCli
 import type { Logger, ParticipantDriver, Provider, ProviderInspection, ProviderStatus, Registry } from "@model-council/core";
 import { checkDefaults, checkProviderInput, hasErrors } from "../shared/settings.ts";
 import { settings } from "../shared/messages/settings.ts";
+import type { CliTransitionApi } from "./cli-transition.ts";
 import type { DefaultsValues, ProviderInput, SettingsProvider, SettingsView, TestResult } from "../shared/settings.ts";
 
 export class SettingsError extends Error {} // the message is shown to the owner as is
@@ -15,6 +16,7 @@ export interface SettingsDeps {
   inspect?: typeof inspectProvider;
   resetDiscovery?(): void;
   driver?(found: ProviderInspection): ParticipantDriver;
+  transition: CliTransitionApi; // CLI transition (change 182): reminders, period, switch and rollback
 }
 
 export interface SettingsApi {
@@ -26,6 +28,9 @@ export interface SettingsApi {
   refreshModels(id: unknown): Promise<SettingsProvider>;
   testProvider(id: unknown, model: unknown): Promise<TestResult>;
   saveDefaults(values: unknown): Promise<SettingsView>;
+  setTransitionPeriod(days: unknown): Promise<SettingsView>;
+  switchCli(agent: unknown, version: unknown): Promise<SettingsView>;
+  rollbackCli(agent: unknown): Promise<SettingsView>;
 }
 
 const bad = (what: string) => new SettingsError(settings().badRequest(what));
@@ -60,6 +65,7 @@ export function createSettings(deps: SettingsDeps): SettingsApi {
       billing: cli ? "subscription" : status.keyEnv ? "paid" : "free",
       models, defaultModel: cli ? DEFAULT_MODEL : null,
       modelsSource, modelsReason, modelsAt: modelsSource === "provider" ? now().toISOString() : null,
+      cli: provider.kind === "cli" ? deps.transition.forProvider(provider.agent, status) : null,
     };
   }
 
@@ -72,12 +78,12 @@ export function createSettings(deps: SettingsDeps): SettingsApi {
       registry = readRegistry(dataDir);
     } catch (e) {
       if (!(e instanceof RegistryError)) throw e;
-      return { ...base, registryError: e.message, providers: [], defaults: null };
+      return { ...base, registryError: e.message, providers: [], defaults: null, transition: deps.transition.settingsView() };
     }
     const found = await Promise.all(registry.providers.map((p) => look(p, true)));
     const { maxRounds, turnTimeoutSec, contextChars, materialsChars, maxTotalTokens, maxParticipants, participants } = registry.defaults;
     return {
-      ...base, registryError: null,
+      ...base, registryError: null, transition: deps.transition.settingsView(),
       providers: registry.providers.map((p, i) => toProvider(p, found[i]!.status)),
       defaults: { maxRounds, turnTimeoutSec, contextChars, materialsChars, maxTotalTokens: maxTotalTokens ?? null, maxParticipants, participants: participants.map((x) => ({ providerId: x.providerId, model: x.model })) },
     };
@@ -210,6 +216,21 @@ export function createSettings(deps: SettingsDeps): SettingsApi {
       const { maxTotalTokens: _old, ...kept } = registry.defaults;
       writeRegistry(dataDir, { ...registry, defaults: { ...kept, ...rest, ...(values.maxTotalTokens !== null ? { maxTotalTokens: values.maxTotalTokens } : {}) } });
       logger.info("Defaults saved");
+      return view();
+    },
+
+    async setTransitionPeriod(days) {
+      deps.transition.setPeriod(days);
+      return view();
+    },
+
+    async switchCli(agent, version) {
+      deps.transition.switchCli(agent, version);
+      return view();
+    },
+
+    async rollbackCli(agent) {
+      deps.transition.rollbackCli(agent);
       return view();
     },
   };

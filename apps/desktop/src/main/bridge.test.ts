@@ -12,7 +12,12 @@ import type { BridgeDeps } from "./bridge.ts";
 import { UnknownClientError } from "./connections.ts";
 import { PreviewError } from "./materials-preview.ts";
 import { RerunError } from "./rerun.ts";
-import { SettingsError } from "./settings.ts";
+import { SettingsError, createSettings } from "./settings.ts";
+import { BRIDGE_ACTIONS } from "../shared/bridge.ts";
+import { createCliTransition } from "./cli-transition.ts";
+import { installVersions, pinsBytes, record } from "./cli-transition.testutil.ts";
+import { initialRegistry, writeRegistry } from "@model-council/core";
+import { readFileSync } from "node:fs";
 import { createMaterialsDraft } from "./materials.ts";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -63,6 +68,9 @@ function setup(over: Partial<BridgeDeps> = {}) {
       refreshModels: vi.fn(async () => "refreshModels" as never),
       testProvider: vi.fn(async () => "testProvider" as never),
       saveDefaults: vi.fn(async () => "saveDefaults" as never),
+      setTransitionPeriod: vi.fn(async () => "setTransitionPeriod" as never),
+      switchCli: vi.fn(async () => "switchCli" as never),
+      rollbackCli: vi.fn(async () => "rollbackCli" as never),
     },
     templates: {
       open: vi.fn(() => "open" as never),
@@ -518,6 +526,9 @@ describe("bridge", () => {
       ["refreshModels", "refreshModels", ["a"]],
       ["testProvider", "testProvider", ["a", "m"]],
       ["saveDefaults", "saveDefaults", [{ maxRounds: 3 }]],
+      ["setTransitionPeriod", "setTransitionPeriod", [14]],
+      ["switchCli", "switchCli", ["claude", "2.1.300"]],
+      ["rollbackCli", "rollbackCli", ["claude"]],
     ] as const)("%s делегирует в settings.%s", async (action, method, args) => {
       const { deps, bridge } = setup();
       expect(await bridge.call(action, [...args])).toEqual({ ok: true, value: method });
@@ -845,5 +856,92 @@ describe("bridge: connections", () => {
     const { deps, bridge } = setup({ connections: { ...setup().deps.connections, connect } });
     expect(await bridge.call("connectClient", ["nope"])).toEqual({ ok: false, error: "Неизвестный клиент" });
     expect(deps.logger.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("Requirement: Действия моста для перехода CLI", () => {
+  const DAY = 86_400_000;
+  const T0 = Date.parse("2026-01-01T00:00:00Z");
+  let ms = T0;
+
+  async function real() {
+    const dataDir = mkdtempSync(join(tmpdir(), "bridge-cli-"));
+    ms = T0;
+    record(dataDir, "claude", "7.0.0", "real");
+    record(dataDir, "claude", "7.1.0", "real");
+    await installVersions(dataDir, "claude", [{ version: "7.0.0" }, { version: "7.1.0" }], () => new Date(T0));
+    writeRegistry(dataDir, initialRegistry(["claude"]));
+    const logger = { info: vi.fn(), error: vi.fn() };
+    const transition = createCliTransition({
+      dataDir, logger, now: () => new Date(ms), running: () => false, onChecked: () => {},
+      candidateDeps: () => ({ releases: { list: async () => ["7.0.0", "7.1.0"] }, source: { fetch: async () => { throw new Error("never"); } } }),
+    });
+    const inspect = (async (p: { id: string }) => ({ status: { id: p.id, kind: "cli", label: p.id, available: true, models: [], modelsConfirmed: false, version: "7.0.0", source: "pin", verified: { level: "real", checkedAt: "2026-10-07" } } })) as never;
+    const settings = createSettings({ dataDir, env: {}, reloadEnv: () => {}, logger, inspect, transition, now: () => new Date(ms) });
+    const { bridge, deps } = setup({ settings, logger });
+    return { dataDir, bridge, deps, transition, settings, logger };
+  }
+
+  it("the three actions are declared (the preload builds its API from this list)", () => {
+    for (const a of ["setTransitionPeriod", "switchCli", "rollbackCli"]) expect(BRIDGE_ACTIONS).toContain(a);
+    expect(readFileSync(new URL("../preload/index.ts", import.meta.url), "utf8")).toContain("BRIDGE_ACTIONS.map");
+  });
+
+  it("an undeclared name for a transition action is refused and logged", async () => {
+    const { bridge, deps } = setup();
+    const r = await bridge.call("useCli", ["claude", "7.1.0"]);
+    expect(r.ok).toBe(false);
+    expect(deps.logger.error).toHaveBeenCalledWith(expect.stringContaining("useCli"));
+    expect(deps.settings.switchCli).not.toHaveBeenCalled();
+  });
+
+  it("malformed input is refused with a reason and pins stay", async () => {
+    const { bridge, dataDir } = await real();
+    try {
+      const before = pinsBytes(dataDir);
+      for (const [action, args] of [["switchCli", [5, "7.1.0"]], ["switchCli", ["claude", "x"]], ["switchCli", ["claude", 7]], ["rollbackCli", [{}]], ["setTransitionPeriod", ["30"]], ["setTransitionPeriod", [0]], ["setTransitionPeriod", [7.5]]] as const) {
+        const r = await bridge.call(action, [...args]);
+        expect(r, `${action} ${JSON.stringify(args)}`).toMatchObject({ ok: false });
+        expect((r as { error: string }).error).not.toBe("");
+      }
+      expect(pinsBytes(dataDir)).toBe(before);
+      expect(existsSync(join(dataDir, "cli-reminder.json"))).toBe(false);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("settings carries the transition data; the explicit actions work through the bridge", async () => {
+    const { bridge, dataDir } = await real();
+    try {
+      ms = T0 + 40 * DAY;
+      const view = (await bridge.call("settings", [])) as { ok: true; value: { transition: { periodDays: number }; providers: { cli: { due: unknown; target: unknown } }[] } };
+      expect(view.value.transition.periodDays).toBe(30);
+      expect(view.value.providers[0]!.cli).toMatchObject({ due: { to: "7.1.0" }, target: { version: "7.1.0" } });
+      const saved = (await bridge.call("setTransitionPeriod", [14])) as typeof view;
+      expect(saved.value.transition.periodDays).toBe(14);
+      expect(await bridge.call("switchCli", ["claude", "7.1.0"])).toMatchObject({ ok: true });
+      expect(JSON.parse(pinsBytes(dataDir)).agents.claude).toMatchObject({ active: "7.1.0", previous: "7.0.0" });
+      expect(await bridge.call("rollbackCli", ["claude"])).toMatchObject({ ok: true });
+      expect(JSON.parse(pinsBytes(dataDir)).agents.claude).toMatchObject({ active: "7.0.0" });
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("no automatic switch: with an expired term and an installed real version, time passing never changes pins.json", async () => {
+    const { bridge, dataDir, transition } = await real();
+    try {
+      const before = pinsBytes(dataDir);
+      for (let day = 1; day <= 120; day++) {
+        ms = T0 + day * DAY;
+        await transition.maybeCheck();
+        await bridge.call("settings", []);
+        await bridge.call("recheckProviders", []);
+      }
+      expect(pinsBytes(dataDir)).toBe(before);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 });

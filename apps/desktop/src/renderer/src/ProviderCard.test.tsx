@@ -2,21 +2,23 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { setProcessLanguage } from "@model-council/core/i18n";
-import type { SettingsProvider } from "../../shared/settings.ts";
+import type { CliTransition, SettingsProvider } from "../../shared/settings.ts";
+import { NO_CLI_CARD } from "./CliTransition.tsx";
+import type { CliCardProps } from "./CliTransition.tsx";
 import { ProviderCard } from "./ProviderCard.tsx";
 
 const base: SettingsProvider = {
   id: "p", kind: "cli", label: "Claude Code", available: true, reason: null, warning: null, version: "2.1.288", path: "/opt/homebrew/bin/claude",
-  baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: [], defaultModel: null, modelsSource: "provider", modelsReason: null, modelsAt: null
+  baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: [], defaultModel: null, modelsSource: "provider", modelsReason: null, modelsAt: null, cli: null,
 };
 const http = (o: Partial<SettingsProvider> = {}): SettingsProvider => ({
   ...base, kind: "openai-http", label: "OpenRouter", version: null, path: null, baseUrl: "https://openrouter.ai/api/v1", keyEnv: "OPENROUTER_API_KEY", keySet: true, billing: "paid", ...o
 });
-type Over = { busy?: boolean; deleting?: boolean; canTest?: boolean; models?: ReactNode; test?: ReactNode | null };
+type Over = { cli?: Partial<CliCardProps>; busy?: boolean; deleting?: boolean; canTest?: boolean; models?: ReactNode; test?: ReactNode | null };
 const html = (provider: SettingsProvider, o: Over = {}) =>
   renderToStaticMarkup(
     <ProviderCard provider={provider} envPath="/data/.env" busy={o.busy ?? false} deleting={o.deleting ?? false} canTest={o.canTest ?? true}
-      models={o.models ?? null} test={o.test ?? null} onTest={() => {}} onRecheck={() => {}} onEdit={() => {}} onAskDelete={() => {}} onDelete={() => {}} onCancelDelete={() => {}} />
+      models={o.models ?? null} test={o.test ?? null} onTest={() => {}} onRecheck={() => {}} onEdit={() => {}} onAskDelete={() => {}} onDelete={() => {}} onCancelDelete={() => {}} cli={{ ...NO_CLI_CARD, ...o.cli }} />
   );
 const btn = (h: string, text: string) => h.match(new RegExp(`<button[^>]*>(?:(?!</button>).)*${text}</button>`))?.[0] ?? "";
 
@@ -163,3 +165,165 @@ describe("ProviderCard: en", () => {
   });
 });
 const base_down = (): SettingsProvider => ({ ...base, available: false, reason: "Не найден" });
+
+// Requirements: "Источник, версия и уровень проверки CLI в карточке", "Переход и откат из карточки", "Тексты перехода CLI на выбранном языке"
+describe("CLI transition in the card", () => {
+  afterEach(() => setProcessLanguage("ru"));
+  const tr = (o: Partial<CliTransition> = {}): CliTransition => ({
+    agent: "claude", source: "pin", level: "real", checkedAt: "2026-10-07",
+    pin: { version: "2.1.288", activatedAt: "2026-09-10T08:30:00Z", ageDays: 40, previous: "2.1.270" },
+    due: null, target: null, install: null, candidates: [], violations: [], check: null, ...o,
+  });
+  const day = (d: string, lang: string) => new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
+  const card = (cli: CliTransition | null, o: Over = {}, lang: "en" | "ru" = "en") => { setProcessLanguage(lang); return html({ ...base, cli }, o); };
+  const due = { from: "2.1.288", to: "2.1.300", ageDays: 40, acceptedAt: "2026-10-15" };
+  const noCyrillic = (h: string) => expect(h).not.toMatch(/[А-Яа-яЁё]/);
+
+  it("pin: source, real acceptance with date, activation date, previous pin", () => {
+    const h = card(tr());
+    expect(h).toContain("<dt>Source</dt><dd>Osen pin</dd>");
+    expect(h).toContain("real acceptance");
+    expect(h).toContain(`<span class="muted">${day("2026-10-07", "en")}</span>`);
+    expect(h).toContain(`<dt>Active since</dt><dd>${day("2026-09-10", "en")}</dd>`);
+    expect(h).toContain("<dt>Previous pin</dt><dd><span class=\"mono\">2.1.270</span></dd>");
+    expect(h.indexOf("<dt>Source</dt>")).toBeLessThan(h.indexOf("<dt>Version</dt>"));
+    noCyrillic(h);
+  });
+
+  it("PATH: no buttons, a note that Osen does not pin the version", () => {
+    const h = card(tr({ source: "path", level: "interface", pin: null, target: { version: "2.1.300", acceptedAt: "2026-10-15" } }));
+    expect(h).toContain("<dt>Source</dt><dd>PATH</dd>");
+    expect(h).toContain("interface only");
+    expect(h).toContain("Osen does not pin this version.");
+    expect(btn(h, "Switch to")).toBe("");
+    expect(btn(h, "Roll back")).toBe("");
+    expect(h).not.toContain("Active since");
+  });
+
+  it("explicit path beats the pin: note, no buttons", () => {
+    const h = card(tr({ source: "explicit", level: "none", checkedAt: null, target: { version: "2.1.300", acceptedAt: "2026-10-15" } }));
+    expect(h).toContain("explicit path");
+    expect(h).toContain("Pin 2.1.288 not used: an explicit path is set.");
+    expect(btn(h, "Switch to")).toBe("");
+    expect(btn(h, "Roll back")).toBe("");
+  });
+
+  it("version without a record: «no record» and no date", () => {
+    const h = card(tr({ level: "none", checkedAt: null }));
+    expect(h).toContain("no record");
+    expect(h).not.toMatch(/<span class="muted">[A-Z][a-z]{2} \d/);
+  });
+
+  it("unknown activation date: the phrase, no due line", () => {
+    const h = card(tr({ pin: { version: "2.1.288", activatedAt: null, ageDays: null, previous: null } }));
+    expect(h).toContain("activation date unknown");
+    expect(h).not.toContain("Time for the planned transition");
+  });
+
+  it("nothing to roll back: «Roll back» is shown unavailable with the reason (en, ru)", () => {
+    const pin = { version: "2.1.288", activatedAt: "2026-09-10T08:30:00Z", ageDays: 40, previous: null };
+    const h = card(tr({ pin }));
+    expect(btn(h, "Roll back")).toMatch(/disabled=""/);
+    expect(h).toContain("no previous version");
+    const r = card(tr({ pin }), {}, "ru");
+    expect(btn(r, "Откатить")).toMatch(/disabled=""/);
+    expect(r).toContain("нет предыдущей версии");
+  });
+
+  it("due: reminder line with versions, age and acceptance date, and the Switch button", () => {
+    const h = card(tr({ due, target: { version: "2.1.300", acceptedAt: "2026-10-15" } }));
+    expect(h).toContain("Time for the planned transition");
+    expect(h).toContain(`2.1.288 → 2.1.300: pinned for 40 days. Real acceptance of 2.1.300: ${day("2026-10-15", "en")}`);
+    expect(btn(h, "Switch to 2.1.300")).not.toBe("");
+    expect(btn(h, "Roll back to 2.1.270")).not.toBe("");
+    noCyrillic(h);
+  });
+
+  it("due on ru: the date already ends with «г.», no doubled period after it", () => {
+    const h = card(tr({ due, target: { version: "2.1.300", acceptedAt: "2026-10-15" } }), {}, "ru");
+    expect(h).toContain(`Реальная приёмка 2.1.300: ${day("2026-10-15", "ru")}`);
+    expect(h).not.toMatch(/г\.\./);
+  });
+
+  it("interface candidate: a line without a button; violation: missing names, no buttons", () => {
+    const h = card(tr({ candidates: [{ version: "2.1.301" }], violations: [{ version: "2.1.302", names: ["--tools", "mcp_config"] }] }));
+    expect(h).toContain("Candidate found 2.1.301");
+    expect(h).toContain("switch after council cli accept");
+    expect(h).toContain("Candidate 2.1.302 violates the contract");
+    expect(h).toContain("Missing: --tools, mcp_config.");
+    expect(btn(h, "Switch to")).toBe("");
+  });
+
+  it("real version not installed: install command and Copy; copy state", () => {
+    const install = { version: "2.1.310", command: "council cli install claude --version 2.1.310" };
+    const h = card(tr({ install }));
+    expect(h).toContain("Version 2.1.310 is not installed");
+    expect(h).toContain('<code class="mono conn-line__text">council cli install claude --version 2.1.310</code>');
+    expect(btn(h, "Copy")).not.toBe("");
+    expect(h).not.toContain("Copied");
+    expect(card(tr({ install }), { cli: { copied: true } })).toContain("Copied");
+    expect(btn(h, "Switch to")).toBe("");
+  });
+
+  it("last check failure: reason by code and the attempt time", () => {
+    const h = card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "source_unavailable" } }));
+    expect(h).toContain("Candidate check failed");
+    expect(h).toContain("the release source is unavailable");
+    expect(h).toContain("Last attempt:");
+    expect(card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "ok" } }))).not.toContain("Candidate check failed");
+    expect(card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "no_base" } }))).toContain("no active pin");
+  });
+
+  it("running session: both buttons disabled with a visible reason", () => {
+    const h = card(tr({ target: { version: "2.1.300", acceptedAt: "2026-10-15" } }), { cli: { running: true } });
+    expect(btn(h, "Switch to 2.1.300")).toContain("disabled");
+    expect(btn(h, "Roll back to 2.1.270")).toContain("disabled");
+    expect(h).toContain("a session is running");
+    expect(card(tr({ target: { version: "2.1.300", acceptedAt: "2026-10-15" } }))).not.toContain("a session is running");
+  });
+
+  it("confirmation: CLI, versions, consequences, Switch and Cancel; the action buttons are hidden", () => {
+    const confirm = { agent: "claude", kind: "switch" as const, from: "2.1.288", to: "2.1.300" };
+    const h = card(tr({ target: { version: "2.1.300", acceptedAt: "2026-10-15" } }), { cli: { confirm } });
+    expect(h).toContain("Switch Claude Code from 2.1.288 to 2.1.300?");
+    expect(h).toContain("New launches will use 2.1.300; past sessions and journals do not change. No model calls.");
+    expect(btn(h, "Switch")).not.toBe("");
+    expect(btn(h, "Cancel")).not.toBe("");
+    expect(btn(h, "Switch to")).toBe("");
+    const rb = card(tr(), { cli: { confirm: { agent: "claude", kind: "rollback", from: "2.1.288", to: "2.1.270" } } });
+    expect(rb).toContain("Roll Claude Code back from 2.1.288 to 2.1.270?");
+    expect(btn(rb, "Roll back")).not.toBe("");
+  });
+
+  it("refusal is shown next to the buttons", () => {
+    const h = card(tr({ target: { version: "2.1.300", acceptedAt: "2026-10-15" } }), { cli: { refusal: "Version 2.1.300 is not installed" } });
+    expect(h).toContain('<span class="settings-cli__refusal" role="alert">');
+    expect(h).toContain("Version 2.1.300 is not installed");
+  });
+
+  it("ru: labels", () => {
+    const h = card(tr({ due, target: { version: "2.1.300", acceptedAt: "2026-10-15" } }), { cli: { running: true } }, "ru");
+    for (const w of ["закрепление Osen", "реальная приёмка", "Перейти на 2.1.300", "Откатить на 2.1.270", "идёт сессия"]) expect(h).toContain(w);
+    expect(card(tr({ source: "explicit", level: "interface" }), {}, "ru")).toContain("явный путь");
+    expect(card(tr({ source: "explicit", level: "interface" }), {}, "ru")).toContain("только интерфейс");
+    expect(card(tr({ level: "none", checkedAt: null }), {}, "ru")).toContain("нет записи");
+    expect(card(tr({ pin: { version: "2.1.288", activatedAt: null, ageDays: null, previous: null } }), {}, "ru")).toContain("дата активации неизвестна");
+    expect(card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "check_failed" } }), {}, "ru")).toContain("Проверка кандидатов не удалась");
+  });
+
+  it("day plural forms on en and ru", () => {
+    const line = (n: number, lang: "en" | "ru") => card(tr({ due: { ...due, ageDays: n }, target: null }), {}, lang);
+    expect(line(1, "en")).toContain("pinned for 1 day.");
+    expect(line(2, "en")).toContain("pinned for 2 days.");
+    expect(line(5, "en")).toContain("pinned for 5 days.");
+    expect(line(1, "ru")).toContain("закреплению 1 день.");
+    expect(line(2, "ru")).toContain("закреплению 2 дня.");
+    expect(line(5, "ru")).toContain("закреплению 5 дней.");
+  });
+
+  it("an HTTP provider and a CLI without data render no transition rows", () => {
+    const h = card(null);
+    expect(h).not.toContain("Source");
+    expect(h).not.toContain("Osen pin");
+  });
+});

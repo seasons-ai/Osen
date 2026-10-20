@@ -344,3 +344,10 @@ describe("usagePeriod", () => {
     expect(s.usagePeriod).toBe(s0.usagePeriod);
   });
 });
+
+describe("cli-transition event", () => {
+  it("does not change the screen state", () => {
+    const s = initialUi();
+    expect(reduce(s, { type: "bridge", event: { type: "cli-transition" } })).toBe(s);
+  });
+});
