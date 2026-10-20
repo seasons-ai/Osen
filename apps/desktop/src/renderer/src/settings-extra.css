@@ -8,6 +8,7 @@
 .settings-p > .btn{flex:none}
 .settings-form{display:flex;flex-direction:column;gap:var(--sp-3)}
 .alert .select{margin-top:var(--sp-2);max-width:100%}
+.settings-card .alert__text{overflow-wrap:anywhere}
 .tabs + *{margin-top:var(--sp-4)}
 .settings-add .input{padding:var(--sp-1) var(--sp-3);font-size:var(--fs-sm)}
 /* registry and loading error alert sits outside the card: buttons go under the text, as in the mockup cards */

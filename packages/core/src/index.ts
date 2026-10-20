@@ -37,6 +37,7 @@ export * from "./store/watch.ts";
 export * from "./cli-agents/types.ts";
 export * from "./cli-agents/discovery.ts";
 export * from "./cli-agents/driver.ts";
+export * from "./cli-agents/launch-guard.ts";
 export * from "./registry/config.ts";
 export * from "./registry/providers.ts";
 export * from "./registry/lineups.ts";

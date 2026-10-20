@@ -23,7 +23,7 @@ export interface StatusView {
   turns: number;
   maxTotalTokens: number | null;
   tokens: { input: number; output: number; total: number; incomplete: boolean };
-  participants: { id: string; name: string; state: "active" | "dropped"; lastStance: Stance | null; replaces?: string; replacedBy?: string }[];
+  participants: { id: string; name: string; state: "active" | "dropped"; lastStance: Stance | null; dropReason?: string; replaces?: string; replacedBy?: string }[];
   agreed: string[];
   openQuestions: number;
   ownerQuestions: { id: string; authorId: string; author: string; text: string; turn: number }[];
@@ -80,13 +80,17 @@ export function statusView(stored: StoredSession, dataDir: string): StatusView {
     turns: state.turns.length,
     maxTotalTokens: session.limits.maxTotalTokens ?? null,
     tokens: { input: usage.inputTokens, output: usage.outputTokens, total: usage.total, incomplete: usage.incomplete },
-    participants: session.participants.map((p) => ({
-      id: p.id,
-      name: p.name,
-      state: state.participants.find((s) => s.id === p.id)?.status ?? "active",
-      lastStance: state.turns.findLast((t) => t.participantId === p.id)?.stance ?? null,
-      ...replaceLinks(state.participants.find((s) => s.id === p.id)),
-    })),
+    participants: session.participants.map((p) => {
+      const ps = state.participants.find((s) => s.id === p.id);
+      return {
+        id: p.id,
+        name: p.name,
+        state: ps?.status ?? "active",
+        lastStance: state.turns.findLast((t) => t.participantId === p.id)?.stance ?? null,
+        ...(ps?.dropReason ? { dropReason: ps.dropReason } : {}),
+        ...replaceLinks(ps),
+      };
+    }),
     agreed: state.agreed,
     openQuestions: state.questions.filter((q) => q.status === "open").length,
     ownerQuestions: state.questions

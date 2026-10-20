@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { locateCli, parseVersion, pinnedEnv, resetDiscoveryCache } from "./discovery.ts";
 import { installPin, pinsPath, usePin } from "./pins.ts";
 import type { PackageSource } from "./pins.ts";
-import { VERIFIED_FILE } from "./verified-record.ts";
+import { VERIFIED_FILE, addLocalEntry } from "./verified-record.ts";
 import type { VerifiedEntry, VerifiedRecord } from "./verified-record.ts";
 
 let tmp: string;
@@ -206,6 +206,8 @@ describe("locateCli search order and pins", () => {
   it("real cache: a use switch between two calls is seen", async () => {
     await pin("1.0.0");
     await pin("1.1.0");
+    // the real record (no injected deps) must hold real entries for the pinned versions
+    for (const v of ["1.0.0", "1.1.0"]) expect(addLocalEntry(data(), entry(v)).ok).toBe(true);
     const o = { env: { PATH: join(tmp, "empty") }, dataDir: data() };
     expect((await locateCli("claude", o)).pin?.version).toBe("1.0.0");
     expect(usePin(data(), "claude", "1.1.0", { record }).ok).toBe(true);

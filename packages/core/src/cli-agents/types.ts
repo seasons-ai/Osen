@@ -13,4 +13,5 @@ export interface CliRuntime {
   features?: ReadonlySet<string>;               // codex: capabilities from `codex features list`
   version?: string;
   pinned?: boolean;                             // launched from an Osen pin: self-update off, own config dir
+  pinDataDir?: string;                          // data folder of the Osen pin; the driver re-checks the pin before every turn
 }

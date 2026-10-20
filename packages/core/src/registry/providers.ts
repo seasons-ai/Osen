@@ -90,7 +90,7 @@ async function inspectCli(provider: CliProvider, { env, withModels = true, deps,
     runtime = { agent, path, env: childEnv, flags };
     if (features) runtime.features = features;
     if (loc.version) runtime.version = loc.version;
-    if (loc.pin) runtime.pinned = true;
+    if (loc.pin) { runtime.pinned = true; if (dataDir !== undefined) runtime.pinDataDir = dataDir; }
   } else status.reason = plan.reason;
 
   if (withModels) {
