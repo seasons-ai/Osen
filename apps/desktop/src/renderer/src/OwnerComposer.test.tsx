@@ -255,3 +255,24 @@ describe("finished-session draft field", () => {
     expect(readDraft(draftId)).toBeNull();
   });
 });
+
+describe("finished-session draft field: continue with this message (173)", () => {
+  const draftId = "fd173";
+  afterEach(() => saveDraft(draftId, null));
+  const base = { text: "Ещё учтите бюджет", copied: false, error: null, onText: () => {}, onCopy: () => {}, onDelete: () => {} };
+  it("no button without onResume; with it the button is next to Copy text", () => {
+    expect(renderToStaticMarkup(<FinishedDraftView {...base} />)).not.toContain("Продолжить с этой репликой");
+    const h = renderToStaticMarkup(<FinishedDraftView {...base} onResume={() => {}} />);
+    expect(h).toMatch(/>Скопировать текст<\/button><button[^>]*>Продолжить с этой репликой<\/button>/);
+  });
+  it("en label; blank text disables the button", () => {
+    const h = renderToStaticMarkup(<LanguageProvider initial={{ language: "en", source: "file", locked: false }}><FinishedDraftView {...base} onResume={() => {}} /></LanguageProvider>);
+    expect(h).toContain(">Continue with this message<");
+    expect(renderToStaticMarkup(<FinishedDraftView {...base} text=" " onResume={() => {}} />)).toMatch(/<button[^>]*disabled=""[^>]*>Продолжить с этой репликой/);
+  });
+  it("FinishedDraft passes onResume through", () => {
+    saveDraft(draftId, { text: "Учтите", answerTo: null });
+    expect(renderToStaticMarkup(<FinishedDraft id={draftId} fallback={null} onResume={() => {}} />)).toContain("Продолжить с этой репликой");
+    expect(renderToStaticMarkup(<FinishedDraft id={draftId} fallback={null} />)).not.toContain("Продолжить с этой репликой");
+  });
+});

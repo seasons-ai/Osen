@@ -296,14 +296,14 @@ async function start(): Promise<void> {
       return started;
     },
     lastParticipants: () => lastRoster(dataDir),
-    resumeOptions: async (id, replacements) => {
+    resumeOptions: async (id, replacements, message) => {
       const reg = readRegistry(dataDir);
       const found = await inspectProviders(reg, { env, keyFile: envFilePath(dataDir), dataDir });
       const view = registryView(reg, found.map((f) => f.status), scenariosDir === null ? null : listScenarios(scenariosDir));
-      return resumeView(dataDir, id, view, resumeScenarioPath((model) => scenarioPath(scenariosDir, model)), replacements);
+      return resumeView(dataDir, id, view, resumeScenarioPath((model) => scenarioPath(scenariosDir, model)), replacements, message);
     },
-    resumeSession: async (id, rounds, cap, replacements) => {
-      const resumed = await launcher.resume(id, rounds, cap, replacements);
+    resumeSession: async (id, rounds, cap, replacements, message) => {
+      const resumed = await launcher.resume(id, rounds, cap, replacements, message);
       notifier.markRunning(id);
       polling.refresh();
       return resumed;

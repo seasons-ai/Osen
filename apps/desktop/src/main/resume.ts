@@ -52,7 +52,7 @@ export function nameReplacements(
 
 /** What to show on the resume screen. Writes and starts nothing. */
 export function resumeView(
-  dataDir: string, id: string, registry: RegistryView, scenarioPath: (model: string) => string | null, replacements?: readonly ResumeReplacement[],
+  dataDir: string, id: string, registry: RegistryView, scenarioPath: (model: string) => string | null, replacements?: readonly ResumeReplacement[], message?: string,
 ): ResumeView {
   const { min, max } = ROUNDS_BOUNDS;
   const m = resultMain();
@@ -90,7 +90,7 @@ export function resumeView(
   try {
     // An exhausted ceiling does not prevent building the view: the plan is taken without the ceiling, and the owner is offered a new one or removal.
     const plan_ = (o: { rounds?: number; maxTotalTokens?: number | null }) => {
-      const opts = { ...o, ...(inputs ? { replacements: inputs } : {}) };
+      const opts = { ...o, ...(inputs ? { replacements: inputs } : {}), ...(message !== undefined ? { message } : {}) };
       try {
         return planResume(dataDir, id, opts);
       } catch (e) {
@@ -110,24 +110,25 @@ export function resumeView(
     if (!(e instanceof ResumeRejectedError)) throw e;
     if (e.reason === "replacement") throw e; // the panel keeps the previous view and shows the message
     const rounds = { min, max, remaining: null, initial: initialRounds };
+    const messageRequired = e.reason === "consensus"; // the decision is the engine's refusal code only
     if (e.reason === "too_few_active" && before?.session) {
       const replaced = new Set(inputs?.map((r) => r.participantId));
       const alive = new Set(before.participants.filter((x) => x.status === "active").map((x) => x.id));
       return {
-        allowed: true, reason: null, blocked: e.message, rounds,
+        allowed: true, messageRequired: false, reason: null, blocked: e.message, rounds,
         participants: slotRoster(before.session).filter((p) => alive.has(p.id) && !replaced.has(p.id)).map(availability), // those being replaced will not be in the future roster
         replaceable: replaceable(), replacements: [], providers: registry.providers, agreementReset: false,
         tokenCap: { cap: before.session.limits.maxTotalTokens ?? null, spent: tokenUsage(before).total, exhausted: false }, draftCalls: 0,
       };
     }
-    return { allowed: false, reason: e.message, blocked: null, rounds, participants: [], replaceable: [], replacements: [], providers: [], agreementReset: false, tokenCap: { cap: null, spent: 0, exhausted: false }, draftCalls: 0 };
+    return { allowed: false, messageRequired, reason: e.message, blocked: null, rounds, participants: [], replaceable: [], replacements: [], providers: [], agreementReset: false, tokenCap: { cap: null, spent: 0, exhausted: false }, draftCalls: 0 };
   }
   const initial = Math.min(max, Math.max(min, remaining ?? registry.defaults.maxRounds));
   const replacedOf = new Map(plan.replacements.map((r) => [r.participant.id, r.oldParticipantId]));
   const participants = plan.active.map((p) => ({ ...availability(p), ...(replacedOf.has(p.id) ? { replaces: replacedOf.get(p.id)! } : {}) }));
   const cap = plan.state.session?.limits.maxTotalTokens ?? null;
   return {
-    allowed: true, reason: null, blocked: null, rounds: { min, max, remaining, initial }, participants,
+    allowed: true, messageRequired: false, reason: null, blocked: null, rounds: { min, max, remaining, initial }, participants,
     replaceable: replaceable(),
     replacements: plan.replacements.map((r) => ({ participantId: r.oldParticipantId, newId: r.participant.id, name: r.participant.name, providerId: r.participant.providerId, model: r.participant.model })),
     providers: registry.providers, agreementReset: plan.replacements.length > 0,

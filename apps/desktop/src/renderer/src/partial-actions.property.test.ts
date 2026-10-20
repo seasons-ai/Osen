@@ -51,5 +51,6 @@ describe("session with a journal read only partially: mutating actions are unava
     expect(sessionActions({ ...base, status: "stopped", finished: true })).toMatchObject({ resume: true, select: true, stop: false, reason: null });
     expect(sessionActions({ ...base, status: "failed", insufficientActive: true }).resume).toBe(true);
     expect(sessionActions({ ...base, status: "failed" }).resume).toBe(false);
+    expect(sessionActions({ ...base, status: "consensus", finished: true }).resume).toBe(true);
   });
 });

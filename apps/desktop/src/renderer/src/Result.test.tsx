@@ -9,6 +9,7 @@ import type { ProviderOption } from "../../shared/setup.ts";
 import { spend } from "./session-ui.tsx";
 import { tokenUsage } from "@model-council/core/protocol";
 import { chosenVersion } from "../../shared/final-version.ts";
+import { saveDraft, readDraft } from "./OwnerComposer.tsx";
 import { OwnerChoiceView, Result, ResumePanelView, defaultChoice, finalVersion, formatDuration, parseRounds, pruneChoices, refreshResume, resultStats, resumeCap, submitResume } from "./Result.tsx";
 import type { OwnerChoiceViewProps, ResultProps, ResultStatus, ResumePanelViewProps } from "./Result.tsx";
 
@@ -323,7 +324,7 @@ const button = (t: ReactNode, word: string) => find(t, (p) => p.children === wor
 const person = (n: number, billing: ResumeView["participants"][number]["billing"], o: Partial<ResumeView["participants"][number]> = {}) =>
   ({ id: `p${n}`, name: `Имя${n} (м${n})`, billing, available: true, reason: null, ...o });
 const rview = (o: Partial<ResumeView> = {}): ResumeView => ({
-  allowed: true, reason: null, blocked: null,
+  allowed: true, reason: null, blocked: null, messageRequired: false,
   rounds: { min: 1, max: 20, remaining: 1, initial: 1 },
   participants: [person(1, "subscription"), person(2, "paid"), person(3, "free")],
   replaceable: [], replacements: [], providers: [], agreementReset: false,
@@ -333,7 +334,7 @@ const rview = (o: Partial<ResumeView> = {}): ResumeView => ({
 const spy = { submit: 0, cancel: 0 };
 const panelProps = (o: Partial<ResumePanelViewProps> = {}): ResumePanelViewProps => ({
   session: agreed3.session, view: rview(), text: "1", error: null, busy: false,
-  capText: "", uncap: false, choices: {}, refreshing: false, refreshError: null,
+  capText: "", uncap: false, choices: {}, refreshing: false, refreshError: null, message: "", required: false, onMessage: noop,
   onReplace: () => {}, onKeep: () => {}, onProvider: () => {}, onModel: () => {}, onText: noop, onCapText: noop, onUncap: noop, onSubmit: () => { spy.submit++; }, onCancel: () => { spy.cancel++; }, ...o,
 });
 const panel = (o: Partial<ResumePanelViewProps> = {}) => renderToStaticMarkup(<ResumePanelView {...panelProps(o)} />);
@@ -1076,5 +1077,84 @@ describe("Result: statistics diverge from the core only on failures", () => {
       { type: "drafts_finished" } as Body, started(1, "p1"), done(1, "p1", "amend", 1, { outputTokens: 50 }),
     ]);
     expect(resultStats(s)).toMatchObject({ tokens: 150, turns: 1, tokensPartial: false });
+  });
+});
+
+describe("Result: consensus continues only with an owner message (173)", () => {
+  afterEach(() => setProcessLanguage("ru"));
+  const failedState = fold([created(), started(1, "p1"), done(1, "p1", "amend", 1), { ...fin("failed", 1, [], [], "сбой"), reasonCode: "other" } as Body]);
+  const required = (o: Partial<ResumeView> = {}) => rview({ allowed: false, messageRequired: true, participants: [], reason: "Сессия завершена: consensus reached: it can be resumed only with an owner message.", ...o });
+  const langs = [["ru", "Продолжить с репликой", "Продолжить обсуждение", "Реплика владельца"], ["en", "Continue with a message", "Continue discussion", "Owner message"]] as const;
+
+  it.each(langs)("%s: consensus has the active message button and no plain continue; unrecoverable failed has neither", (lang, withMsg, plain) => {
+    setProcessLanguage(lang);
+    const h = view(agreed3, "consensus");
+    expect(h).toMatch(new RegExp(`<button type="button" class="btn result-resume-btn"(?![^>]*disabled)[^>]*>.*?${withMsg}</button>`));
+    expect(h).not.toContain(plain);
+    const f = view(failedState, "failed");
+    expect(f).not.toContain(withMsg);
+    expect(f).not.toContain(plain);
+  });
+  it.each(langs)("%s: the field is prefilled and has a hint", (lang, _a, _b, label) => {
+    setProcessLanguage(lang);
+    const h = panel({ language: lang, message: "Ещё учтите бюджет" });
+    expect(h).toContain(`<label class="field result-resume__message"><span class="field__label">${label}</span>`);
+    expect(h).toMatch(/<textarea class="textarea" rows="2">Ещё учтите бюджет<\/textarea>/);
+    expect(h).toContain(lang === "ru" ? "После реплики все участники подтверждают согласие заново" : "After a message all participants confirm their agreement again");
+    expect(goBtn(h)).not.toContain("disabled");
+  });
+  it.each(langs)("%s: a required message with a blank field blocks Continue and shows the engine reason; no bound or roster", (lang, _a, _b, label) => {
+    const h = panel({ language: lang, view: required(), required: true, message: "  " });
+    expect(h).toContain(label);
+    expect(goBtn(h)).toContain('disabled=""');
+    expect(h).toContain('data-tone="danger">Сессия завершена: consensus reached');
+    expect(h).not.toContain('role="alert"');
+    expect(h).not.toContain("result-resume__rounds");
+    expect(h).not.toContain("result-resume__estimate");
+  });
+  it("the textarea sits right after the title, outside the allowed conditional, in both views", () => {
+    for (const v of [required(), rview()]) {
+      const h = panel({ view: v, required: true, message: "т" });
+      expect(h).toMatch(/<\/h2><label class="field result-resume__message">/);
+    }
+  });
+  it("other refusals keep the alert and hide the field", () => {
+    const h = panel({ view: rview({ allowed: false, reason: "Сессия идёт." }) });
+    expect(h).toContain("Сессия идёт.");
+    expect(h).toContain('role="alert"');
+    expect(h).not.toContain("result-resume__message");
+  });
+  it("after typing, the allowed view shows the bound and enables Continue", () => {
+    const h = panel({ view: rview(), required: true, message: "Учтите бюджет" });
+    expect(h).toContain("не более");
+    expect(goBtn(h)).not.toContain("disabled");
+    expect(goBtn(panel({ view: rview(), required: true, message: "" }))).toContain('disabled=""');
+  });
+  it("refreshResume passes the message as the third argument; without it the old shapes stay", async () => {
+    const calls: unknown[][] = [];
+    const call = async (...a: unknown[]) => { calls.push(a); return rview(); };
+    await refreshResume(call, "s1", {}, { current: 0 }, "Учтите бюджет");
+    await refreshResume(call, "s1", { p2: { providerId: "a", model: "m" } }, { current: 0 }, "т");
+    await refreshResume(call, "s1", {}, { current: 0 });
+    expect(calls).toEqual([["s1", undefined, "Учтите бюджет"], ["s1", [{ participantId: "p2", providerId: "a", model: "m" }], "т"], ["s1"]]);
+  });
+  it("submitResume passes the message as the fifth argument; without it the old shapes stay", async () => {
+    const calls: unknown[][] = [];
+    const call = async (...a: unknown[]) => { calls.push(a); return { droppedOwnerRequests: [] }; };
+    await submitResume(call, "s1", 2, { current: false }, undefined, [], "Учтите бюджет");
+    await submitResume(call, "s1", 2, { current: false });
+    expect(calls).toEqual([["s1", 2, undefined, undefined, "Учтите бюджет"], ["s1", 2]]);
+  });
+  it("Cancel and a refusal keep the draft and the field text", async () => {
+    saveDraft("s173", { text: "Ещё учтите бюджет", answerTo: null });
+    const before = readDraft("s173");
+    const h = panel({ message: "Ещё учтите бюджет (правка)", error: "Сессия идёт." });
+    (button(ResumePanelView(panelProps({ message: "x" })), "Отмена").onClick as () => void)();
+    const r = await submitResume(async () => { throw new Error("Сессия идёт."); }, "s1", 1, { current: false }, undefined, [], "Ещё учтите бюджет (правка)");
+    expect(r).toEqual({ ok: false, error: "Сессия идёт." });
+    expect(h).toContain("Ещё учтите бюджет (правка)</textarea>");
+    expect(h).toContain("Сессия идёт.");
+    expect(readDraft("s173")).toBe(before);
+    saveDraft("s173", null);
   });
 });

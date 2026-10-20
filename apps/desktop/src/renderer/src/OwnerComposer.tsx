@@ -113,8 +113,9 @@ export function copyDraft(copy: (text: string) => Promise<unknown>, text: string
   );
 }
 
-export function FinishedDraftView({ text, copied, error, onText, onCopy, onDelete }: {
+export function FinishedDraftView({ text, copied, error, onText, onCopy, onDelete, onResume }: {
   text: string; copied: boolean; error: string | null; onText(text: string): void; onCopy(): void; onDelete(): void;
+  onResume?(): void; // only for a session that can be continued; opens the resume panel, starts nothing
 }): ReactNode {
   const t = useMessages(panels);
   return (
@@ -127,6 +128,7 @@ export function FinishedDraftView({ text, copied, error, onText, onCopy, onDelet
         <div className="session-composer__row">
           <span className="field__hint">{t.draftSaved}</span>
           <button type="button" className="btn btn--sm" onClick={onCopy}>{t.copyDraft}</button>
+          {onResume && <button type="button" className="btn btn--sm" disabled={text.trim() === ""} onClick={onResume}>{t.resumeWithDraft}</button>}
           <button type="button" className="btn btn--ghost btn--sm" onClick={onDelete}>{t.deleteDraft}</button>
         </div>
         {copied && <div className="field__hint" role="status" data-tone="ok">{t.draftCopied}</div>}
@@ -137,7 +139,7 @@ export function FinishedDraftView({ text, copied, error, onText, onCopy, onDelet
 }
 
 /** The unfinished message under the feed of a finished session: kept in the window, no sending. After deleting it shows `fallback`. */
-export function FinishedDraft({ id, fallback }: { id: string; fallback: ReactNode }): ReactNode {
+export function FinishedDraft({ id, fallback, onResume }: { id: string; fallback: ReactNode; onResume?(text: string): void }): ReactNode {
   const [text, setText] = useState(() => { const t = drafts.get(id)?.text ?? ""; saveFinishedText(id, t); return t; });
   const [deleted, setDeleted] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -147,6 +149,7 @@ export function FinishedDraft({ id, fallback }: { id: string; fallback: ReactNod
     <FinishedDraftView text={text} copied={copied} error={error}
       onText={(v) => { setText(v); saveFinishedText(id, v); setCopied(false); }}
       onCopy={() => void copyDraft((v) => window.council.copyText(v), text).then((r) => { setCopied(r.ok); setError(r.ok ? null : r.error); })}
-      onDelete={() => { deleteFinishedDraft(id); setDeleted(true); }} />
+      onDelete={() => { deleteFinishedDraft(id); setDeleted(true); }}
+      onResume={onResume && (() => onResume(text))} />
   );
 }

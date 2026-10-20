@@ -16,7 +16,7 @@ export interface SessionActions {
   reason: string | null; // why mutating actions are unavailable; null — available by the usual rules
 }
 
-const RESUMABLE: readonly StoredStatus[] = ["no_consensus", "stopped", "interrupted"];
+const RESUMABLE: readonly StoredStatus[] = ["consensus", "no_consensus", "stopped", "interrupted"];
 
 /** The single place of the session actions availability rule. Journal not read to the end: mutating actions are closed, stop — as it was. */
 export function sessionActions(input: ActionInput, language?: Language): SessionActions {

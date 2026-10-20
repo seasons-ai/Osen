@@ -14,7 +14,8 @@ import { Icon } from "./icons.tsx";
 import { useLanguage, useMessages } from "./language.tsx";
 import { feed } from "../../shared/messages/session-feed.ts";
 import { ParticipantsPanel, RoundCounter } from "./Participants.tsx";
-import { RESULT_HEAD, finalVersion } from "./Result.tsx";
+import { RESULT_HEAD, canResume, finalVersion } from "./Result.tsx";
+import type { ResultStatus } from "./Result.tsx";
 import { failReason, spend, stoppedByCap } from "./session-ui.tsx";
 import { SolutionPanel } from "./SolutionPanel.tsx";
 import { partialView } from "../../shared/partial.ts";
@@ -28,13 +29,14 @@ export interface DiscussionProps {
   confirming: boolean; stopping: boolean;
   onStopAsk(): void; onStopCancel(): void; onStopConfirm(): void;
   onResult(): void;
+  onResumeDraft?(): void; // "Continue with this message" under the feed of a finished session
   dropped?: readonly string[] | null; onDroppedClose?(): void; // texts of owner message requests dropped by the resume
   drafts?: DraftTexts;
   partial?: JournalPartial | null; // the journal was not read to the end
   id?: string; pending?: readonly PendingReply[]; onOwnerSent?(r: { requestId: string; text: string; answerTo: string | null }): void;
 }
 
-export function Discussion({ state, status, live, expired, confirming, stopping, onStopAsk, onStopCancel, onStopConfirm, onResult, id, pending, onOwnerSent, dropped, onDroppedClose, drafts, partial = null }: DiscussionProps): ReactNode {
+export function Discussion({ state, status, live, expired, confirming, stopping, onStopAsk, onStopCancel, onStopConfirm, onResult, onResumeDraft, id, pending, onOwnerSent, dropped, onDroppedClose, drafts, partial = null }: DiscussionProps): ReactNode {
   const t = useMessages(feed);
   const language = useLanguage();
   const textRef = useRef<HTMLTextAreaElement | null>(null);
@@ -75,7 +77,7 @@ export function Discussion({ state, status, live, expired, confirming, stopping,
     const closed = state.ownerMessages.length > 0 || state.questions.some((q) => q.to === OWNER_ID)
       ? <div className="session-owner-box"><p className="session-composer__closed muted"><Icon name="i-info" size="sm" /> {t.sessionClosed}</p></div>
       : undefined;
-    footer = id !== undefined && hasOwnerDraft(id) ? <FinishedDraft id={id} fallback={closed} /> : closed;
+    footer = id !== undefined && hasOwnerDraft(id) ? <FinishedDraft id={id} fallback={closed} onResume={onResumeDraft && view === null && canResume(state, status as ResultStatus) ? () => onResumeDraft() : undefined} /> : closed;
   }
   if (view === null && status === "interrupted" && state.waiting !== null) footer = <><WaitInterruptedNote state={state} />{footer}</>;
   return (

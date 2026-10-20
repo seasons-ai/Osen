@@ -112,7 +112,7 @@ describe("timeline: owner messages", () => {
 });
 
 describe("timeline: resume divider", () => {
-  const mark = (beforeTurn: number, addedRounds = 2) => ({ ts: "2026-01-02T10:42:00Z", maxRounds: 5, addedRounds, beforeTurn, ownerMessagesBefore: 0 });
+  const mark = (beforeTurn: number, addedRounds = 2, ownerMessagesBefore = 0) => ({ ts: "2026-01-02T10:42:00Z", maxRounds: 5, addedRounds, beforeTurn, ownerMessagesBefore });
   const withMarks = (b: Body[], ...marks: ReturnType<typeof mark>[]) => ({ ...fold(b), resumes: marks });
   const order = (s: ReturnType<typeof fold>) => timeline(s).map((i) => (i.kind === "turn" ? `t${i.turn.turn}` : i.kind === "owner" ? `o${i.message.id}` : i.kind === "failure" ? `f${i.failure.turn}` : i.kind === "resumed" ? `r${i.mark.beforeTurn}` : i.kind));
   it("one mark between the previous and the new turns", () => {
@@ -135,8 +135,22 @@ describe("timeline: resume divider", () => {
   it("an owner message that came before the resume stands before the mark", () => {
     const owner = { id: "o1", requestId: "r", text: "уточнение", afterTurn: 2, answers: [] } as unknown as SessionState["ownerMessages"][number];
     const base = fold([created, started(1, "p1"), done(1, "p1", "amend"), started(2, "p2"), done(2, "p2"), started(3, "p3"), done(3, "p3")]);
-    expect(order({ ...base, ownerMessages: [owner], resumes: [mark(3)] })).toEqual(["t1", "t2", "oo1", "r3", "t3"]);
-    expect(order({ ...fold([created, started(1, "p1"), done(1, "p1", "amend")]), ownerMessages: [{ ...owner, afterTurn: 1 }], resumes: [mark(2)] })).toEqual(["t1", "oo1", "r2"]);
+    expect(order({ ...base, ownerMessages: [owner], resumes: [mark(3, 2, 1)] })).toEqual(["t1", "t2", "oo1", "r3", "t3"]);
+    expect(order({ ...fold([created, started(1, "p1"), done(1, "p1", "amend")]), ownerMessages: [{ ...owner, afterTurn: 1 }], resumes: [mark(2, 2, 1)] })).toEqual(["t1", "oo1", "r2"]);
+  });
+  const ow = (id: string, afterTurn: number) => ({ id, requestId: "r", text: "x", afterTurn, answers: [] }) as unknown as SessionState["ownerMessages"][number];
+  const five = [created, started(1, "p1"), done(1, "p1", "amend"), started(2, "p2"), done(2, "p2"), started(3, "p3"), done(3, "p3"), started(4, "p4"), done(4, "p4")];
+  it("the resume message stands right under the divider, the earlier one above it", () => {
+    const s = { ...fold([...five, started(5, "p1"), done(5, "p1")]), ownerMessages: [ow("o1", 4), ow("o2", 4)], resumes: [mark(5, 2, 1)] };
+    expect(order(s)).toEqual(["t1", "t2", "t3", "t4", "oo1", "r5", "oo2", "t5"]);
+  });
+  it("resume message with no new turns yet — divider, then the message at the end", () => {
+    const s = { ...fold(five), ownerMessages: [ow("o1", 4), ow("o2", 4)], resumes: [mark(5, 2, 1)] };
+    expect(order(s)).toEqual(["t1", "t2", "t3", "t4", "oo1", "r5", "oo2"]);
+  });
+  it("a resume without a message keeps earlier messages above the divider", () => {
+    const s = { ...fold([...five, started(5, "p1"), done(5, "p1")]), ownerMessages: [ow("o1", 4)], resumes: [mark(5, 2, 1)] };
+    expect(order(s)).toEqual(["t1", "t2", "t3", "t4", "oo1", "r5", "t5"]);
   });
   it("without resumes nothing changes", () => {
     expect(order(fold([created, started(1, "p1"), done(1, "p1", "amend")]))).toEqual(["t1"]);
@@ -159,7 +173,7 @@ describe("timeline: owner wait expiry", () => {
     const s = {
       ...base,
       ownerMessages: [{ id: "o1", requestId: "r1", text: "уточнение", afterTurn: 2, answers: [], ts: mark.at }],
-      resumes: [{ ts: mark.at, maxRounds: 5, addedRounds: 2, beforeTurn: 3, ownerMessagesBefore: 0 }],
+      resumes: [{ ts: mark.at, maxRounds: 5, addedRounds: 2, beforeTurn: 3, ownerMessagesBefore: 1 }],
     };
     expect(timeline(s, [mark]).map((i) => i.kind)).toEqual(["turn", "failure", "turn", "owner", "resumed", "wait-expired", "turn"]);
   });

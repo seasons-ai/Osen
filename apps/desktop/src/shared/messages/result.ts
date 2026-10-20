@@ -23,6 +23,10 @@ export const result = defineMessages({
     interruptedText: (hasVersion: boolean): string => `The session executor stopped working.${hasVersion ? " Below is the latest completed solution version." : ""}`,
     capStopTail: " The latest version is not agreed.",
     continueDiscussion: "Continue discussion",
+    continueWithMessage: "Continue with a message",
+    ownerMessage: "Owner message",
+    ownerMessageHint: "After a message all participants confirm their agreement again",
+    messageNeeded: "After consensus the discussion can be continued only with an owner message.",
 
     // Decision and positions
     finalSolution: "Final solution",
@@ -116,6 +120,10 @@ export const result = defineMessages({
     interruptedText: (hasVersion: boolean): string => `Исполнитель сессии перестал работать.${hasVersion ? " Ниже последняя завершённая версия решения." : ""}`,
     capStopTail: " Последняя версия не согласована.",
     continueDiscussion: "Продолжить обсуждение",
+    continueWithMessage: "Продолжить с репликой",
+    ownerMessage: "Реплика владельца",
+    ownerMessageHint: "После реплики все участники подтверждают согласие заново",
+    messageNeeded: "После согласия обсуждение можно продолжить только с репликой владельца.",
 
     finalSolution: "Итоговое решение",
     noSolution: "Решения нет",

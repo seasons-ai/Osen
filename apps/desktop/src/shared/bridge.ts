@@ -41,6 +41,7 @@ export interface ResumeView {
   agreementReset: boolean;     // with these replacements all agreements are reset
   tokenCap: { cap: number | null; spent: number; exhausted: boolean }; // cap — the session's effective cap; exhausted — resume is impossible without a new cap or removal
   draftCalls: number;        // remaining calls of unfinished independent drafts from the engine plan; 0 — no phase or it is finished
+  messageRequired: boolean;  // the engine refused with code consensus: resume only with an owner message; reason holds the engine text, the panel shows the message field
 }
 
 // An accepted independent draft for the feed. text === null — the snapshot was not read or was changed, the reason is in error.
@@ -96,8 +97,8 @@ export interface BridgeActions {
   excludeIgnored(id: string): MaterialsView; // exclude the returned path of row id again
   previewMaterials(refresh: boolean): MaterialsPreviewView; // saves the prepared set; does not create a session
   prepareRerun(sessionId: string, withDecision: boolean): RerunView; // replaces the window's materials draft
-  resumeOptions(id: string, replacements?: ResumeReplacement[]): ResumeView;
-  resumeSession(id: string, rounds: number, maxTotalTokens?: number | null, replacements?: ResumeReplacement[]): { droppedOwnerRequests: string[] }; // texts of dropped unapplied messages
+  resumeOptions(id: string, replacements?: ResumeReplacement[], message?: string): ResumeView; // message — the owner message of the resume, passed to the engine plan as is
+  resumeSession(id: string, rounds: number, maxTotalTokens?: number | null, replacements?: ResumeReplacement[], message?: string): { droppedOwnerRequests: string[] }; // texts of dropped unapplied messages; message — written right after session_resumed
   acceptVersion(id: string, version: number, note?: string): OwnerSelection; // owner's choice: a journal record, models are not called
   templateEditor(request: TemplateEditorRequest): TemplateEditorData;
   createTemplate(draft: TemplateDraft): TemplateSaveResult;
