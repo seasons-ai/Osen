@@ -262,7 +262,7 @@ const resumeWith = (old?: string): Body =>
   ({ type: "session_resumed", pid: 2, maxRounds: 5, ...(old ? { replacements: [{ oldParticipantId: old, participant: newbie }] } : {}) }) as Body;
 
 describe("ParticipantsPanel: participant replacement", () => {
-  const text = (h: string) => h.replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+  const reset = '<div class="session-meter__line"><svg class="icon icon--sm"><use href="#i-info"></use></svg> согласия сброшены заменой участника</div>';
   const base: Body[] = [created(4), started(1, "p1"), done(1, "p1", "amend", 1), drop("p2"), drop("p4"), finishedFail];
   const replaced = () => fold([...base, resumeWith("p2")]);
   it("the new participant stands in the place of the previous one, the previous one is not in the list, numbers are identifiers", () => {
@@ -273,7 +273,7 @@ describe("ParticipantsPanel: participant replacement", () => {
     expect(h).not.toMatch(/participant__name">Имя2[ <]/);
     expect(h.match(/class="participant session-p/g)).toHaveLength(4);
     expect(h).toContain('<span class="avatar" data-p="5">5</span>');
-    expect(text(h)).toContain("заменил p2 «Имя2»");
+    expect(card(h, 5)).toContain('<div class="muted session-p__replaces">заменил p2 «Имя2»</div>');
   });
   it("a departed one without replacement is shown as before, without a replacement mark", () => {
     const h = panel(replaced(), false);
@@ -289,10 +289,10 @@ describe("ParticipantsPanel: participant replacement", () => {
     const s = replaced();
     expect(agreementReset(s, true)).toBe(true);
     expect(agreementReset(s, false)).toBe(false);
-    expect(text(panel(s))).toContain("согласия сброшены заменой участника");
+    expect(panel(s)).toContain(reset);
     const next = fold([...base, resumeWith("p2"), started(2, "p5"), done(2, "p5", "agree", 1)]);
     expect(agreementReset(next, true)).toBe(false);
-    expect(text(panel(next))).not.toContain("согласия сброшены");
+    expect(panel(next)).not.toContain("согласия сброшены");
     expect(agreementReset(fold([...base, resumeWith()]), true)).toBe(false);
   });
 });
