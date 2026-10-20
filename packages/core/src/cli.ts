@@ -380,7 +380,7 @@ function formatShow(events: SessionEvent[], status: StoredStatus, partial: Journ
 }
 
 /** Resume kind of the launch file. A refusal before acceptance is one JSON line `{code, message}` first on stderr, for the MCP server to read. */
-async function runPreparedResume(p: LaunchResumePayload, dataDir: string, io: CliIo, log: Logger, fail: (message: string) => number): Promise<number> {
+async function runPreparedResume(p: LaunchResumePayload, file: string, dataDir: string, io: CliIo, log: Logger, fail: (message: string) => number): Promise<number> {
   const id = p.sessionId;
   try {
     await ensureRegistry(dataDir, { env: io.env, deps: io.inspectDeps });
@@ -404,7 +404,7 @@ async function runPreparedResume(p: LaunchResumePayload, dataDir: string, io: Cl
         if (plan.replacements.length) await resumeDrivers(plan, driverOptions);
       },
       onAccepted: ({ droppedOwnerRequests }) => {
-        const path = launchAcceptedPath(dataDir, id);
+        const path = launchAcceptedPath(file);
         const tmp = `${path}.${process.pid}.tmp`;
         writeFileSync(tmp, JSON.stringify({ droppedOwnerRequests: droppedOwnerRequests.map((r) => ({ requestId: r.requestId, text: r.text, questionId: r.questionId ?? null })) }), { mode: 0o600 });
         renameSync(tmp, path);
@@ -436,7 +436,7 @@ async function runPrepared(file: string, dataDir: string, io: CliIo, log: Logger
     if (e instanceof LaunchFileError) return fail(e.message);
     throw e;
   }
-  if (payload.kind === "resume") return runPreparedResume(payload, dataDir, io, log, fail);
+  if (payload.kind === "resume") return runPreparedResume(payload, file, dataDir, io, log, fail);
   const { session, materials, workspace } = payload;
   try {
     let registry: Registry | undefined;

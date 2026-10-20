@@ -41,8 +41,14 @@ describe("Internal start of a prepared session: launch file", () => {
   it("write then read returns the payload; mode 0600; file removed after read", () => {
     const home = tmp();
     const p = payload();
-    const path = writeLaunchFile(home, p);
-    expect(path).toBe(launchFilePath(home, p.session.id));
+    const path = writeLaunchFile(home, p, "L1");
+    expect(path).toBe(launchFilePath(home, p.session.id, "L1"));
+    expect(path).toBe(join(launchDir(home), `${p.session.id}.L1.json`));
+    // every launch gets its own file: two writes of one session never share a path
+    const other = writeLaunchFile(home, p);
+    expect(other).not.toBe(path);
+    expect(existsSync(other) && existsSync(path)).toBe(true);
+    rmSync(other);
     expect(statSync(path).mode & 0o777).toBe(0o600);
     expect(statSync(launchDir(home)).isDirectory()).toBe(true);
     expect(readLaunchFile(path)).toEqual(p);
@@ -152,7 +158,7 @@ describe("Внутренний запуск подготовленной сес�
     expect(evs.filter((e) => e.type === "session_resumed")).toHaveLength(1);
     expect(readSession(home, "r1")?.state.session?.origin).toBe("cli");
     expect(existsSync(path)).toBe(false);
-    const acc = launchAcceptedPath(home, "r1");
+    const acc = launchAcceptedPath(path);
     expect(statSync(acc).mode & 0o777).toBe(0o600);
     expect(JSON.parse(readFileSync(acc, "utf8"))).toEqual({ droppedOwnerRequests: [] });
     const status = readSession(home, "r1")!.state.finish!.status;
@@ -164,11 +170,12 @@ describe("Внутренний запуск подготовленной сес�
     const home = tmp();
     const p = await finished(home, "r2", "no_consensus");
     const before = journalText(home, "r2");
-    const r = await cli(home, ["run-prepared", writeLaunchFile(home, { ...p, rounds: 2, journalBytes: p.journalBytes + 1 })]);
+    const f = writeLaunchFile(home, { ...p, rounds: 2, journalBytes: p.journalBytes + 1 });
+    const r = await cli(home, ["run-prepared", f]);
     expect(r.code).not.toBe(0);
     expect(JSON.parse(firstLine(r.err))).toMatchObject({ code: "stale_plan" });
     expect(journalText(home, "r2")).toBe(before);
-    expect(existsSync(launchAcceptedPath(home, "r2"))).toBe(false);
+    expect(existsSync(launchAcceptedPath(f))).toBe(false);
   });
 
   it("a consensus session with a message: owner_message right after session_resumed", async () => {
@@ -194,7 +201,7 @@ describe("Внутренний запуск подготовленной сес�
     expect(code).toBe(2);
     expect(JSON.parse(firstLine(err.join("\n")))).toMatchObject({ code: "stale_plan" });
     expect(journalText(home, "r6")).toBe(before);
-    expect(existsSync(launchAcceptedPath(home, "r6"))).toBe(false);
+    expect(existsSync(launchAcceptedPath(path))).toBe(false);
     expect(existsSync(resumeLockPath(home, "r6"))).toBe(false);
   });
 
