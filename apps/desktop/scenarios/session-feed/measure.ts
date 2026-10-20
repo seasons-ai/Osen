@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { connect, type Cdp } from "./cdp.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "../../../..");
@@ -20,22 +21,6 @@ const WIDTHS = [900, 1100];
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const OLD_PALETTE = ["#22e3ff", "#3dff9a", "#7aa8ff", "#ff5578", "#ffc53d"];
 
-type Cdp = { send: (method: string, params?: object) => Promise<any>; close: () => void };
-async function connect(ws: string): Promise<Cdp> {
-  const sock = new WebSocket(ws);
-  await new Promise((ok, fail) => { sock.onopen = ok; sock.onerror = fail; });
-  let id = 0;
-  const wait = new Map<number, (m: any) => void>();
-  sock.onmessage = (e) => { const m = JSON.parse(String(e.data)); wait.get(m.id)?.(m); wait.delete(m.id); };
-  return {
-    send: (method, params = {}) => new Promise((ok, fail) => {
-      const n = ++id;
-      wait.set(n, (m) => (m.error ? fail(new Error(`${method}: ${m.error.message}`)) : ok(m.result)));
-      sock.send(JSON.stringify({ id: n, method, params }));
-    }),
-    close: () => sock.close(),
-  };
-}
 async function pageTarget(port: number): Promise<string> {
   const list = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as { type: string; url: string; webSocketDebuggerUrl: string }[];
   const page = list.find((t) => t.type === "page" && !t.url.startsWith("devtools:"));
