@@ -41,6 +41,17 @@ The check looks for the newest `osen-*.dmg` in `apps/desktop/release.noindex/`. 
 2. Each check prints an `OK` or `FAIL` line: the image contains `Osen.app`, its `Info.plist` has the identifier `com.osen.desktop` and the display name `Osen`; `Contents/Resources` contains `icon.icns` and `CFBundleIconFile` points to it; the `GrantFileProtocolExtraPrivileges` fuse is off and `RunAsNode` is on (it runs PDF text extraction); the built-in templates are present; there are no `.env*` files; there is no `.council-data` and no `sessions`; there are no `*.pem`, `*.key`, `*.p12`; there is no `node_modules` inside the app; the secret values from the environment and from the repository `.env` do not appear in the image.
 3. Exit code 0 means everything passed. On `FAIL`, do not install the image.
 
+### Build-only `sprintf-js` (Dependabot alert #1)
+
+`sprintf-js@1.1.3` ([GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c): a format precision above 100 throws `RangeError`) is installed only for the build: `electron-builder` → `app-builder-lib` → `@electron/get` → `global-agent` → `roarr` → `sprintf-js`. As of 2026-10-19 the advisory has no patched version, so the package stays and the alert stays open; the risk left is a build-time `RangeError`, which needs an attacker-controlled format string in a `global-agent` log call. After a dependency, build or packaging change, rerun:
+
+```bash
+npm run build -w @model-council/desktop
+node scripts/check-sprintf-dependency.ts
+```
+
+The check prints one line per boundary: every installed `sprintf-js` is dev-only, `roarr` is its only dependent and `global-agent` is the only dependent of `roarr`; every log call in every installed `global-agent` passes a literal format, and a level method reached any other way (computed name, alias, destructuring, a direct `roarr` call) fails as unreviewable; no file in `apps/desktop/out` or in the packaged app (`apps/desktop/release.noindex/mac-arm64/Osen.app`, or `--app <path to Osen.app>`) contains a package path or a marker string of `sprintf-js`, `roarr` or `global-agent`. `apps/desktop/out` older than `package-lock.json` fails: rebuild it. With no packaged app at the default path the check prints `NOT_VERIFIED`, not a pass; an app named by `--app` that is missing fails. Any `FAIL` exits 1: the boundary no longer holds and the alert needs a fresh review, not a waiver. `PASS` means the vulnerable code stays out of the app; it does not close the alert on GitHub. `--self-check` proves the check fails on a dynamic or unreviewable format, a bundled or packaged copy, stale output and missing evidence.
+
 ## App icon
 
 The icon comes from `design/mockup-osen/brand/app-icon/`: `icon.icns` is for the bundle (`mac.icon` in `apps/desktop/electron-builder.yml`), `icon.png` is for the Dock of the development window (`npm run desktop`). There are no copies in `apps/desktop/`. To redraw the icon, replace the files in that folder and rebuild the image. If Finder or the Dock still show the old icon after an update, that is the macOS icon cache: restarting the Dock or logging out and back in clears it, and the owner does that.
