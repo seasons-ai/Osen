@@ -58,7 +58,7 @@ export function showJson(id: string, status: StoredStatus, partial: JournalParti
 
 const providerItem = (s: ProviderStatus) => ({
   id: s.id, kind: s.kind, label: s.label, available: s.available, reason: s.reason ?? null, warning: s.warning ?? null,
-  path: s.path ?? null, version: s.version ?? null, baseUrl: s.baseUrl ?? null, keyEnv: s.keyEnv ?? null, keySet: s.keySet ?? null,
+  path: s.path ?? null, version: s.version ?? null, verified: s.verified ?? null, baseUrl: s.baseUrl ?? null, keyEnv: s.keyEnv ?? null, keySet: s.keySet ?? null,
   models: s.models, modelsConfirmed: s.modelsConfirmed, modelsReason: s.modelsReason ?? null,
 });
 

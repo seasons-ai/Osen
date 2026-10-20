@@ -261,7 +261,7 @@ export async function resumeDrivers(
     }
     let found = inspected.get(p.providerId);
     if (!found) {
-      found = await inspectProvider(provider, { env, withModels: false, deps, keyFile: envFilePath(dataDir) });
+      found = await inspectProvider(provider, { env, withModels: false, deps, keyFile: envFilePath(dataDir), dataDir });
       inspected.set(p.providerId, found);
       if (found.status.warning) warnings.push(resumeMessages().providerWarning(p.providerId, found.status.warning));
     }

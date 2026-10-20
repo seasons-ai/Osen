@@ -30,7 +30,7 @@ export const councilOptions = defineTool({
     await ensureRegistry(ctx.dataDir, { env: ctx.env, deps: ctx.inspectDeps });
     const registry = readRegistry(ctx.dataDir);
     logRegistryLoaded(ctx.logger, ctx.dataDir, registry);
-    const found = await inspectProviders(registry, { env: ctx.env, deps: ctx.inspectDeps, keyFile: envFilePath(ctx.dataDir) });
+    const found = await inspectProviders(registry, { env: ctx.env, deps: ctx.inspectDeps, keyFile: envFilePath(ctx.dataDir), dataDir: ctx.dataDir });
     const statuses = found.map((f) => f.status);
     const catalog = loadTemplates({ builtinDir: ctx.builtinTemplatesDir, userDir: userTemplatesDir(ctx.dataDir) });
 

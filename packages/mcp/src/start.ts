@@ -174,7 +174,7 @@ export const councilStart = defineTool({
       if (!saved) throw new ToolError(m.startLineupNotFound(input.lineupId));
       for (const id of new Set(saved.participants.map((p) => p.providerId))) {
         const provider = registry.providers.find((p) => p.id === id);
-        if (provider) found.set(id, await inspectProvider(provider, { env: ctx.env, deps: ctx.inspectDeps, keyFile: envFilePath(ctx.dataDir) }));
+        if (provider) found.set(id, await inspectProvider(provider, { env: ctx.env, deps: ctx.inspectDeps, keyFile: envFilePath(ctx.dataDir), dataDir: ctx.dataDir }));
       }
       const check = checkLineup(saved, { registry, statuses: [...found.values()].map((r) => r.status), scripted: lineupScripted(ctx) });
       if (!check.available) {
@@ -253,7 +253,7 @@ export const councilStart = defineTool({
       const provider = registry.providers.find((p) => p.id === e.providerId)!;
       let r = found.get(e.providerId);
       if (!r) {
-        r = await inspectProvider(provider, { env: ctx.env, withModels: false, deps: ctx.inspectDeps, keyFile: envFilePath(ctx.dataDir) });
+        r = await inspectProvider(provider, { env: ctx.env, withModels: false, deps: ctx.inspectDeps, keyFile: envFilePath(ctx.dataDir), dataDir: ctx.dataDir });
         found.set(e.providerId, r);
       }
       if (!r.runtime && !r.http) throw new ToolError(m.startProviderUnavailable(provider.label, r.status.reason));

@@ -399,7 +399,7 @@ async function runPrepared(file: string, dataDir: string, io: CliIo, log: Logger
       }
       const provider = registry!.providers.find((x) => x.id === p.providerId);
       if (!provider) return fail(t.unknownProvider(p.providerId, registry!.providers.map((x) => x.id).join(", ")));
-      const found = await inspectProvider(provider, { env: io.env, withModels: false, deps: io.inspectDeps, keyFile: envFilePath(dataDir) });
+      const found = await inspectProvider(provider, { env: io.env, withModels: false, deps: io.inspectDeps, keyFile: envFilePath(dataDir), dataDir });
       if (!found.runtime && !found.http) { log.error("Provider unavailable", p.providerId); io.stderr(t.providerUnavailable(p.providerId, String(found.status.reason))); return EXIT.usage; }
       drivers[p.id] = found.runtime ? createCliDriver(found.runtime) : createHttpDriver(found.http!);
     }
@@ -602,13 +602,14 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       const printProvider = (s: ProviderStatus, warn: (text: string) => void) => {
         const isHttp = s.kind === "openai-http";
         io.stdout([`${s.id}  ${s.kind}  ${s.available ? t.available : t.unavailable(s.reason ?? "")}`, s.version && t.version(s.version), s.path ?? s.baseUrl].filter(Boolean).join("  "));
+        if (s.verified) io.stdout(t.verified(s.verified.level, s.verified.checkedAt));
         if (s.warning) warn(t.providerWarning(s.warning));
         if (isHttp) io.stdout(s.keyEnv ? t.key(s.keyEnv, !!s.keySet) : t.keyNotRequired);
         io.stdout(t.models(isHttp ? (s.models.length ? s.models.join(", ") : t.modelsManual(s.id)) : [DEFAULT_MODEL, ...s.models].join(", ")));
         if (!s.modelsConfirmed && s.modelsReason) io.stdout(t.modelsUnconfirmed(s.modelsReason));
       };
       if (cmd === "doctor") {
-        const found = await inspectProviders(registry!, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir) });
+        const found = await inspectProviders(registry!, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir), dataDir });
         const statuses = found.map((f) => f.status);
         statuses.forEach((s) => { if (s.warning) io.stderr(t.providerWarning(s.warning)); });
         const versions = io.processVersions ?? process.versions;
@@ -638,7 +639,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
       }
       if (cmd === "providers") {
         if (values.json) {
-          const all = await inspectProviders(registry!, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir) });
+          const all = await inspectProviders(registry!, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir), dataDir });
           all.forEach(({ status: s }) => { if (s.warning) io.stderr(t.providerWarning(s.warning)); });
           io.stdout(JSON.stringify(providersJson(all.map((f) => f.status))));
           return EXIT.consensus;
@@ -647,7 +648,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           io.stdout(t.noProviders(configPath(dataDir)));
           return EXIT.consensus;
         }
-        for (const { status: s } of await inspectProviders(registry!, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir) })) {
+        for (const { status: s } of await inspectProviders(registry!, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir), dataDir })) {
           printProvider(s, io.stdout);
         }
         return EXIT.consensus;
@@ -900,7 +901,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           const lineup = readLineups(dataDir).find((l) => l.id === id);
           if (!lineup) return argFail(t.lineupNotFound(id), false);
           const used = reg.providers.filter((p) => lineup.participants.some((x) => x.providerId === p.id));
-          const inspected = await Promise.all(used.map((p) => inspectProvider(p, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir) })));
+          const inspected = await Promise.all(used.map((p) => inspectProvider(p, { env: io.env, deps: io.inspectDeps, keyFile: envFilePath(dataDir), dataDir })));
           for (const f of inspected) {
             runtimes.set(f.status.id, f);
             if (f.status.warning) io.stderr(t.providerWarn(f.status.id, f.status.warning));
@@ -966,7 +967,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           }
           let found = runtimes.get(p.providerId);
           if (!found) {
-            found = await inspectProvider(p.provider, { env: io.env, withModels: false, deps: io.inspectDeps, keyFile: envFilePath(dataDir) });
+            found = await inspectProvider(p.provider, { env: io.env, withModels: false, deps: io.inspectDeps, keyFile: envFilePath(dataDir), dataDir });
             runtimes.set(p.providerId, found);
             if (found.status.warning) io.stderr(t.providerWarn(p.providerId, found.status.warning));
           }

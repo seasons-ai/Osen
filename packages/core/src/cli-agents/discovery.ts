@@ -3,6 +3,9 @@ import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { providerMessages } from "../messages/providers.ts";
+import { createLogger } from "../store/log.ts";
+import { VERIFIED_FILE, loadVerifiedRecord, lookupVerified } from "./verified-record.ts";
+import type { VerifiedRecord } from "./verified-record.ts";
 import type { CliAgent } from "./types.ts";
 
 const run = promisify(execFile);
@@ -15,17 +18,15 @@ export interface CliLocation {
   searchPath: string;
   reason?: string;
   warning?: string;
+  verified?: { level: "real" | "interface" | "none"; checkedAt: string | null };
 }
 
 export interface DiscoveryDeps {
   isExecutable(path: string): boolean;
   loginShellPath(env: Record<string, string | undefined>): Promise<string | undefined>;
   runVersion(path: string, env: Record<string, string | undefined>): Promise<string>;
+  record?: VerifiedRecord;
 }
-
-/** Versions on which the isolated-run flags were verified (2026-10-07). */
-export const VERIFIED_VERSIONS: Record<CliAgent, readonly [min: string, max: string]> =
-  { claude: ["2.1.288", "2.1.288"], codex: ["0.159.2", "0.159.2"] };
 
 const MARK = "__COUNCIL_PATH__";
 
@@ -80,11 +81,53 @@ const realDeps: DiscoveryDeps = {
 };
 
 const cache = new Map<string, Promise<CliLocation>>();
+const recordCache = new Map<string, VerifiedRecord>();
+const loggedRejections = new Set<string>(); // once per process and file state; not cleared by resetDiscoveryCache
 let loginPathCache: Promise<string | undefined> | undefined;
 
 export function resetDiscoveryCache(): void {
   cache.clear();
+  recordCache.clear();
   loginPathCache = undefined;
+}
+
+// The local file state: changes when the file is rewritten or its mode changes, so a long-running process notices it.
+function fileState(dataDir: string): string {
+  try {
+    const st = statSync(join(dataDir, VERIFIED_FILE));
+    return `${st.mtimeMs}:${st.ctimeMs}:${st.size}`;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code ?? "unknown";
+  }
+}
+
+// Loads the record once per (dataDir, file state); a rejected file is logged once per state.
+function recordFor(dataDir: string | undefined): VerifiedRecord {
+  if (dataDir === undefined) return loadVerifiedRecord();
+  const key = `${dataDir}\0${fileState(dataDir)}`;
+  let rec = recordCache.get(key);
+  if (!rec) {
+    rec = loadVerifiedRecord(dataDir);
+    recordCache.set(key, rec);
+    if (rec.rejected && !loggedRejections.has(key)) {
+      loggedRejections.add(key);
+      createLogger(dataDir, "discovery").error(rec.rejected);
+    }
+  }
+  return rec;
+}
+
+function versionWarning(agent: CliAgent, version: string, record: VerifiedRecord): { warning?: string; verified: NonNullable<CliLocation["verified"]> } {
+  const m = providerMessages();
+  const entry = lookupVerified(record, agent, version);
+  if (entry) return { verified: { level: entry.level, checkedAt: entry.checkedAt }, ...(entry.level === "interface" ? { warning: m.versionInterfaceOnly(agent, version) } : {}) };
+  const verified = { level: "none" as const, checkedAt: null };
+  const recorded = record.entries.filter((e) => e.agent === agent).map((e) => e.version).sort(compare);
+  if (!recorded.length) return { verified, warning: m.versionNotRecorded(agent, version, "—") };
+  const [min, max] = [recorded[0]!, recorded[recorded.length - 1]!];
+  if (compare(version, max) > 0) return { verified, warning: m.versionNewer(agent, version, min, max) };
+  if (compare(version, min) < 0) return { verified, warning: m.versionOlder(agent, version, min, max) };
+  return { verified, warning: m.versionNotRecorded(agent, version, recorded.join(", ")) };
 }
 
 function findIn(agent: CliAgent, searchPath: string | undefined, isExecutable: DiscoveryDeps["isExecutable"]): string | undefined {
@@ -105,6 +148,7 @@ async function locate(
   explicitPath: string | undefined,
   env: Record<string, string | undefined>,
   deps: DiscoveryDeps,
+  dataDir: string | undefined,
 ): Promise<CliLocation> {
   let searchPath = env.PATH ?? "";
   let path: string | undefined;
@@ -127,34 +171,39 @@ async function locate(
     }
   }
 
-  const found: CliLocation = { agent, found: true, path, searchPath };
-  const [min, max] = VERIFIED_VERSIONS[agent];
+  const found: CliLocation = { agent, found: true, path, searchPath, verified: { level: "none", checkedAt: null } };
+  const record = deps.record ?? recordFor(dataDir);
+  const warnings: string[] = [];
   try {
     const raw = await deps.runVersion(path, { ...env, PATH: searchPath });
     const version = parseVersion(raw);
     if (!version) throw new Error(providerMessages().versionNoNumber(raw.trim().slice(0, 100)));
     found.version = version;
-    if (compare(version, max) > 0) found.warning = providerMessages().versionNewer(agent, version, min, max);
-    else if (compare(version, min) < 0) found.warning = providerMessages().versionOlder(agent, version, min, max);
+    const w = versionWarning(agent, version, record);
+    found.verified = w.verified;
+    if (w.warning) warnings.push(w.warning);
   } catch (e) {
-    found.warning = providerMessages().versionUnknown(agent, e instanceof Error ? e.message : String(e));
+    warnings.push(providerMessages().versionUnknown(agent, e instanceof Error ? e.message : String(e)));
   }
+  if (record.rejected) warnings.push(record.rejected);
+  if (warnings.length) found.warning = warnings.join("; ");
   return found;
 }
 
 export async function locateCli(agent: CliAgent, options: {
   explicitPath?: string;
   env: Record<string, string | undefined>;
+  dataDir?: string;
   deps?: Partial<DiscoveryDeps>;
 }): Promise<CliLocation> {
-  const { explicitPath, env } = options;
+  const { explicitPath, env, dataDir } = options;
   try {
-    if (options.deps) return await locate(agent, explicitPath, env, { ...realDeps, ...options.deps });
-    const key = JSON.stringify([agent, explicitPath, env.PATH]);
+    if (options.deps) return await locate(agent, explicitPath, env, { ...realDeps, ...options.deps }, dataDir);
+    const key = JSON.stringify([agent, explicitPath, env.PATH, dataDir, dataDir === undefined ? null : fileState(dataDir)]);
     let hit = cache.get(key);
     if (!hit) {
       const deps: DiscoveryDeps = { ...realDeps, loginShellPath: (e) => (loginPathCache ??= realDeps.loginShellPath(e)) };
-      hit = locate(agent, explicitPath, env, deps);
+      hit = locate(agent, explicitPath, env, deps, dataDir);
       cache.set(key, hit);
     }
     return await hit;

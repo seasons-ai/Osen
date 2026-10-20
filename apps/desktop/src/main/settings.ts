@@ -63,7 +63,7 @@ export function createSettings(deps: SettingsDeps): SettingsApi {
     };
   }
 
-  const look = async (provider: Provider, withModels: boolean) => inspect(provider, { env, withModels, keyFile });
+  const look = async (provider: Provider, withModels: boolean) => inspect(provider, { env, withModels, keyFile, dataDir });
 
   async function view(): Promise<SettingsView> {
     const base = { configPath: configPath(dataDir), envPath: keyFile };

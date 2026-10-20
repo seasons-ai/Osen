@@ -10,7 +10,16 @@ import { execFile } from "node:child_process";
 import { chmodSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { VERIFIED_VERSIONS } from "../../src/cli-agents/discovery.ts";
+import { BUILTIN_RECORD } from "../../src/cli-agents/verified-record.ts";
+
+// Recorded range per agent, derived from the built-in record (numeric order).
+const num = (v: string) => v.split(".").map(Number).reduce((a, n) => a * 1000 + n, 0);
+const range = (agent: "claude" | "codex"): readonly [string, string] => {
+  const v = BUILTIN_RECORD.filter((e) => e.agent === agent).map((e) => e.version).sort((a, b) => num(a) - num(b));
+  return [v[0]!, v[v.length - 1]!];
+};
+const VERIFIED_VERSIONS = { claude: range("claude"), codex: range("codex") };
+const levelOf = (agent: "claude" | "codex", v: string) => BUILTIN_RECORD.find((e) => e.agent === agent && e.version === v)?.level;
 
 if (process.env.COUNCIL_DEV !== "1") { console.error("COUNCIL_DEV=1 is required. Usage: COUNCIL_DEV=1 node packages/core/scenarios/security-cli-version/check.ts [--mutant]"); process.exit(2); }
 const mutant = process.argv.includes("--mutant");
@@ -113,8 +122,11 @@ process.exit(2);
   for (const [label, end] of [["min", 0], ["max", 1]] as const) {
     const c = VERIFIED_VERSIONS.claude[end], x = VERIFIED_VERSIONS.codex[end];
     const r = await providers(`verified-${label}`, `"${c} (Claude Code)"`, `"codex-cli ${x}"`);
-    if (r) check(`verified ${label} endpoints: versions printed, no range warning`,
-      r.claude?.version === c && r.codex?.version === x && !r.claude?.warning && !r.codex?.warning, JSON.stringify(r.claude).slice(0, 300));
+    // a real entry gives no warning; an interface-only entry gives the interface-only warning, never a range warning
+    const warned = (agent: "claude" | "codex", v: string, w: string | undefined) =>
+      levelOf(agent, v) === "real" ? !w : levelOf(agent, v) === "interface" && !!w && w.includes("a real acceptance run is missing");
+    if (r) check(`verified ${label} endpoints: versions printed, warning matches the record level`,
+      r.claude?.version === c && r.codex?.version === x && warned("claude", c, r.claude?.warning) && warned("codex", x, r.codex?.warning), JSON.stringify([r.claude, r.codex]).slice(0, 400));
   }
 
   const older = bump(VERIFIED_VERSIONS.claude[0], -1), newer = bump(VERIFIED_VERSIONS.claude[1], 1)!;

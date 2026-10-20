@@ -157,7 +157,7 @@ export function createLauncher(deps: LauncherDeps): {
       if (!provider) throw new LaunchError(msg().providerNotInRegistry(p.providerId));
       let r = found.get(p.providerId);
       if (!r) {
-        r = await (deps.inspect ?? inspectProvider)(provider, { env, withModels: false, keyFile: envFilePath(dataDir) });
+        r = await (deps.inspect ?? inspectProvider)(provider, { env, withModels: false, keyFile: envFilePath(dataDir), dataDir });
         found.set(p.providerId, r);
       }
       if (!r.runtime && !r.http) throw new LaunchError(msg().providerUnavailable(provider.label, r.status.reason ?? msg().reasonUnknown));

@@ -86,6 +86,16 @@ describe("inspectProvider cli", () => {
     expect(r.status.warning).toContain("2.1.288–2.1.288");
   });
 
+  it("interface-only version stays available and exposes verified; HTTP provider has none", async () => {
+    fakeCodex();
+    const r = await inspectProvider(codex, { env: env(), deps: noModels });
+    expect(r.status.available).toBe(true);
+    expect(r.status.verified).toEqual({ level: "interface", checkedAt: "2026-10-16" });
+    expect(r.status.warning).toContain("реальная приёмка отсутствует");
+    const h = await inspectProvider({ id: "h", kind: "openai-http", label: "H", baseUrl: "http://127.0.0.1:1/v1", apiKeyEnv: "", models: ["m"] }, { env: env(), deps: noModels });
+    expect(h.status.verified).toBeUndefined();
+  });
+
   it("help not readable", async () => {
     fakeClaude({ helpFails: true });
     const r = await inspectProvider(claude, { env: env(), deps: noModels });
