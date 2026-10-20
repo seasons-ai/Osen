@@ -1,7 +1,10 @@
 import { afterAll, describe, expect, it } from "vitest";
+import { execFile } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { MaterialsError, collectSessionMaterials, sha256Of, verifyMaterials } from "../materials.ts";
 import type { CollectOptions } from "../materials.ts";
 import { collectSessionMaterialsWithUrls, collectUrlMaterials, urlMaterialName } from "./collect.ts";
@@ -151,5 +154,73 @@ describe("collectSessionMaterialsWithUrls", () => {
     expect(only.materials[0]).toMatchObject({ id: "m1", sha256: sha256Of("t") });
     const p = [file("f.md", "f")];
     expect(collectSessionMaterialsWithUrls(p, opts(1000), [])).toEqual({ ...collectSessionMaterials(p, opts(1000)), sources: [] });
+  });
+});
+
+// Own seeded generator: fast-check is not connected.
+function mulberry32(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Independent reference: the previous expression, used only on inputs whose slash runs stay short.
+const oracle = (url: URL) => (url.host + url.pathname).replace(/\/+$/, "").replaceAll("/", "_");
+
+const HOSTS = ["https://h.test", "http://example.com:8443", "http://[2001:db8::1]", "https://xn--80ak6aa92e.test", "http://127.0.0.1:8787"];
+const ALPHABET = "//ax.%-_~٣ я";
+const CHUNKS = ["/", "//", "%D0%B0", "?q=/", "#/", "/".repeat(64), "/a/"];
+function generate(rand: () => number, length: number): string {
+  let s = "";
+  while (s.length < length) {
+    const r = rand();
+    if (r < 0.1) s += CHUNKS[Math.floor(rand() * CHUNKS.length)];
+    else s += ALPHABET[Math.floor(rand() * ALPHABET.length)];
+  }
+  return s.slice(0, length);
+}
+
+describe("Bounded URL material name construction", () => {
+  // The attack runs only in a child with a finite watchdog: a vitest timeout cannot interrupt synchronous regex work.
+  it("child probe: 1,048,576 slashes before 'x' have median <= 1,000 ms and finish before the 5,000 ms watchdog", async () => {
+    const probe = fileURLToPath(new URL("../../scenarios/security-url-material-name/probe.ts", import.meta.url));
+    const collect = fileURLToPath(new URL("./collect.ts", import.meta.url));
+    const pending = promisify(execFile)(process.execPath, [probe, collect, String(1 << 20)], { timeout: 5_000, maxBuffer: 4 * 1024 * 1024 });
+    pending.child.stdin?.end();
+    const result = JSON.parse((await pending).stdout) as { n: number; samples: number[]; median: number };
+    expect(result.n).toBe(1_048_576);
+    expect(result.samples).toHaveLength(3);
+    expect(result.median).toBeLessThanOrEqual(1_000);
+  }, 10_000);
+
+  it("boundary corpus matches the reference", () => {
+    const corpus = [
+      "https://h.test", "https://h.test/", "https://h.test//", "https://h.test/a//b", "https://h.test/a//b//", "https://h.test/a/?x=/#/",
+      "http://example.com:8443/a/", "http://[2001:db8::1]/a/b/", "https://h.test/%D0%B0/b/", "https://h.test/я/", "https://h.test/a%2F/",
+      `https://h.test${"/".repeat(64)}x`, `https://h.test/x${"/".repeat(64)}`, `https://h.test${"/".repeat(64)}`,
+    ];
+    for (const raw of corpus) expect(urlMaterialName(new URL(raw)), raw).toBe(oracle(new URL(raw)));
+  });
+
+  it("generated inputs over 300 seeds and boundary lengths match the reference", () => {
+    for (let seed = 1; seed <= 320; seed++) {
+      const rand = mulberry32(seed);
+      for (const length of [0, 1, 2, 3, Math.floor(rand() * 40), 1_024, 4_096, 16_384]) {
+        const url = new URL(HOSTS[Math.floor(rand() * HOSTS.length)]! + "/" + generate(rand, length));
+        expect(urlMaterialName(url), `seed ${seed}, length ${length}`).toBe(oracle(url));
+      }
+    }
+  });
+
+  it("long slash runs: internal runs become underscores, a trailing run is removed", () => {
+    for (const n of [0, 1, 2, 3, 1_024, 4_096, 16_384]) {
+      const run = "/".repeat(n);
+      expect(urlMaterialName(new URL(`https://h.test/${run}x`))).toBe(`h.test_${"_".repeat(n)}x`);
+      expect(urlMaterialName(new URL(`https://h.test/a${run}`))).toBe("h.test_a");
+      expect(urlMaterialName(new URL(`https://h.test/${run}`))).toBe("h.test");
+    }
   });
 });
