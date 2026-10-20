@@ -20,6 +20,7 @@ export interface LaunchInput {
   language: Language; // session language: the participant's system prompt is in it
   schema?: { json: string; file: string };
   features?: ReadonlySet<string>;
+  pinned?: boolean; // launched from an Osen pin
 }
 
 export type LaunchPlan = { ok: true; args: string[]; structured: boolean } | { ok: false; reason: string };
@@ -31,7 +32,7 @@ const REQUIRED: Record<CliAgent, readonly string[]> = {
 
 /** Arguments for an isolated participant run, built from the flags declared by the help text; the request goes through stdin. */
 export function planLaunch(input: LaunchInput): LaunchPlan {
-  const { agent, flags, version, model, schema, features, language } = input;
+  const { agent, flags, version, model, schema, features, language, pinned } = input;
   const m = providerMessages();
   const who = version ? m.whoVersion(agent, version) : m.whoInstalled(agent);
   const missing = REQUIRED[agent].filter((f) => !flags.has(f));
@@ -42,6 +43,8 @@ export function planLaunch(input: LaunchInput): LaunchPlan {
     const absent = CODEX_ISOLATION_FEATURES.filter((f) => !features.has(f));
     if (absent.length) return { ok: false, reason: m.isolationFeaturesMissing(who, absent.join(", ")) };
   }
+  // A pinned codex turns self-update off only by --config (decision 174): without it the pin cannot keep its version, so it is not launched.
+  if (agent === "codex" && pinned && !flags.has("--config")) return { ok: false, reason: m.pinnedNoConfigFlag(who) };
   const useModel = model !== DEFAULT_MODEL;
   if (useModel && !flags.has("--model")) return { ok: false, reason: m.missingModelFlag(who) };
   const structured = schema !== undefined && flags.has(agent === "claude" ? "--json-schema" : "--output-schema");
@@ -54,6 +57,8 @@ export function planLaunch(input: LaunchInput): LaunchPlan {
   } else {
     args.push("exec", "--sandbox", "read-only", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--ignore-rules", "--json");
     for (const f of CODEX_ISOLATION_FEATURES) args.push("--disable", f);
+    // Codex has no env switch for self-update and turns ignore config.toml, so a pinned run turns it off by --config.
+    if (pinned) args.push("-c", "check_for_update_on_startup=false");
     if (useModel) args.push("--model", model);
     if (structured) args.push("--output-schema", schema!.file);
     args.push("-");

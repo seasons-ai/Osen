@@ -5,9 +5,11 @@ import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { locateCli, parseVersion, resetDiscoveryCache } from "./discovery.ts";
+import { locateCli, parseVersion, pinnedEnv, resetDiscoveryCache } from "./discovery.ts";
+import { installPin, pinsPath, usePin } from "./pins.ts";
+import type { PackageSource } from "./pins.ts";
 import { VERIFIED_FILE } from "./verified-record.ts";
-import type { VerifiedEntry } from "./verified-record.ts";
+import type { VerifiedEntry, VerifiedRecord } from "./verified-record.ts";
 
 let tmp: string;
 beforeEach(() => {
@@ -69,6 +71,14 @@ describe("locateCli", () => {
     expect(r.reason).toBe(`Команда claude не найдена по заданному пути ${missing}`);
   });
 
+  it("not found with a data folder: nothing is installed, cli/ is not created", async () => {
+    const data = join(tmp, "data");
+    mkdirSync(data);
+    const r = await locateCli("claude", { env: { PATH: join(tmp, "empty") }, dataDir: data, deps: noLogin });
+    expect(r.found).toBe(false);
+    expect(existsSync(join(data, "cli"))).toBe(false);
+  });
+
   it("explicit path takes precedence over PATH", async () => {
     bin("2.1.288 (Claude Code)");
     const other = script(join(tmp, "other"), "claude", "echo '2.1.288 (Claude Code)'");
@@ -111,6 +121,100 @@ describe("locateCli", () => {
     bin("0.159.2", "codex");
     const r = await locateCli("claude", { env: { PATH: join(tmp, "bin") }, deps: noLogin });
     expect(r.found).toBe(false);
+  });
+});
+
+// Search order: explicit path, then the Osen pin, then PATH.
+describe("locateCli search order and pins", () => {
+  const entry = (version: string): VerifiedEntry => ({ agent: "claude", version, level: "real", checkedAt: "2026-10-20", os: "darwin-arm64", osenVersion: "1.0.0", modelCalls: 2 });
+  const record: VerifiedRecord = { entries: [entry("1.0.0"), entry("1.1.0")] };
+  const source: PackageSource = {
+    async fetch(agent, version, d) {
+      const exe = join(d, "node_modules", "pkg", "bin", agent);
+      mkdirSync(join(d, "node_modules", "pkg", "bin"), { recursive: true });
+      writeFileSync(exe, `#!/bin/sh\necho "$CLAUDE_CONFIG_DIR|$DISABLE_UPDATES" > "$0.env"; echo "${version}"\n`);
+      chmodSync(exe, 0o755);
+      return { executable: exe, source: `fake:${agent}@${version}` };
+    },
+  };
+  const data = () => join(tmp, "data");
+  const pin = async (version = "1.0.0") => {
+    const r = await installPin(data(), "claude", { version }, { source, record });
+    if (!r.ok) throw new Error(JSON.stringify(r));
+  };
+  const pathCounter = () => join(tmp, "path-version-runs");
+  const pathBin = () => script(join(tmp, "bin"), "claude", `echo x >> '${pathCounter()}'; echo '9.9.9 (Claude Code)'`);
+  const opts = (extra: object = {}) => ({ env: { PATH: join(tmp, "bin") }, dataDir: data(), deps: { ...noLogin, record }, ...extra });
+
+  it("a pin beats claude on PATH; its --version probe runs with the pinned env", async () => {
+    pathBin();
+    await pin();
+    const r = await locateCli("claude", opts());
+    expect(r).toMatchObject({ found: true, source: "pin", version: "1.0.0" });
+    expect(r.path).toContain(join(data(), "cli"));
+    expect(r.pin?.version).toBe("1.0.0");
+    expect(existsSync(pathCounter())).toBe(false);
+    expect(readFileSync(`${r.path}.env`, "utf8").trim()).toBe(`${r.pin!.configDir}|1`);
+  });
+
+  it("explicit path beats the pin", async () => {
+    await pin();
+    const other = script(join(tmp, "other"), "claude", "echo '2.1.288 (Claude Code)'");
+    const r = await locateCli("claude", opts({ explicitPath: other }));
+    expect(r).toMatchObject({ found: true, source: "explicit", path: other });
+    expect(r.pin).toBeUndefined();
+  });
+
+  it("no pin: PATH, source path", async () => {
+    pathBin();
+    const r = await locateCli("claude", opts());
+    expect(r).toMatchObject({ found: true, source: "path", version: "9.9.9" });
+    expect(r.pin).toBeUndefined();
+  });
+
+  it("the pin file is gone while PATH has claude: not found, reason names the pin path, PATH binary is not run", async () => {
+    pathBin();
+    await pin();
+    const p = (await locateCli("claude", opts())).path!;
+    rmSync(p);
+    resetDiscoveryCache();
+    const r = await locateCli("claude", opts());
+    expect(r.found).toBe(false);
+    expect(r.source).toBe("pin");
+    expect(r.reason).toContain(p);
+    expect(existsSync(pathCounter())).toBe(false);
+  });
+
+  it("a rejected pins.json: PATH is used, the warning names the pins file", async () => {
+    pathBin();
+    mkdirSync(join(data(), "cli"), { recursive: true });
+    writeFileSync(pinsPath(data()), "{ nope");
+    const r = await locateCli("claude", opts());
+    expect(r).toMatchObject({ found: true, source: "path" });
+    expect(r.warning).toContain(pinsPath(data()));
+  });
+
+  it("a rejected pins.json and nothing on PATH: not found, the warning is still returned", async () => {
+    mkdirSync(join(data(), "cli"), { recursive: true });
+    writeFileSync(pinsPath(data()), "{ nope");
+    const r = await locateCli("claude", { env: { PATH: join(tmp, "empty") }, dataDir: data(), deps: { ...noLogin, record } });
+    expect(r.found).toBe(false);
+    expect(r.reason).toContain("не найдена");
+    expect(r.warning).toContain(pinsPath(data()));
+  });
+
+  it("real cache: a use switch between two calls is seen", async () => {
+    await pin("1.0.0");
+    await pin("1.1.0");
+    const o = { env: { PATH: join(tmp, "empty") }, dataDir: data() };
+    expect((await locateCli("claude", o)).pin?.version).toBe("1.0.0");
+    expect(usePin(data(), "claude", "1.1.0", { record }).ok).toBe(true);
+    expect((await locateCli("claude", o)).pin?.version).toBe("1.1.0");
+  });
+
+  it("pinnedEnv", () => {
+    expect(pinnedEnv("claude", "/c")).toEqual({ CLAUDE_CONFIG_DIR: "/c", DISABLE_AUTOUPDATER: "1", DISABLE_UPDATES: "1" });
+    expect(pinnedEnv("codex", "/c")).toEqual({ CODEX_HOME: "/c" });
   });
 });
 

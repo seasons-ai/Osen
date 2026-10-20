@@ -393,6 +393,27 @@ COUNCIL_DEV=1 COUNCIL_HOME="$PWD/.council-data-replacement-$(date +%Y%m%d-%H%M%S
 
 The `--seed-only` mode runs no checks: it prepares a data folder for the app window (sessions F1–F6: a recoverable failure, a stopped session with an unavailable participant, sessions without resume, one already resumed with a replacement) and prints the `npm run desktop` launch command on that folder.
 
+## Pinned CLIs
+
+Osen can keep its own copy of `claude` or `codex` in the data folder, so a run uses a version that was checked rather than whatever the global install became. The choice of install method, config dir and update switch is in [docs/cli-pinning.md, "Decision"](cli-pinning.md#decision). The global CLI and its settings are never touched.
+
+```bash
+COUNCIL_HOME=.council-data npx council cli install claude [--version <X>] [--candidate]
+COUNCIL_HOME=.council-data npx council cli list
+COUNCIL_HOME=.council-data npx council cli use claude <version>
+COUNCIL_HOME=.council-data npx council cli rollback claude
+```
+
+- `install <agent>` runs `npm install` into a temporary folder and moves it to `<data folder>/cli/<agent>/<version>/`. It needs `npm` on `PATH` and the network, and runs only on this explicit command: a discussion run, `providers`, `doctor` and the app never install. The default version is the newest `real` one in the verified record; `--version <X>` takes an exact version; `--candidate` installs without activating. Without `--candidate` the version becomes active only if no version is active yet.
+- `use <agent> <version>` makes an installed `real` version active (the previous active one is remembered); using the active version again is a no-op with code 0. `rollback <agent>` returns to the remembered previous version, one step only; a second one is refused.
+- `list` shows the installs, the active and the previous version per agent. On a data folder without `cli/` it says there are no pins and creates nothing.
+- State is in `cli/pins.json`: per agent `installed` (version, relative path, source, sha256, installedAt), `active`, `previous`, `activatedAt`.
+- Exit codes: 2 — wrong arguments (reason and help in stderr) or a rule refusal (unknown agent, version not `real`, not installed, nothing to roll back); 1 — package source or write failure, or a corrupted `pins.json`.
+- Search order for the CLI of a provider: an explicit `path` in `config.json` > the active pin > `PATH`. If the pinned file is missing, the provider is unavailable; there is no fallback to `PATH`.
+- Environment of a pinned child: claude gets `CLAUDE_CONFIG_DIR=<version dir>/config`, `DISABLE_AUTOUPDATER=1`, `DISABLE_UPDATES=1`; codex gets `CODEX_HOME=<version dir>/config` and `-c check_for_update_on_startup=false`; a pinned codex whose help does not declare `--config` is not launched, because its self-update could not be turned off. The install-time `--version` check already runs with this environment.
+- A pinned install has its own config dir, so the owner logs in to it once: `CLAUDE_CONFIG_DIR=<version dir>/config claude` and then `/login`; `CODEX_HOME=<version dir>/config codex login`.
+- Switching versions never rewrites session journals.
+
 ## Token ceiling
 
 The number of rounds does not limit spend: long answers and large materials make a round expensive. `--max-tokens <N>` sets the ceiling of total session tokens (input plus output over all turns, an integer of at least 1); `--no-max-tokens` turns off the ceiling set in `config.json` (`defaults.maxTotalTokens`; the initial file does not have it). The ceiling is counted in tokens, not money: not all providers report cost.

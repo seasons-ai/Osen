@@ -7,6 +7,8 @@ export const providerMessages = defineMessages({
   en: {
     hidden: "[hidden]",
     cliNotFoundAtPath: (agent: string, path: string) => `Command ${agent} not found at the given path ${path}`,
+    cliPinMissing: (agent: string, path: string) => `Pinned ${agent} is missing at ${path}; the binary from PATH is not used. Reinstall with \`council cli install\` or switch with \`council cli use\`/\`council cli rollback\``,
+    pinnedNoConfigFlag: (who: string) => `${who} is pinned but does not declare --config, so its self-update cannot be turned off; the pinned version is not launched`,
     cliNotFoundAnywhere: (agent: string) => `Command ${agent} not found: it is neither in the process PATH nor in the login shell PATH`,
     versionNoNumber: (head: string) => `the --version output has no version: ${head}`,
     versionNewer: (agent: string, version: string, min: string, max: string) => `Version of ${agent} ${version} is newer than the verified range ${min}–${max}`,
@@ -76,6 +78,8 @@ export const providerMessages = defineMessages({
   ru: {
     hidden: "[скрыто]",
     cliNotFoundAtPath: (agent: string, path: string) => `Команда ${agent} не найдена по заданному пути ${path}`,
+    cliPinMissing: (agent: string, path: string) => `Закреплённый ${agent} отсутствует по пути ${path}; бинарник из PATH не используется. Установите заново командой \`council cli install\` или переключитесь командой \`council cli use\`/\`council cli rollback\``,
+    pinnedNoConfigFlag: (who: string) => `${who} закреплена, но не объявляет флаг --config, поэтому её самообновление нельзя отключить; закреплённая версия не запускается`,
     cliNotFoundAnywhere: (agent: string) => `Команда ${agent} не найдена: её нет ни в PATH процесса, ни в PATH оболочки входа`,
     versionNoNumber: (head: string) => `вывод --version не содержит версии: ${head}`,
     versionNewer: (agent: string, version: string, min: string, max: string) => `Версия ${agent} ${version} новее проверенного диапазона ${min}–${max}`,

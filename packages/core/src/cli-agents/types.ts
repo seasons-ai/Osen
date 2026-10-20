@@ -12,4 +12,5 @@ export interface CliRuntime {
   flags: ReadonlySet<string>;                   // flags declared by the help of the installed version
   features?: ReadonlySet<string>;               // codex: capabilities from `codex features list`
   version?: string;
+  pinned?: boolean;                             // launched from an Osen pin: self-update off, own config dir
 }

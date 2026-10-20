@@ -45,6 +45,22 @@ describe("planLaunch", () => {
     const p = okArgs(planLaunch({ ...codexIn, model: "gpt-x", schema, features: new Set([...CODEX_ISOLATION_FEATURES, "nope"]) }));
     expect(p.args.slice(8)).toEqual([...CODEX_ISOLATION_FEATURES.flatMap((f) => ["--disable", f]), "--model", "gpt-x", "--output-schema", schema.file, "-"]);
   });
+  it("codex pinned with --config: -c check_for_update_on_startup=false after --disable, before model, schema and -", () => {
+    expect(codexFlags.has("--config")).toBe(true);
+    const p = okArgs(planLaunch({ ...codexIn, pinned: true, model: "gpt-x", schema }));
+    expect(p.args.slice(8)).toEqual([...CODEX_ISOLATION_FEATURES.flatMap((f) => ["--disable", f]), "-c", "check_for_update_on_startup=false", "--model", "gpt-x", "--output-schema", schema.file, "-"]);
+  });
+  it("codex: unpinned has no -c; claude pinned is unchanged", () => {
+    const plain = okArgs(planLaunch(codexIn)).args;
+    expect(plain).not.toContain("-c");
+    expect(okArgs(planLaunch({ ...claudeIn, pinned: true })).args).toEqual(okArgs(planLaunch(claudeIn)).args);
+  });
+  it("codex pinned without --config: not launched, the reason names --config (self-update could not be turned off)", () => {
+    const p = planLaunch({ ...codexIn, pinned: true, flags: without(codexFlags, "--config") });
+    expect(p.ok).toBe(false);
+    if (!p.ok) expect(p.reason).toContain("--config");
+    expect(okArgs(planLaunch({ ...codexIn, flags: without(codexFlags, "--config") })).args).not.toContain("-c");
+  });
   it("codex without features: unavailable, reason — version and unread list", () => {
     const p = planLaunch({ ...codexIn, features: undefined });
     expect(p.ok).toBe(false);

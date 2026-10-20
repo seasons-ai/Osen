@@ -4,6 +4,7 @@ import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { providerMessages } from "../messages/providers.ts";
 import { createLogger } from "../store/log.ts";
+import { activePin, pinsFileState } from "./pins.ts";
 import { VERIFIED_FILE, loadVerifiedRecord, lookupVerified } from "./verified-record.ts";
 import type { VerifiedRecord } from "./verified-record.ts";
 import type { CliAgent } from "./types.ts";
@@ -19,6 +20,13 @@ export interface CliLocation {
   reason?: string;
   warning?: string;
   verified?: { level: "real" | "interface" | "none"; checkedAt: string | null };
+  source?: "explicit" | "pin" | "path"; // where the executable came from; set when the search got that far
+  pin?: { version: string; configDir: string }; // only for source "pin"
+}
+
+/** Environment of a CLI launched from an Osen pin: own config dir, self-update off (codex has no env switch for it; see args.ts). */
+export function pinnedEnv(agent: CliAgent, configDir: string): Record<string, string> {
+  return agent === "claude" ? { CLAUDE_CONFIG_DIR: configDir, DISABLE_AUTOUPDATER: "1", DISABLE_UPDATES: "1" } : { CODEX_HOME: configDir };
 }
 
 export interface DiscoveryDeps {
@@ -152,12 +160,26 @@ async function locate(
 ): Promise<CliLocation> {
   let searchPath = env.PATH ?? "";
   let path: string | undefined;
+  let source: NonNullable<CliLocation["source"]> = "path";
+  let pin: CliLocation["pin"];
+  const warnings: string[] = [];
+  const active = explicitPath === undefined && dataDir !== undefined ? activePin(dataDir, agent) : undefined;
   if (explicitPath !== undefined) {
     if (!deps.isExecutable(explicitPath)) {
       return { agent, found: false, searchPath, reason: providerMessages().cliNotFoundAtPath(agent, explicitPath) };
     }
     path = explicitPath;
+    source = "explicit";
+  } else if (active?.state === "pin") {
+    // A pin that is gone is an error: the PATH binary is never run in its place.
+    if (!deps.isExecutable(active.path)) {
+      return { agent, found: false, source: "pin", searchPath, reason: providerMessages().cliPinMissing(agent, active.path) };
+    }
+    path = active.path;
+    source = "pin";
+    pin = { version: active.version, configDir: active.configDir };
   } else {
+    if (active?.state === "rejected") warnings.push(active.reason);
     path = findIn(agent, env.PATH, deps.isExecutable);
     if (!path) {
       const login = await deps.loginShellPath(env).catch(() => undefined);
@@ -167,15 +189,15 @@ async function locate(
       }
     }
     if (!path) {
-      return { agent, found: false, searchPath, reason: providerMessages().cliNotFoundAnywhere(agent) };
+      return { agent, found: false, searchPath, reason: providerMessages().cliNotFoundAnywhere(agent), ...(warnings.length ? { warning: warnings.join("; ") } : {}) };
     }
   }
 
-  const found: CliLocation = { agent, found: true, path, searchPath, verified: { level: "none", checkedAt: null } };
+  const found: CliLocation = { agent, found: true, path, source, searchPath, verified: { level: "none", checkedAt: null } };
+  if (pin) found.pin = pin;
   const record = deps.record ?? recordFor(dataDir);
-  const warnings: string[] = [];
   try {
-    const raw = await deps.runVersion(path, { ...env, PATH: searchPath });
+    const raw = await deps.runVersion(path, { ...env, PATH: searchPath, ...(pin ? pinnedEnv(agent, pin.configDir) : {}) });
     const version = parseVersion(raw);
     if (!version) throw new Error(providerMessages().versionNoNumber(raw.trim().slice(0, 100)));
     found.version = version;
@@ -199,7 +221,7 @@ export async function locateCli(agent: CliAgent, options: {
   const { explicitPath, env, dataDir } = options;
   try {
     if (options.deps) return await locate(agent, explicitPath, env, { ...realDeps, ...options.deps }, dataDir);
-    const key = JSON.stringify([agent, explicitPath, env.PATH, dataDir, dataDir === undefined ? null : fileState(dataDir)]);
+    const key = JSON.stringify([agent, explicitPath, env.PATH, dataDir, dataDir === undefined ? null : fileState(dataDir), dataDir === undefined ? null : pinsFileState(dataDir)]);
     let hit = cache.get(key);
     if (!hit) {
       const deps: DiscoveryDeps = { ...realDeps, loginShellPath: (e) => (loginPathCache ??= realDeps.loginShellPath(e)) };
