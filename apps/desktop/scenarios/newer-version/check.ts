@@ -20,6 +20,7 @@ import { createLauncher } from "../../src/main/launcher.ts";
 import { sessionMarkdown } from "../../src/main/markdown.ts";
 import { partialView } from "../../src/shared/partial.ts";
 import { IDS, N, seedFixtures, seedLive } from "./fixture.ts";
+import { oneLine } from "./log-format.ts";
 
 const home = process.env.COUNCIL_HOME;
 const seedOnly = process.argv.includes("--seed-only");
@@ -124,7 +125,8 @@ assert.ok(!rb.ok && rb.error.includes("журнал сессии поврежд�
 ok(`resume refused: A «${(ra as { error: string }).error}»; B «${(rb as { error: string }).error}»`);
 
 // 6 completion notification: D is running while the stand's child process is alive; after it exits, one show with the badge
-const child = spawn(process.execPath, ["-e", "setInterval(()=>{},1e9)"], { stdio: "ignore" });
+// The child lives until the stand closes its stdin, then exits by itself.
+const child = spawn(process.execPath, ["-e", "process.stdin.resume().on('end',()=>process.exit(0))"], { stdio: ["pipe", "ignore", "ignore"] });
 seedLive(dir, child.pid!);
 const shaD = sha(IDS.D);
 const shown: { title: string; body: string }[] = [];
@@ -140,8 +142,9 @@ const observe = () => {
 const d1 = observe();
 assert.deepEqual({ s: d1.status, p: d1.partial }, { s: "running", p: { reason: "newer_version", lastEvent: N.D } });
 assert.equal(shown.length, 0);
-child.kill();
-await once(child, "exit");
+child.stdin!.end();
+const [code] = await once(child, "exit");
+assert.equal(code, 0);
 const d2 = observe();
 assert.equal(d2.status, "interrupted");
 assert.equal(shown.length, 1, JSON.stringify(shown));
@@ -151,7 +154,10 @@ assert.ok(!JSON.stringify(shown).includes("Обсуждение прервано
 observe();
 assert.equal(shown.length, 1);
 assert.equal(sha(IDS.D), shaD);
-ok(`completion notification: D ${IDS.D} running → interrupted after the stand's process exits; one show «${shown[0]!.title}» / «${shown[0]!.body.replace("\n", " · ")}»; no «Обсуждение прервано»; a repeated poll gives no show; the D journal is unchanged`);
+const rawBody = shown[0]!.body;
+const line = oneLine(rawBody);
+assert.ok(rawBody.includes("\n") && !/[\r\n]/.test(line), JSON.stringify({ rawBody, line }));
+ok(`completion notification: D ${IDS.D} running → interrupted after the stand's process exits; one show «${shown[0]!.title}» / «${line}»; no «Обсуждение прервано»; a repeated poll gives no show; the D journal is unchanged`);
 
 // 7 journals unchanged
 assert.deepEqual(hashes(), before);
