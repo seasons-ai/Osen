@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import http from "node:http";
 import type { Socket } from "node:net";
 import { join, resolve } from "node:path";
+import { assertResumedSource } from "./output.ts";
 
 if (process.env.COUNCIL_DEV !== "1") {
   console.error("Run: COUNCIL_DEV=1 node packages/core/scenarios/url-materials/check.ts");
@@ -174,10 +175,13 @@ async function main() {
   // ---- 3. Resume ----
   const r3 = await cli(["resume", sid, "--rounds", "2"]);
   assert.equal(r3.code, 0, `code ${r3.code}${dump(r3.p)}`);
-  assert.ok(r3.p.out.includes("Источники ссылок: 1") && r3.p.out.includes("http://docs.stand.test/doc"), `sources${dump(r3.p)}`);
+  assert.ok(r3.p.out.includes("Источники ссылок: 1"), `sources${dump(r3.p)}`);
+  const saved = src.sources[0];
+  assert.deepEqual([src.sources.length, saved.id, saved.scheme, saved.host, saved.pathname], [1, "m1", "http", "docs.stand.test", "/doc"], `sources.json: ${srcText}`);
+  assertResumedSource(r3.p.out, { id: "m1", url: "http://docs.stand.test/doc", fetchedAt: saved.fetchedAt });
   assert.equal(hits["/doc"], 1);
   assert.ok(readFileSync(m1).equals(m1Bytes), "m1.txt changed");
-  ok("resume from the snapshot: code 0 (consensus), sources printed, no network, m1.txt unchanged");
+  ok("resume from the snapshot: code 0 (consensus), the one source row matches the saved m1 record, no network, m1.txt unchanged");
 
   // ---- 4. File and URL directly ----
   const note = join(scen, "note.md");
