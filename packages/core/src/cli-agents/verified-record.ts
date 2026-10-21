@@ -131,7 +131,8 @@ export function lookupVerified(record: VerifiedRecord, agent: CliAgent, version:
 
 export type AddResult = { ok: true; changed: boolean } | { ok: false; reason: string };
 
-export function addLocalEntry(dataDir: string, entry: VerifiedEntry): AddResult {
+// A higher level is never replaced; the same level only with replaceSameLevel (re-acceptance).
+export function addLocalEntry(dataDir: string, entry: VerifiedEntry, opts: { replaceSameLevel?: boolean } = {}): AddResult {
   const checked = EntrySchema.safeParse(entry);
   if (!checked.success) {
     const i = checked.error.issues[0]!;
@@ -141,7 +142,7 @@ export function addLocalEntry(dataDir: string, entry: VerifiedEntry): AddResult 
   if (local.state === "rejected") return { ok: false, reason: local.reason };
   const existing = local.state === "loaded" ? local.entries : [];
   const cur = existing.find((e) => keyOf(e) === keyOf(entry));
-  if (cur && RANK[cur.level] >= RANK[entry.level]) return { ok: true, changed: false };
+  if (cur && (RANK[cur.level] > RANK[entry.level] || (RANK[cur.level] === RANK[entry.level] && !opts.replaceSameLevel))) return { ok: true, changed: false };
   const entries = cur ? existing.map((e) => (e === cur ? checked.data : e)) : [...existing, checked.data];
   const file = join(dataDir, VERIFIED_FILE);
   const tmp = `${file}.${process.pid}.tmp`;
