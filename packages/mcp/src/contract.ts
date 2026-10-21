@@ -57,8 +57,9 @@ function initialize(root: string, env: Record<string, string>, version: string):
     // a process that never started (no cwd, no binary) emits "error" and no "exit"
     child.on("error", (e) => { if (child.pid === undefined) exited = true; finish({ error: e.message }); });
     child.stdin.on("error", () => { /* EPIPE: the exit handler reports it */ });
-    child.stdout.on("data", (d: Buffer) => {
-      buf += d.toString();
+    child.stdout.setEncoding("utf8"); // a multi-byte character may be split across chunks
+    child.stdout.on("data", (d: string) => {
+      buf += d;
       for (const line of buf.split("\n")) {
         try {
           const m = JSON.parse(line) as { id?: number; result?: { protocolVersion?: unknown; serverInfo?: { name?: unknown } } };
@@ -86,14 +87,16 @@ export async function checkProtocol(root: string, env: Record<string, string>): 
 // ---- SDK pin ----
 
 export function checkSdkPin(root: string): Finding[] {
-  const pkg = JSON.parse(readFileSync(join(root, "packages/mcp/package.json"), "utf8")) as { dependencies?: Record<string, string> };
+  const pkg = JSON.parse(readFileSync(join(root, "packages/mcp/package.json"), "utf8")) as Record<string, Record<string, string> | undefined>;
   const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8")) as { packages: Record<string, { version?: string }> };
   const out: Finding[] = [];
-  for (const [name, range] of Object.entries(pkg.dependencies ?? {})) {
-    if (!name.startsWith("@modelcontextprotocol/")) continue;
-    const locked = lock.packages[`node_modules/${name}`]?.version;
-    const exact = /^\d+\.\d+\.\d+$/.test(range);
-    out.push({ check: `sdk pin ${name}`, ok: exact && range === locked, detail: !exact ? `${name} is "${range}", expected an exact version without a range` : `${name} is ${range}, lock file has ${String(locked)}` });
+  for (const section of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
+    for (const [name, range] of Object.entries(pkg[section] ?? {})) {
+      if (!name.startsWith("@modelcontextprotocol/")) continue;
+      const locked = lock.packages[`node_modules/${name}`]?.version;
+      const exact = /^\d+\.\d+\.\d+$/.test(range);
+      out.push({ check: `sdk pin ${name}`, ok: exact && range === locked, detail: !exact ? `${name} in ${section} is "${range}", expected an exact version without a range` : `${name} in ${section} is ${range}, lock file has ${String(locked)}` });
+    }
   }
   if (out.length === 0) out.push({ check: "sdk pin", ok: false, detail: "no @modelcontextprotocol/* dependency in packages/mcp/package.json" });
   return out;

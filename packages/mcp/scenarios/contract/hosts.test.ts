@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { checkHost } from "./hosts.ts";
+import { checkHost, hostsAfter } from "./hosts.ts";
 import type { Host } from "./hosts.ts";
 
 const root = resolve(import.meta.dirname, "../../../..");
@@ -145,6 +145,33 @@ describe("claude only", () => {
     const r = run("claude");
     expect(r.state).toBe("mismatch");
     expect(r.detail).toContain("/tmp/a b/packages/mcp/src/main.ts");
+  });
+
+  it("Проверка контракта после обновления хост-агента: запись с флагами перед файлом сервера", () => {
+    for (const args of [`--no-warnings ${expected}`, "--no-warnings --max-old-space-size=4096 packages/mcp/src/main.ts"]) {
+      stub("claude", claudeEntry(args));
+      expect(run("claude").state).toBe("connected");
+    }
+    stub("claude", claudeEntry("--no-warnings /tmp/a b/packages/mcp/src/main.ts"));
+    const r = run("claude");
+    expect(r.state).toBe("mismatch");
+    expect(r.detail).toContain("/tmp/a b/packages/mcp/src/main.ts");
+    stub("claude", claudeEntry("--no-warnings /opt/other/packages/mcp/src/main.ts"));
+    expect(run("claude").state).toBe("mismatch");
+    // flags only: the next line of the host output is not taken as the server file
+    stub("claude", claudeEntry("--no-warnings"));
+    expect(run("claude").detail).toContain("entry runs node --no-warnings, expected");
+  });
+});
+
+describe("hostsAfter", () => {
+  it("Проверка контракта после обновления хост-агента: контракт упал, хосты проверены", async () => {
+    stub("claude", claudeEntry("packages/mcp/src/main.ts"));
+    stub("codex", codexEntry("node", ["/opt/x/main.ts"]));
+    const errors: unknown[] = [];
+    const results = await hostsAfter(async () => { throw new Error("connection closed"); }, (e) => errors.push(e), root, { env: { PATH: `${bin}:/bin:/usr/bin`, HOME: home } });
+    expect((errors[0] as Error).message).toBe("connection closed");
+    expect(results.map(({ host, state }) => ({ host, state }))).toEqual([{ host: "claude", state: "connected" }, { host: "codex", state: "mismatch" }]);
   });
 });
 

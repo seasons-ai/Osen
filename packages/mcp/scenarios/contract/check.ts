@@ -11,8 +11,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { configPath, initialRegistry, listSessions, readSession, requestStop } from "@model-council/core";
 import { checkProtocol, checkSdkPin, collectResponses, compareWithGolden, shapeDiff, SNAPSHOTS } from "../../src/contract.ts";
 import type { Finding } from "../../src/contract.ts";
-import { checkHost } from "./hosts.ts";
-import type { HostResult } from "./hosts.ts";
+import { hostsAfter } from "./hosts.ts";
 
 const usage = "Run: COUNCIL_DEV=1 COUNCIL_HOME=.council-data/contract-<label> node packages/mcp/scenarios/contract/check.ts (COUNCIL_HOME must not exist or be empty)";
 const raw = process.env.COUNCIL_HOME?.trim();
@@ -40,45 +39,42 @@ const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catc
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const client = new Client({ name: "contract-check", version: "0" });
-let hosts: HostResult[] = [];
-try {
-  findings(checkSdkPin(root));
-  findings(await checkProtocol(root, env));
-
-  await client.connect(new StdioClientTransport({ command: process.execPath, args: [join(mcpSrc, "main.ts")], cwd: root, stderr: "ignore", env }));
-  const golden = JSON.parse(readFileSync(join(mcpSrc, "__golden__/ru-server.json"), "utf8")) as { instructions: string; tools: unknown[] };
-  const tools = JSON.parse(JSON.stringify((await client.listTools()).tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))));
-  const diffs = shapeDiff("tools", golden.tools, tools);
-  if (diffs.length === 0) line("tools and schemas", null);
-  else diffs.forEach((d) => line("tools and schemas", d));
-  const got = client.getInstructions() ?? "";
-  const at = [...golden.instructions].findIndex((c, i) => c !== got[i]);
-  line("instructions", got === golden.instructions ? null : `differs from the reference (lengths ${golden.instructions.length} / ${got.length}, first difference at offset ${at < 0 ? Math.min(golden.instructions.length, got.length) : at})`);
-
-  const shapeDiffs = compareWithGolden(await collectResponses(client));
-  for (const name of SNAPSHOTS) {
-    const mine = shapeDiffs.filter((d) => d.startsWith(`${name}: `));
-    if (mine.length === 0) line(`shape ${name}`, null);
-    else mine.forEach((d) => line(`shape ${name}`, d.slice(name.length + 2)));
-  }
-
-  // real environment: the hosts run read-only commands
-  hosts = (["claude", "codex"] as const).map((h) => checkHost(h, root));
-  for (const h of hosts) console.log(`${h.host}: ${h.state} - ${h.detail}`);
-} catch (e) {
-  line("stand", e instanceof Error ? e.message : String(e));
-} finally {
-  await client.close().catch(() => {});
-  // sessions live in detached executors: stop them before exit
+const hosts = await hostsAfter(async () => {
   try {
-    for (const x of listSessions(home)) {
-      const pid = readSession(home, x.id)?.state.pid ?? null;
-      if (x.status !== "running" || pid === null) continue;
-      requestStop(home, x.id);
-      for (const t0 = Date.now(); alive(pid) && Date.now() - t0 < 5000; ) await sleep(50);
+    findings(checkSdkPin(root));
+    findings(await checkProtocol(root, env));
+
+    await client.connect(new StdioClientTransport({ command: process.execPath, args: [join(mcpSrc, "main.ts")], cwd: root, stderr: "ignore", env }));
+    const golden = JSON.parse(readFileSync(join(mcpSrc, "__golden__/ru-server.json"), "utf8")) as { instructions: string; tools: unknown[] };
+    const tools = JSON.parse(JSON.stringify((await client.listTools()).tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }))));
+    const diffs = shapeDiff("tools", golden.tools, tools);
+    if (diffs.length === 0) line("tools and schemas", null);
+    else diffs.forEach((d) => line("tools and schemas", d));
+    const got = client.getInstructions() ?? "";
+    const at = [...golden.instructions].findIndex((c, i) => c !== got[i]);
+    line("instructions", got === golden.instructions ? null : `differs from the reference (lengths ${golden.instructions.length} / ${got.length}, first difference at offset ${at < 0 ? Math.min(golden.instructions.length, got.length) : at})`);
+
+    const shapeDiffs = compareWithGolden(await collectResponses(client));
+    for (const name of SNAPSHOTS) {
+      const mine = shapeDiffs.filter((d) => d.startsWith(`${name}: `));
+      if (mine.length === 0) line(`shape ${name}`, null);
+      else mine.forEach((d) => line(`shape ${name}`, d.slice(name.length + 2)));
     }
-  } catch { /* nothing to stop */ }
-}
+  } finally {
+    await client.close().catch(() => {});
+    // sessions live in detached executors: stop them before exit
+    try {
+      for (const x of listSessions(home)) {
+        const pid = readSession(home, x.id)?.state.pid ?? null;
+        if (x.status !== "running" || pid === null) continue;
+        requestStop(home, x.id);
+        for (const t0 = Date.now(); alive(pid) && Date.now() - t0 < 5000; ) await sleep(50);
+      }
+    } catch { /* nothing to stop */ }
+  }
+}, (e) => line("stand", e instanceof Error ? e.message : String(e)), root);
+// real environment: the hosts run read-only commands, after the cleanup above
+for (const h of hosts) console.log(`${h.host}: ${h.state} - ${h.detail}`);
 const st = (h: string) => hosts.find((x) => x.host === h)?.state ?? "not checked";
 console.log(`contract: ${ok} ok, ${failed} failed; hosts: claude ${st("claude")}, codex ${st("codex")}`);
 process.exit(failed > 0 || hosts.some((h) => h.state === "mismatch") ? 1 : 0);
