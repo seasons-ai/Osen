@@ -67,17 +67,23 @@ export function readReminder(dataDir: string): ReminderState {
 }
 
 /** Atomic write; an existing read-only file is respected, the old bytes stay on any error. */
-function writeReminder(dataDir: string, data: ReminderData): void {
+function saveReminder(dataDir: string, data: ReminderData): string | null {
   const file = reminderPath(dataDir);
   const tmp = `${file}.${process.pid}.tmp`;
   try {
     if (existsSync(file)) accessSync(file, constants.W_OK);
     writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, "utf8");
     renameSync(tmp, file);
+    return null;
   } catch (e) {
     rmSync(tmp, { force: true });
-    throw new SettingsError(settings().reminderSaveFailed(file, (e as NodeJS.ErrnoException).code ?? "unknown"));
+    return (e as NodeJS.ErrnoException).code ?? "unknown";
   }
+}
+
+function writeReminder(dataDir: string, data: ReminderData): void {
+  const code = saveReminder(dataDir, data);
+  if (code !== null) throw new SettingsError(settings().reminderSaveFailed(reminderPath(dataDir), code));
 }
 
 const stamp = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -135,6 +141,8 @@ export interface CliTransitionDeps {
   dataDir: string;
   logger: Logger;
   now?(): Date;
+  /** Milliseconds from a monotonic clock: the in-process 24 h gate is measured on it, so a wall-clock jump cannot shorten or disable it. */
+  monotonic?(): number;
   running(): boolean;
   onChecked(): void;
   candidateDeps(): CandidateDeps;
@@ -156,7 +164,10 @@ export interface CliTransitionApi {
 export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
   const { dataDir, logger } = deps;
   const now = deps.now ?? (() => new Date());
+  const mono = deps.monotonic ?? (() => performance.now());
   let checking = false;
+  let lastRunMono: number | null = null;
+  let unsaved: { lastCheck: LastCheck; code: string } | null = null;
 
   const loadedData = (s: ReminderState): ReminderData | null => (s.state === "loaded" ? s.data : null);
   const activeAgents = (): CliAgent[] => {
@@ -181,21 +192,31 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
 
   async function maybeCheck(): Promise<void> {
     if (checking) return;
+    if (lastRunMono !== null && mono() - lastRunMono < CHECK_INTERVAL_MS) return;
     try {
       const first = readReminder(dataDir);
       if (first.state === "broken") return;
       const agents = activeAgents();
       if (agents.length === 0) return;
       const last = loadedData(first)?.lastCheck;
-      if (last && now().getTime() - Date.parse(last.at) < CHECK_INTERVAL_MS) return;
+      if (last) {
+        const elapsed = now().getTime() - Date.parse(last.at);
+        if (elapsed >= 0 && elapsed < CHECK_INTERVAL_MS) return;
+        if (elapsed < 0) logger.info(`CLI candidate check: the recorded attempt ${last.at} is later than now, treated as stale`);
+      }
       checking = true;
+      lastRunMono = mono(); // the attempt counts even if anything below fails
       const lastCheck = await runCheck(agents, stamp(now()));
       const fresh = readReminder(dataDir); // the period may have changed, the file may have broken, while npm worked
       if (fresh.state === "broken") {
         logger.error("CLI candidate check result not saved: the reminder file is damaged");
         return;
       }
-      writeReminder(dataDir, { schemaVersion: 1, periodDays: loadedData(fresh)?.periodDays ?? DEFAULT_PERIOD_DAYS, lastCheck });
+      const code = saveReminder(dataDir, { schemaVersion: 1, periodDays: loadedData(fresh)?.periodDays ?? DEFAULT_PERIOD_DAYS, lastCheck });
+      if (code !== null) {
+        unsaved = { lastCheck, code };
+        logger.error(`CLI candidate check result not saved to ${reminderPath(dataDir)}: ${code}; next attempt in this run not before 24 hours`);
+      } else unsaved = null;
       deps.onChecked();
     } catch (e) {
       logger.error("CLI candidate check could not be recorded", e);
@@ -212,12 +233,14 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
   function forProvider(agent: CliAgent, status: ProviderStatus): CliTransition {
     const reminder = loadedData(readReminder(dataDir));
     const pins = readPins(dataDir);
-    return computeTransition({
+    const out = computeTransition({
       agent, now: now(), periodDays: reminder?.periodDays ?? DEFAULT_PERIOD_DAYS,
       source: status.source ?? null, level: status.verified?.level ?? "none", checkedAt: status.verified?.checkedAt ?? null,
       pins: pins.state === "loaded" ? pins.pins.agents[agent] : undefined,
-      record: loadVerifiedRecord(dataDir).entries, lastCheck: reminder?.lastCheck ?? null,
+      record: loadVerifiedRecord(dataDir).entries, lastCheck: unsaved?.lastCheck ?? reminder?.lastCheck ?? null,
     });
+    if (unsaved && out.check) out.check = { ...out.check, notSaved: { file: reminderPath(dataDir), code: unsaved.code } };
+    return out;
   }
 
   function setPeriod(days: unknown): void {
