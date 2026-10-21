@@ -17,10 +17,13 @@ const real = (p: string): string => {
 function parseClaude(text: string): Entry | null {
   const command = /^\s*Command:\s*(.+)$/m.exec(text)?.[1]?.trim();
   if (!command) return null;
-  // the whole rest of the line is ONE argument: the repo path may contain a space
-  const arg = /^\s*Args:\s*(.*)$/m.exec(text)?.[1]?.trim();
+  // leading `-flag` tokens are separate args; the rest of the line is ONE argument (the server file: the repo path may contain a space)
+  // ponytail: a flag taking a separate value (`--import tsx file`) would be merged into the path; split on known node flags if that appears
+  const m = /^[ \t]*Args:[ \t]*((?:-\S+[ \t]+)*)(.*)$/m.exec(text);
+  const file = m?.[2]?.trim();
+  const args = [...(m?.[1]?.trim().split(/\s+/).filter(Boolean) ?? []), ...(file ? [file] : [])];
   const status = /^\s*Status:\s*(.+)$/m.exec(text)?.[1]?.trim();
-  return { command, args: arg ? [arg] : [], status };
+  return { command, args, status };
 }
 
 function parseCodex(text: string): Entry | null {
@@ -65,4 +68,10 @@ export function checkHost(host: Host, root: string, opts: { env?: NodeJS.Process
     return { host, state: "connected", detail: line };
   }
   return { host, state: "mismatch", detail: `entry runs ${line}, expected ${expected}` };
+}
+
+// Runs the contract step, then ALWAYS the host checks: a failed contract step must not hide them.
+export async function hostsAfter(contract: () => Promise<void>, onError: (e: unknown) => void, root: string, opts: { env?: NodeJS.ProcessEnv; timeoutMs?: number } = {}): Promise<HostResult[]> {
+  try { await contract(); } catch (e) { onError(e); }
+  return (["claude", "codex"] as const).map((h) => checkHost(h, root, opts));
 }
