@@ -196,8 +196,9 @@ export function CliLines({ provider: p, cli, ui }: { provider: SettingsProvider;
             <div className="alert__text">{t.cliConfirmText(ui.confirm.to)}</div>
           </div>
           <div className="alert__actions">
-            <button type="button" className="btn btn--primary btn--sm" disabled={ui.busy} onClick={ui.on.confirm}>{ui.confirm.kind === "switch" ? t.cliConfirmSwitch : t.cliConfirmRollback}</button>
+            <button type="button" className="btn btn--primary btn--sm" disabled={ui.busy || ui.running} onClick={ui.on.confirm}>{ui.confirm.kind === "switch" ? t.cliConfirmSwitch : t.cliConfirmRollback}</button>
             <button type="button" className="btn btn--sm" disabled={ui.busy} onClick={ui.on.cancel}>{t.cancel}</button>
+            {ui.running && <span className="muted"><Icon name="i-info" size="sm" /> {t.cliRunning}</span>}
           </div>
         </div>
       )}

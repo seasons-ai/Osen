@@ -267,7 +267,7 @@ try {
   assert.equal(x.pin, null);
   assert.equal(v.transition.periodDays, 30);
   assert.equal(v.transition.fileError, null);
-  assert.equal(v.transition.file, reminderPath(s.dir));
+  assert.ok(!("file" in v.transition), "the view carries no file system path field");
   ok("step 3 first maybeCheck: cli-reminder.json written once with the attempt time; claude card = pin, 2.1.288, real 2026-10-07, activation date; codex card = PATH without target; period 30");
 
   // ---- 4: due, candidate, violation; no second check ----
@@ -326,7 +326,7 @@ try {
   assert.match(list2.out, /2\.1\.288[^\n]*(active|активн)/i, list2.out);
   ok("step 7 rollbackCli: active 2.1.288 again (real `council cli list` agrees)");
 
-  // ---- 8: a running session blocks both actions ----
+  // ---- 8: a running session blocks both actions; a confirmation pressed while a session runs reaches main as switchCli/rollbackCli and is refused ----
   {
     const args = ["--topic", "Pause", "--participant", "scripted:packages/core/scenarios/owner-wait/p1.json", "--participant", "scripted:packages/core/scenarios/owner-wait/p2.json", "--wait-for-owner"];
     const done = runCouncil(s, args);
@@ -335,6 +335,7 @@ try {
     const id = historyItems(s.dir, new Map(), new Set()).find((i) => i.status === "running")!.id;
     child.id = id;
     assert.equal((await R.view()).transition.running, true);
+    assert.deepEqual(Object.keys((await R.view()).transition).sort(), ["fileError", "periodDays", "running"]);
     const p8 = pins(s);
     for (const lang of ["en", "ru"] as const) {
       setProcessLanguage(lang);
@@ -357,7 +358,7 @@ try {
     r = await R.call("rollbackCli", "claude");
     assert.ok(r.ok, r.error);
     assert.equal(activeOf(s).active, "2.1.288");
-    ok("step 8 running session (real council process): running=true, switch and rollback refused with the localized reason (en, ru), pins unchanged; after `council stop` the actions work again");
+    ok("step 8 running session (real council process), confirmation while a session is running: running=true, view without a file field, switch and rollback refused with the localized reason (en, ru), pins unchanged; after `council stop` the actions work again");
   }
 
   // ---- 9: explicit path, not installed version ----
@@ -454,6 +455,7 @@ try {
       writeFileSync(reminderPath(s.dir), "{not json");
       v = await R.view();
       assert.ok(v.transition.fileError?.includes(REMINDER_FILE), `${lang}: ${v.transition.fileError}`);
+      assert.ok(!("file" in v.transition), `${lang}: no file field next to fileError`);
       assert.equal(v.transition.periodDays, 30);
       const calls = R.releaseCalls();
       clock += 25 * HOUR;

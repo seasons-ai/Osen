@@ -24,7 +24,7 @@ const defs = (o: Partial<DefaultsValues> = {}): DefaultsValues => ({
   maxRounds: 5, turnTimeoutSec: 300, contextChars: 24000, materialsChars: 60000, maxTotalTokens: null, maxParticipants: 8,
   participants: [{ providerId: "p", model: "m1" }, { providerId: "h", model: "m1" }], ...o,
 });
-const TR: CliTransitionSettings = { periodDays: 30, file: "/cfg/cli-reminder.json", fileError: null, running: false };
+const TR: CliTransitionSettings = { periodDays: 30, fileError: null, running: false };
 const view = (o: Partial<SettingsView> = {}): SettingsView => ({
   configPath: "/cfg/config.json", envPath: "/cfg/.env", registryError: null, providers: [prov(), http()], defaults: defs(), transition: TR, ...o,
 });
@@ -402,6 +402,20 @@ describe("CLI transition on the Providers tab", () => {
     const h = en(withCli({ transition: { ...TR, running: true } }));
     expect(h).toMatch(/<button[^>]*disabled=""[^>]*>Switch to 2\.1\.300<\/button>/);
     expect(h).toContain("a session is running");
+  });
+
+  it("a session starting while the confirmation is open disables its action button with the reason; Cancel stays; its end enables it again", () => {
+    const confirm = { agent: "claude", kind: "switch" as const, from: "2.1.288", to: "2.1.300" };
+    const open = run(withCli(), { type: "cli", action: { type: "ask", confirm } });
+    const action = (h: string) => h.match(/<button[^>]*>Switch<\/button>/)?.[0] ?? "";
+    expect(action(en(open))).not.toContain("disabled");
+    const busy = withSessionsRunning(open, true);
+    expect(busy.cli.confirm).toEqual(confirm);
+    const h = en(busy);
+    expect(action(h)).toContain("disabled");
+    expect(h).toContain("a session is running");
+    expect(h).toMatch(/<button type="button" class="btn btn--sm">Cancel<\/button>/);
+    expect(action(en(withSessionsRunning(busy, false)))).not.toContain("disabled");
   });
 
   it("an open confirmation survives a language change with the same versions", () => {

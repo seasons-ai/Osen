@@ -309,6 +309,18 @@ describe("CLI transition in the card", () => {
     expect(btn(rb, "Roll back")).not.toBe("");
   });
 
+  it("confirmation open while a session runs: the action button is disabled with the reason, Cancel stays enabled", () => {
+    const confirm = { agent: "claude", kind: "switch" as const, from: "2.1.288", to: "2.1.300" };
+    const open = (running: boolean) => card(tr({ target: { version: "2.1.300", acceptedAt: "2026-10-15" } }), { cli: { confirm, running } });
+    expect(btn(open(false), "Switch")).not.toContain("disabled");
+    expect(open(false)).not.toContain("a session is running");
+    const h = open(true);
+    expect(btn(h, "Switch")).toContain("disabled");
+    expect(h).toContain("a session is running");
+    expect(btn(h, "Cancel")).not.toContain("disabled");
+    expect(btn(open(false), "Switch")).not.toContain("disabled");
+  });
+
   it("card transition and rollback: pin failed the pre-launch check shows the pin rows and an enabled rollback", async () => {
     setProcessLanguage("en");
     const dir = mkdtempSync(join(tmpdir(), "card-pin-guard-"));
