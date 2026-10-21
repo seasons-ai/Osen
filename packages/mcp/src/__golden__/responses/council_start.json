@@ -9,14 +9,14 @@
     "participants": [
       {
         "id": "p1",
-        "name": "<text>",
+        "name": "Сценарный (contract/p1.json)",
         "providerId": "scripted",
         "model": "contract/p1.json",
         "role": null
       },
       {
         "id": "p2",
-        "name": "<text>",
+        "name": "Сценарный (contract/p2.json)",
         "providerId": "scripted",
         "model": "contract/p2.json",
         "role": null
@@ -39,6 +39,6 @@
     },
     "lineup": null,
     "drafts": null,
-    "next": "<text>"
+    "next": "Если ещё не назвал владельцу участников, лимит кругов и верхнюю границу вызовов (maxCalls), назови сейчас одной строкой. Дальше council_status с этим sessionId и waitSec до 50, без сообщений на каждый ход; итог берётся только из его ответа. Включено ожидание владельца (срок 600 с, затем обсуждение продолжится само): когда в council_status появятся waiting или ownerQuestions, покажи их владельцу; council_say и council_continue — только по его просьбе."
   }
 }

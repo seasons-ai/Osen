@@ -3,9 +3,9 @@
   "body": {
     "sessionId": "<sessionId>",
     "status": "running",
-    "statusText": "<text>",
+    "statusText": "идёт, ждёт владельца",
     "journal": null,
-    "topic": "<text>",
+    "topic": "Cat name",
     "materials": {
       "names": [],
       "chars": 0
@@ -25,13 +25,13 @@
     "participants": [
       {
         "id": "p1",
-        "name": "<text>",
+        "name": "Сценарный (contract/p1.json)",
         "state": "active",
         "lastStance": "amend"
       },
       {
         "id": "p2",
-        "name": "<text>",
+        "name": "Сценарный (contract/p2.json)",
         "state": "active",
         "lastStance": "object"
       }
@@ -53,7 +53,7 @@
     "solution": {
       "version": 1,
       "authorId": "p1",
-      "text": "<text>"
+      "text": "Назвать кота Мурзик."
     },
     "drafts": null,
     "wait": {
