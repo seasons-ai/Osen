@@ -32,8 +32,8 @@ function stub(host: Host, output: string, code = 0, extra = ""): void {
 const run = (host: Host) => checkHost(host, root, { env: { PATH: `${bin}:/bin:/usr/bin`, HOME: home } });
 const calls = () => readFileSync(log, "utf8").trim().split("\n");
 
-const claudeEntry = (args: string | null, command = "node") =>
-  `osen:\n  Scope: Project config (shared via .mcp.json)\n  Status: ⏸ Pending approval (run \`claude\` to approve)\n  Type: stdio\n  Command: ${command}\n${args === null ? "" : `  Args: ${args}\n`}\nTo remove this server, run: claude mcp remove osen -s project\n`;
+const claudeEntry = (args: string | null, command = "node", status: string | null = "✓ Connected") =>
+  `osen:\n  Scope: Project config (shared via .mcp.json)\n${status === null ? "" : `  Status: ${status}\n`}  Type: stdio\n  Command: ${command}\n${args === null ? "" : `  Args: ${args}\n`}\nTo remove this server, run: claude mcp remove osen -s project\n`;
 const codexEntry = (command: string, args: string[]) =>
   JSON.stringify({ name: "osen", enabled: true, transport: { type: "stdio", command, args, env: { OSEN_KEY: "SECRET-VALUE-123" } } });
 const claudeMissing = 'No MCP server named "osen". Configured servers: a, b\n';
@@ -124,6 +124,22 @@ describe.each(["claude", "codex"] as Host[])("%s", (host) => {
 });
 
 describe("claude only", () => {
+  it("Проверка контракта после обновления хост-агента: запись Claude ждёт одобрения или не подключилась", () => {
+    const pending = "⏸ Pending approval (run `claude` to approve)";
+    for (const status of [pending, "✗ Failed to connect"]) {
+      stub("claude", claudeEntry("packages/mcp/src/main.ts", "node", status));
+      const r = run("claude");
+      expect(r.state).toBe("not connected");
+      expect(r.detail).toContain(status);
+    }
+    stub("claude", claudeEntry("/opt/other/packages/mcp/src/main.ts", "node", pending));
+    expect(run("claude").state).toBe("mismatch");
+    for (const status of ["✓ Connected", null]) {
+      stub("claude", claudeEntry("packages/mcp/src/main.ts", "node", status));
+      expect(run("claude").state).toBe("connected");
+    }
+  });
+
   it("keeps an Args path with a space as one argument", () => {
     stub("claude", claudeEntry("/tmp/a b/packages/mcp/src/main.ts"));
     const r = run("claude");

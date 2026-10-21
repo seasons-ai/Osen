@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { configPath, initialRegistry, listSessions, readSession, requestStop } from "@model-council/core";
-import { checkProtocol, checkSdkPin, collectResponses, compareWithGolden, EXPECTED_PROTOCOL_VERSION, normalize, shapeDiff, writeGolden } from "./contract.ts";
+import { checkProtocol, checkSdkPin, collectResponses, compareWithGolden, EXPECTED_PROTOCOL_VERSION, GOLDEN_DIR, normalize, shapeDiff, writeGolden } from "./contract.ts";
 
 const root = join(import.meta.dirname, "../../..");
 const baseEnv = { PATH: process.env["PATH"] ?? "", HOME: process.env["HOME"] ?? "", COUNCIL_LANG: "ru" }; // the child process does not inherit the vitest env
@@ -30,8 +30,8 @@ afterEach(async () => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-const tmp = () => {
-  const d = mkdtempSync(join(tmpdir(), "council-"));
+const tmp = (prefix = "council-") => {
+  const d = mkdtempSync(join(tmpdir(), prefix));
   dirs.push(d);
   writeFileSync(configPath(d), JSON.stringify(initialRegistry([])));
   return d;
@@ -51,6 +51,27 @@ describe("Закреплённая версия протокола", () => {
     expect(findings.filter((f) => !f.ok)).toEqual([]);
     expect(findings.length).toBe(3);
   }, 60_000);
+});
+
+describe("Проверка контракта после обновления хост-агента", () => {
+  it("Проверка контракта после обновления хост-агента: сервер завершился до ответа", async () => {
+    const empty = mkdtempSync(join(tmpdir(), "no-server-"));
+    dirs.push(empty);
+    const t0 = Date.now();
+    const findings = await checkProtocol(empty, { ...baseEnv, COUNCIL_HOME: tmp(), COUNCIL_DEV: "1" });
+    expect(Date.now() - t0).toBeLessThan(20_000);
+    const failed = findings.filter((f) => !f.ok);
+    expect(failed.length).toBeGreaterThan(0);
+    expect(failed[0]!.detail).toMatch(/exited/);
+  }, 25_000);
+
+  it("Проверка контракта после обновления хост-агента: сервер не запустился (нет корня)", async () => {
+    const t0 = Date.now();
+    const findings = await checkProtocol(join(tmpdir(), "no-such-root-188"), { ...baseEnv, COUNCIL_HOME: tmp(), COUNCIL_DEV: "1" });
+    expect(Date.now() - t0).toBeLessThan(20_000);
+    expect(findings.filter((f) => !f.ok).length).toBeGreaterThan(0);
+    expect(findings[0]!.detail).toMatch(/ENOENT/);
+  }, 25_000);
 });
 
 describe("Точная версия SDK", () => {
@@ -103,7 +124,8 @@ function generate(structSeed: number, valueSeed: number): Record<string, unknown
     deadline: () => new Date(1.7e12 + Math.floor(v() * 1e10)).toISOString(),
     at: () => new Date(1.6e12 + Math.floor(v() * 1e10)).toISOString(),
     dataDir: () => `/Users/${hex(6)}/data/${hex(4)}`,
-    text: () => `free text ${hex(5)} with spaces`,
+    // free text keeps its wording; only the embedded session id, time and path vary
+    text: () => `free text for ${num(8)}-${num(6)}-${hex(4)} at ${new Date(1.6e12 + Math.floor(v() * 1e10)).toISOString()} in /Users/${hex(6)}/my data/${hex(4)} with spaces`,
   };
   const names = Object.keys(unstable);
   let n = 0;
@@ -184,13 +206,44 @@ describe("Эталон форм ответов инструментов", () => 
     expect(mutations).toBeGreaterThan(600);
   });
 
+  it("Эталон форм ответов инструментов: изменён текст подсказки", () => {
+    const golden = JSON.parse(readFileSync(join(GOLDEN_DIR, "council_start.json"), "utf8")) as { body: { next: string } };
+    const mutant = JSON.parse(JSON.stringify(golden)) as typeof golden;
+    mutant.body.next = `${mutant.body.next} (changed)`;
+    const d = shapeDiff("council_start", golden, normalize(mutant));
+    expect(d.some((l) => l.startsWith("council_start: ") && l.includes("body.next"))).toBe(true);
+  });
+
+  it("Эталон форм ответов инструментов: изменён тип нестабильного значения", () => {
+    const golden = JSON.parse(readFileSync(join(GOLDEN_DIR, "council_stop.json"), "utf8")) as { body: { stats: { durationMs: unknown } } };
+    expect(golden.body.stats.durationMs).toBe("<duration>");
+    const mutant = JSON.parse(JSON.stringify(golden)) as typeof golden;
+    mutant.body.stats.durationMs = "123";
+    const d = shapeDiff("council_stop", golden, normalize(mutant));
+    expect(d.some((l) => l.startsWith("council_stop: ") && l.includes("body.stats.durationMs") && l.includes("string") && l.includes("number")), d.join("; ")).toBe(true);
+    // a pid has no entry in the goldens: the same rule on a synthetic response
+    const d2 = shapeDiff("t", normalize({ body: { pid: 42 } }), normalize({ body: { pid: "42" } }));
+    expect(d2.some((l) => l.includes("body.pid") && l.includes("string") && l.includes("number")), d2.join("; ")).toBe(true);
+  });
+
+  it("Эталон форм ответов инструментов: unstable parts inside a text are masked, the wording is compared", () => {
+    const n = (t: string) => normalize({ next: t });
+    const text = (id: string, at: string, dir: string) => `Session ${id} at ${at} is in ${dir}`;
+    expect(n(text("20200101-000000-ab12", "2026-01-01T10:00:00.000Z", "/tmp/my data/x y/"))).toEqual(n(text("20260202-111111-cd34", "2027-05-05T01:02:03Z", "/Users/o/other folder/")));
+    expect(n("see contract/p1.json and и/или")).toEqual({ next: "see contract/p1.json and и/или" });
+    // the wording after an embedded path is still compared
+    expect(n("Folder /Users/o/my data/x — done. Round 3 finished.")).not.toEqual(n("Folder /Users/o/my data/x — CHANGED. Round 4 finished."));
+    expect(n("Folder /Users/o/my data/x — done.")).toEqual(n("Folder /var/t/other folder/y — done."));
+    expect(n("Session 20200101-000000-ab12")).not.toEqual(n("Sessions 20200101-000000-ab12"));
+  });
+
   it("Эталон форм ответов инструментов: snapshots of the tools equal the golden files and carry no unstable values", async () => {
     const run = async () => collectResponses(await connect(tmp()));
     const first = await run();
     if (process.env["UPDATE_MCP_GOLDEN"] === "1") writeGolden(first); // a dedicated change only: rewrites the reference files
     expect(compareWithGolden(first)).toEqual([]);
-    // a second run in another data folder at another time: the same result
-    expect(await run()).toEqual(first);
+    // a second run in another data folder (its name has a space) at another time: the same result
+    expect(await collectResponses(await connect(tmp("council space-")))).toEqual(first);
     const text = JSON.stringify(first);
     expect(text).not.toMatch(/\d{8}-\d{6}-|\d{4}-\d{2}-\d{2}T|"\/|korat|\/Users\//);
   }, 120_000);

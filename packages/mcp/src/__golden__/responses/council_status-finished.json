@@ -5,7 +5,7 @@
     "status": "stopped",
     "statusText": "остановлена",
     "journal": null,
-    "topic": "<text>",
+    "topic": "Cat name",
     "materials": {
       "names": [],
       "chars": 0
@@ -25,13 +25,13 @@
     "participants": [
       {
         "id": "p1",
-        "name": "<text>",
+        "name": "Сценарный (contract/p1.json)",
         "state": "active",
         "lastStance": "amend"
       },
       {
         "id": "p2",
-        "name": "<text>",
+        "name": "Сценарный (contract/p2.json)",
         "state": "active",
         "lastStance": "object"
       }
@@ -52,7 +52,7 @@
     "solution": {
       "version": 2,
       "authorId": "p1",
-      "text": "<text>"
+      "text": "Назвать кота Барсик."
     },
     "drafts": null,
     "reason": null,
@@ -60,8 +60,8 @@
     "objectors": [
       {
         "participantId": "p2",
-        "name": "<text>",
-        "reasoning": "<text>"
+        "name": "Сценарный (contract/p2.json)",
+        "reasoning": "Возражаю против имени."
       }
     ],
     "stats": {

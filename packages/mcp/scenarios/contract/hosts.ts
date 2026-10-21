@@ -8,7 +8,7 @@ export type Host = "claude" | "codex";
 export type HostState = "connected" | "not connected" | "mismatch" | "not checked";
 export interface HostResult { host: Host; state: HostState; detail: string }
 
-interface Entry { command: string; args: string[] }
+interface Entry { command: string; args: string[]; status?: string }
 
 const real = (p: string): string => {
   try { return realpathSync(p); } catch { return p; }
@@ -19,7 +19,8 @@ function parseClaude(text: string): Entry | null {
   if (!command) return null;
   // the whole rest of the line is ONE argument: the repo path may contain a space
   const arg = /^\s*Args:\s*(.*)$/m.exec(text)?.[1]?.trim();
-  return { command, args: arg ? [arg] : [] };
+  const status = /^\s*Status:\s*(.+)$/m.exec(text)?.[1]?.trim();
+  return { command, args: arg ? [arg] : [], status };
 }
 
 function parseCodex(text: string): Entry | null {
@@ -58,6 +59,10 @@ export function checkHost(host: Host, root: string, opts: { env?: NodeJS.Process
   const line = [entry.command, ...entry.args].join(" ");
   // node (by name or absolute path) runs the file; the installer and .mcp.json write exactly this form
   const runner = entry.args.length === 0 || basename(entry.command) === "node";
-  if (runner && real(resolve(root, serverFile)) === real(expected)) return { host, state: "connected", detail: line };
+  if (runner && real(resolve(root, serverFile)) === real(expected)) {
+    // the entry is ours, but Claude has not approved it or could not start it
+    if (entry.status && /pending approval|failed/i.test(entry.status)) return { host, state: "not connected", detail: `${line} (${entry.status})` };
+    return { host, state: "connected", detail: line };
+  }
   return { host, state: "mismatch", detail: `entry runs ${line}, expected ${expected}` };
 }
