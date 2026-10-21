@@ -279,6 +279,15 @@ describe("CLI transition in the card", () => {
     expect(card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "no_base" } }))).toContain("no active pin");
   });
 
+  it("check result not saved: its own warning with file and code, not the failure line", () => {
+    const notSaved = { file: "/d/cli-reminder.json", code: "EACCES" };
+    const h = card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "ok", notSaved } }));
+    for (const w of ["Check result not saved", "/d/cli-reminder.json", "EACCES"]) expect(h).toContain(w);
+    expect(h).not.toContain("Candidate check failed");
+    expect(card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "ok", notSaved } }), {}, "ru")).toContain("Итог проверки не сохранён");
+    expect(card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "ok" } }))).not.toContain("Check result not saved");
+  });
+
   it("running session: both buttons disabled with a visible reason", () => {
     const h = card(tr({ target: { version: "2.1.300", acceptedAt: "2026-10-15" } }), { cli: { running: true } });
     expect(btn(h, "Switch to 2.1.300")).toContain("disabled");

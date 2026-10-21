@@ -32,7 +32,7 @@ const logger = { info: (m: string) => { logs.push(`I ${m}`); }, error: (m: strin
 
 function make(over: Partial<CliTransitionDeps> = {}): CliTransitionApi {
   return createCliTransition({
-    dataDir: dir, logger, now: clock, running: () => running, onChecked: () => { checked++; }, resetDiscovery: vi.fn(),
+    dataDir: dir, logger, now: clock, monotonic: () => ms, running: () => running, onChecked: () => { checked++; }, resetDiscovery: vi.fn(),
     candidateDeps: () => ({
       releases: {
         async list(agent) {
@@ -104,6 +104,56 @@ describe("Requirement: Ежесуточная проверка кандидат�
     await t.maybeCheck();
     expect(listCalls).toHaveLength(2);
     expect(JSON.parse(reminderRaw()).lastCheck.at).toBe("2026-09-02T01:00:00Z");
+  });
+
+  const validFile = (at: string) => `${JSON.stringify({ schemaVersion: 1, periodDays: 30, lastCheck: { at, candidates: [], failures: [] } }, null, 2)}\n`;
+  const stampOf = (t: number) => new Date(t).toISOString().replace(/\.\d{3}Z$/, "Z");
+
+  it("the reminder file cannot be written: one check in 23 hourly ticks, the card shows the write failure, the file keeps its bytes; the 24th hour runs it again", async () => {
+    await seedPins();
+    ms = T0 + 10 * DAY;
+    const original = validFile(stampOf(ms - 2 * DAY));
+    writeFileSync(reminderPath(dir), original);
+    chmodSync(reminderPath(dir), 0o444);
+    try {
+      const t = make();
+      await t.maybeCheck();
+      for (let i = 0; i < 23; i++) { ms += HOUR; await t.maybeCheck(); }
+      expect(listCalls).toHaveLength(1);
+      expect(reminderRaw()).toBe(original);
+      expect(t.forProvider("claude", status()).check).toMatchObject({ at: stampOf(T0 + 10 * DAY), notSaved: { file: reminderPath(dir), code: "EACCES" } });
+      expect(logs.some((l) => l.startsWith("E CLI candidate check result not saved"))).toBe(true);
+      ms += HOUR;
+      await t.maybeCheck();
+      expect(listCalls).toHaveLength(2);
+      expect(reminderRaw()).toBe(original);
+    } finally {
+      chmodSync(reminderPath(dir), 0o644);
+    }
+  });
+
+  it("a recorded attempt later than now is stale: the next tick runs the check and records the current time", async () => {
+    await seedPins();
+    ms = T0 + 10 * DAY;
+    writeFileSync(reminderPath(dir), validFile(stampOf(ms + 3 * DAY)));
+    await make().maybeCheck();
+    expect(listCalls).toHaveLength(1);
+    expect(JSON.parse(reminderRaw()).lastCheck.at).toBe(stampOf(ms));
+    expect(logs.some((l) => l.includes("treated as stale"))).toBe(true);
+  });
+
+  it("a wall clock jump forward does not shorten the in-process gate", async () => {
+    await seedPins();
+    let mono = 0;
+    const t = make({ monotonic: () => mono });
+    await t.maybeCheck();
+    ms += 3 * DAY;
+    mono += HOUR;
+    await t.maybeCheck();
+    expect(listCalls).toHaveLength(1);
+    mono += 23 * HOUR;
+    await t.maybeCheck();
+    expect(listCalls).toHaveLength(2);
   });
 
   it("no pins: no check and no file", async () => {

@@ -47,7 +47,8 @@ export interface CliTransition {
   install: { version: string; command: string } | null;     // newest `real` version newer than the active pin and newer than target, not installed: the install command
   candidates: { version: string }[];                         // newer than the active pin, `interface` only in the record
   violations: { version: string; names: string[] }[];        // newer than the active pin, last check status `violates`: missing flags and features
-  check: { at: string; outcome: CliCheckOutcome } | null;    // last candidate check for this agent; null — none recorded
+  // last candidate check for this agent; null — none recorded. notSaved: this run's latest attempt could not be written to cli-reminder.json (file path and errno code); the next attempt in this run is not before 24 hours
+  check: { at: string; outcome: CliCheckOutcome; notSaved?: { file: string; code: string } } | null;
 }
 export interface CliTransitionSettings {
   periodDays: number;           // planned transition period; 30 when the file is absent or broken
