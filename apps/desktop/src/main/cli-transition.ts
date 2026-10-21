@@ -227,7 +227,7 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
 
   function settingsView(): CliTransitionSettings {
     const s = readReminder(dataDir);
-    return { periodDays: loadedData(s)?.periodDays ?? DEFAULT_PERIOD_DAYS, file: reminderPath(dataDir), fileError: s.state === "broken" ? s.error : null, running: deps.running() };
+    return { periodDays: loadedData(s)?.periodDays ?? DEFAULT_PERIOD_DAYS, fileError: s.state === "broken" ? s.error : null, running: deps.running() };
   }
 
   function forProvider(agent: CliAgent, status: ProviderStatus): CliTransition {
