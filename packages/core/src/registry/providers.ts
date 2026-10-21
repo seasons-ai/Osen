@@ -66,7 +66,9 @@ async function inspectCli(provider: CliProvider, { env, withModels = true, deps,
   const { agent } = provider;
   const status: ProviderStatus = { id: provider.id, kind: "cli", label: provider.label, available: false, models: provider.models, modelsConfirmed: false };
   const loc = await d.locate(agent, { explicitPath: provider.path, env, dataDir });
-  if (!loc.found || !loc.path) return { status: { ...status, reason: loc.reason ?? registryMessages().cliNotFound(agent), searchPath: loc.searchPath } };
+  if (!loc.found || !loc.path) {
+    return { status: { ...status, reason: loc.reason ?? registryMessages().cliNotFound(agent), searchPath: loc.searchPath, ...(loc.source ? { source: loc.source } : {}), ...(loc.version ? { version: loc.version } : {}) } };
+  }
   const path = loc.path;
   status.path = path;
   if (loc.version) status.version = loc.version;

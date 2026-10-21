@@ -86,6 +86,13 @@ describe("inspectProvider cli", () => {
       const locate = async (): Promise<CliLocation> => ({ agent: "claude", found: true, path: join(dir, "claude"), searchPath: dir, version: "2.1.288" });
       expect((await inspectProvider(claude, { env: env(), deps: { ...noModels, locate } })).status.source).toBeUndefined();
     });
+    it("unavailable CLI status keeps source pin when the pinned install failed the pre-launch check", async () => {
+      const reason = "Pinned install claude 2.1.288 changed after install";
+      const locate = async (): Promise<CliLocation> => ({ agent: "claude", found: false, source: "pin", searchPath: dir, reason });
+      const r = await inspectProvider(claude, { env: env(), deps: { ...noModels, locate } });
+      expect(r.status).toMatchObject({ source: "pin", available: false, reason });
+      expect(r.runtime).toBeUndefined();
+    });
     it("PATH binary: no pin keys, pinned unset", async () => {
       fakeClaude();
       const r = await inspectProvider(claude, { env: env(), deps: { ...noModels, locate: pinLoc("claude", false) } });

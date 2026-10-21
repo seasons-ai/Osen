@@ -1,8 +1,13 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { setProcessLanguage } from "@model-council/core/i18n";
 import type { CliTransition, SettingsProvider } from "../../shared/settings.ts";
+import { createCliTransition } from "../../main/cli-transition.ts";
+import { guardedPinStatus } from "../../main/cli-transition.testutil.ts";
 import { NO_CLI_CARD } from "./CliTransition.tsx";
 import type { CliCardProps } from "./CliTransition.tsx";
 import { ProviderCard } from "./ProviderCard.tsx";
@@ -293,6 +298,37 @@ describe("CLI transition in the card", () => {
     const rb = card(tr(), { cli: { confirm: { agent: "claude", kind: "rollback", from: "2.1.288", to: "2.1.270" } } });
     expect(rb).toContain("Roll Claude Code back from 2.1.288 to 2.1.270?");
     expect(btn(rb, "Roll back")).not.toBe("");
+  });
+
+  it("card transition and rollback: pin failed the pre-launch check shows the pin rows and an enabled rollback", async () => {
+    setProcessLanguage("en");
+    const dir = mkdtempSync(join(tmpdir(), "card-pin-guard-"));
+    try {
+      const status = await guardedPinStatus(dir, new Date("2026-09-01T00:00:00Z"));
+      const reason = status.reason ?? "";
+      const logger = { info() {}, error() {} };
+      const cli = createCliTransition({ dataDir: dir, logger, running: () => false, onChecked() {}, candidateDeps: () => { throw new Error("no check"); } }).forProvider("claude", status);
+      const down = html({ ...base, available: false, reason, version: null, path: null, cli }, {});
+      expect(down).toContain(reason);
+      expect(down).toContain("<dt>Source</dt><dd>Osen pin</dd>");
+      expect(btn(down, "Roll back to 2.1.280")).not.toBe("");
+      expect(btn(down, "Roll back to 2.1.280")).not.toContain("disabled");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("card transition and rollback: pin failed the pre-launch check also offers the switch to a newer real version", async () => {
+    setProcessLanguage("en");
+    const dir = mkdtempSync(join(tmpdir(), "card-pin-guard-"));
+    try {
+      const status = await guardedPinStatus(dir, new Date("2026-09-01T00:00:00Z"), "2.1.300");
+      const logger = { info() {}, error() {} };
+      const cli = createCliTransition({ dataDir: dir, logger, running: () => false, onChecked() {}, candidateDeps: () => { throw new Error("no check"); } }).forProvider("claude", status);
+      const down = html({ ...base, available: false, reason: status.reason ?? "", version: null, path: null, cli }, {});
+      expect(btn(down, "Switch to 2.1.300")).not.toBe("");
+      expect(btn(down, "Switch to 2.1.300")).not.toContain("disabled");
+      expect(btn(down, "Roll back to 2.1.280")).not.toBe("");
+      expect(btn(down, "Roll back to 2.1.280")).not.toContain("disabled");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
   it("refusal is shown next to the buttons", () => {

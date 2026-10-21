@@ -111,7 +111,8 @@ show:      {schemaVersion, id, status, partial, finish, currentVersion, agreed, 
              ownerSelection: null | {version, ts, note, statusAtSelection}
              totals: {turns, drafts, durationMs, inputTokens, outputTokens, costUsd, incomplete}
 providers: {schemaVersion, providers: [{id, kind, label, available, reason, warning, path, version,
-                                        baseUrl, keyEnv, keySet, models, modelsConfirmed, modelsReason}]}
+                                        source, baseUrl, keyEnv, keySet, models, modelsConfirmed, modelsReason}]}
+             source: "explicit" | "pin" | "path" | null — where the executable came from; set also for an unavailable CLI whose pinned install failed the pre-launch check; null for HTTP and when the search did not get that far
              verified: {level, checkedAt} | null — level "real" | "interface" | "none" (checkedAt is null for "none");
                        null for an HTTP provider and a CLI that is not found
 templates: {schemaVersion, templates: [{id, category, title, source}], errors: [{file, source, reason}]}

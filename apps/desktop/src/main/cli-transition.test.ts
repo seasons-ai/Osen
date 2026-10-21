@@ -10,7 +10,7 @@ import { VERIFIED_FILE } from "../../../../packages/core/src/cli-agents/verified
 import { settings as catalog } from "../shared/messages/settings.ts";
 import { REMINDER_FILE, createCliTransition, readReminder, reminderPath } from "./cli-transition.ts";
 import type { CliTransitionApi, CliTransitionDeps } from "./cli-transition.ts";
-import { installVersions, pinsBytes, record } from "./cli-transition.testutil.ts";
+import { guardedPinStatus, installVersions, pinsBytes, record } from "./cli-transition.testutil.ts";
 import { SettingsError } from "./settings.ts";
 
 const DAY = 86_400_000;
@@ -277,6 +277,15 @@ describe("Requirement: Срок планового перехода", () => {
     expect(out[0]).toBe(out[1]);
     expect(out[0]).not.toMatch(/[А-Яа-яЁё]/);
     dir = mkdtempSync(join(tmpdir(), "cli-transition-")); // for afterEach
+  });
+});
+
+describe("Requirement: Переход и откат из карточки", () => {
+  it("card transition and rollback: pin failed the pre-launch check still gives source pin and previous", async () => {
+    const unavailable = await guardedPinStatus(dir, new Date(T0));
+    const c = make().forProvider("claude", unavailable);
+    expect(c.source).toBe("pin");
+    expect(c.pin).toMatchObject({ version: "2.1.288", previous: "2.1.280" });
   });
 });
 
