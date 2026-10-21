@@ -7,7 +7,7 @@
     "planToken": "<token>",
     "status": "stopped",
     "source": "mcp",
-    "topic": "<text>",
+    "topic": "Cat name",
     "addedRounds": 1,
     "maxRounds": 3,
     "maxCalls": 6,
@@ -17,7 +17,7 @@
     "participants": [
       {
         "id": "p1",
-        "name": "<text>",
+        "name": "Сценарный (contract/p1.json)",
         "providerId": "scripted",
         "model": "contract/p1.json",
         "role": null,
@@ -25,7 +25,7 @@
       },
       {
         "id": "p2",
-        "name": "<text>",
+        "name": "Сценарный (contract/p2.json)",
         "providerId": "scripted",
         "model": "contract/p2.json",
         "role": null,
@@ -36,6 +36,6 @@
     "agreementReset": false,
     "requiresConsent": false,
     "waiting": null,
-    "next": "<text>"
+    "next": "Назови владельцу тему, участников, ещё 1 кругов и верхнюю границу вызовов 6 (активные × круги × 3); при requiresConsent дождись согласия владельца, затем повтори тот же вызов с execute=true и planToken из этого ответа."
   }
 }

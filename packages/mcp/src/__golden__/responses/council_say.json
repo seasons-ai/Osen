@@ -5,6 +5,6 @@
     "requestId": "<token>",
     "questionId": null,
     "queued": true,
-    "next": "<text>"
+    "next": "Запрос принят в очередь исполнителя, это ещё не применение. Применение смотри в council_status: реплика появится в ownerMessages с этим requestId, отвеченный вопрос исчезнет из ownerQuestions."
   }
 }
