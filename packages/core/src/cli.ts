@@ -727,14 +727,25 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
             return EXIT.usage;
           }
           let probeNo = 0;
-          const outcome = await runAcceptance(dataDir, planned.plan, {
-            env: io.env,
-            language: getProcessLanguage(),
-            signal: io.signal,
-            ...(values["save-fixture"] !== undefined ? { saveFixture: resolve(values["save-fixture"]) } : {}),
-            osenVersion: io.appVersion,
-            onProbe: (o) => io.stdout(`${acceptanceMessages().probeLine(++probeNo, acceptanceMessages().probeName(o.probe), o.ok ? undefined : o.reason ?? "")}\n`),
-          });
+          // Closing the terminal (SIGHUP) or SIGTERM must not leave a probe running and spending a call: stop it like SIGINT does.
+          const ctl = new AbortController();
+          const stop = () => ctl.abort();
+          process.on("SIGTERM", stop);
+          process.on("SIGHUP", stop);
+          let outcome;
+          try {
+            outcome = await runAcceptance(dataDir, planned.plan, {
+              env: io.env,
+              language: getProcessLanguage(),
+              signal: io.signal ? AbortSignal.any([io.signal, ctl.signal]) : ctl.signal,
+              ...(values["save-fixture"] !== undefined ? { saveFixture: resolve(values["save-fixture"]) } : {}),
+              osenVersion: io.appVersion,
+              onProbe: (o) => io.stdout(`${acceptanceMessages().probeLine(++probeNo, acceptanceMessages().probeName(o.probe), o.ok ? undefined : o.reason ?? "")}\n`),
+            });
+          } finally {
+            process.off("SIGTERM", stop);
+            process.off("SIGHUP", stop);
+          }
           if (outcome.fixtureError) io.stderr(`${outcome.fixtureError}\n`);
           if (outcome.fixture) io.stdout(`${outcome.fixture}\n`);
           (outcome.code === 0 ? io.stdout : io.stderr)(`${outcome.text}\n`);

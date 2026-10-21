@@ -13,6 +13,7 @@ import { join } from "node:path";
 //   quick: exits silently on a long prompt (turn finished before the stop)
 //   err: exits with code 1 and a message on stderr
 //   resume_fail: the stop turn writes a flag to STUB_STATE; the next turn after it exits with code 1
+//   slow: every turn hangs without output (the first probe stays running until it is stopped)
 // STUB_LOG (optional): every turn launch appends its pid, one line per launch.
 // Options (writeAcceptanceStub): version line for --version, help text for --help, features text for `features list`; each answers only when given.
 const SCRIPT = `const fs = require("node:fs");
@@ -34,7 +35,8 @@ const emit = (text) => {
 const streamForever = () => setInterval(() => process.stdout.write("chunk\\n"), 300);
 const sleepForever = () => setTimeout(() => emit("late"), 60000);
 if (mode === "err") { process.stderr.write("boom"); process.exit(1); }
-if (prompt.includes("very long essay")) {
+if (mode === "slow") setTimeout(() => emit("late"), 600000);
+else if (prompt.includes("very long essay")) {
   if (mode === "quick") process.exit(0);
   if (mode === "resume_fail" && afterStop) fs.writeFileSync(afterStop, "");
   if (mode === "history") {

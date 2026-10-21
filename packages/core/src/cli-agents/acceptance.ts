@@ -21,7 +21,7 @@ import { parseClaudeOutput, parseCodexOutput } from "./output-parse.ts";
 import { CLI_AGENTS, DEFAULT_MODEL } from "./types.ts";
 import type { CliAgent } from "./types.ts";
 import { turnFixtureName, anonymizeTurnOutput, findPersonalData } from "./turn-fixtures.ts";
-import { addLocalEntry, lookupVerified } from "./verified-record.ts";
+import { VERIFIED_FILE, addLocalEntry, lookupVerified, readLocalRecord } from "./verified-record.ts";
 import type { VerifiedRecord } from "./verified-record.ts";
 
 export const PROBES = ["valid_turn", "outside_file", "tool_call", "mcp_server", "instructions", "stop", "resume"] as const;
@@ -54,6 +54,8 @@ export async function planAcceptance(dataDir: string, agentName: string, version
   const m = acceptanceMessages();
   if (!isAgent(agentName)) return { ok: false, code: 2, text: m.unknownAgent(agentName, CLI_AGENTS.join(", ")) };
   const agent = agentName;
+  const local = readLocalRecord(dataDir);
+  if (local.state === "rejected") return { ok: false, code: 1, text: m.recordBroken(join(dataDir, VERIFIED_FILE), local.reason) };
   const state = readPins(dataDir);
   if (state.state === "rejected") return { ok: false, code: 1, text: state.reason };
   const install = state.state === "loaded" ? state.pins.agents[agent]?.installed.find((i) => i.version === version) : undefined;
@@ -410,7 +412,7 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
     osenVersion: opts.osenVersion ?? "unknown",
     sha256: plan.sha256,
     modelCalls: calls,
-  });
+  }, { replaceSameLevel: true });
   if (!added.ok) return done({ code: 1, recorded: false, interrupted: false, text: m.recordFailed(added.reason) });
   return done({ code: 0, recorded: true, interrupted: false, text: m.passed(plan.agent, plan.version, calls) });
 }
