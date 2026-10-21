@@ -1,11 +1,11 @@
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ProviderStatus } from "@model-council/core";
 import type { AgentPins } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { VerifiedEntry } from "../../../../packages/core/src/cli-agents/verified-record.ts";
-import { computeTransition, createCliTransition } from "./cli-transition.ts";
+import { computeTransition, createCliTransition, reminderPath } from "./cli-transition.ts";
 import type { LastCheck } from "./cli-transition.ts";
 import { installVersions, pinsBytes, record } from "./cli-transition.testutil.ts";
 import type { CliSource } from "../shared/settings.ts";
@@ -114,6 +114,55 @@ describe("Requirement: Напоминание о плановом переход
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("Ежесуточная проверка кандидатов без вызовов моделей: не чаще раза в сутки (seeded, 200 cases)", async () => {
+    const HOUR = 3_600_000;
+    let exact24 = 0;
+    let futureRuns = 0;
+    const template = mkdtempSync(join(tmpdir(), "cli-prop-tpl-"));
+    record(template, "claude", ACTIVE, "real");
+    await installVersions(template, "claude", [{ version: ACTIVE }], () => new Date(NOW - 50 * DAY));
+    for (let seed = 1; seed <= 200; seed++) {
+      const r = mulberry32(seed);
+      const dir = mkdtempSync(join(tmpdir(), "cli-prop-gate-"));
+      let wall = NOW;
+      let mono = 0;
+      const runs: number[] = [];
+      try {
+        cpSync(template, dir, { recursive: true });
+        const t = createCliTransition({
+          dataDir: dir, logger: { info() {}, error() {} }, now: () => new Date(wall), monotonic: () => mono, running: () => false, onChecked() {},
+          candidateDeps: () => ({ releases: { list: async () => { runs.push(mono); return []; } }, source: { fetch: async (): Promise<never> => { throw new Error("none"); } } }),
+        });
+        const file = reminderPath(dir);
+        const steps = 30 + Math.floor(r() * 31);
+        // fixed edges: exact 24 h tick, backward shift, two consecutive write failures
+        const kinds: string[] = Array.from({ length: steps }, () => ["tick", "tick", "shift", "lock", "unlock", "exact"][Math.floor(r() * 6)]!);
+        kinds[1] = "lock"; kinds[2] = "lock"; kinds[3] = "exact"; kinds[4] = "shiftBack"; kinds[5] = "tick";
+        for (const k of kinds) {
+          if (k === "tick") { const h = 1 + Math.floor(r() * 30); mono += h * HOUR; wall += h * HOUR; }
+          else if (k === "exact") { mono += 24 * HOUR; wall += 24 * HOUR; }
+          else if (k === "shift") wall += Math.floor((r() * 2 - 1) * 5 * DAY);
+          else if (k === "shiftBack") wall -= 3 * DAY;
+          else if (existsSync(file)) chmodSync(file, k === "lock" ? 0o444 : 0o644);
+          const before = runs.length;
+          const lastAt = existsSync(file) ? Date.parse(JSON.parse(readFileSync(file, "utf8")).lastCheck?.at ?? "") : NaN;
+          await t.maybeCheck();
+          if (runs.length > before) {
+            if (lastAt > wall) { futureRuns++; }
+            if (runs.length >= 2 && runs[runs.length - 1]! - runs[runs.length - 2]! === 24 * HOUR) exact24++;
+          }
+        }
+        for (let i = 1; i < runs.length; i++) expect(runs[i]! - runs[i - 1]!, `seed ${seed}`).toBeGreaterThanOrEqual(24 * HOUR);
+      } finally {
+        if (existsSync(reminderPath(dir))) chmodSync(reminderPath(dir), 0o644);
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+    rmSync(template, { recursive: true, force: true });
+    expect(exact24).toBeGreaterThan(0);
+    expect(futureRuns).toBeGreaterThan(0);
+  }, 120_000);
 });
 
 function inertTransitionDeps() {

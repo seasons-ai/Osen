@@ -4,6 +4,7 @@
 //   COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the project> node .../check.ts           full run in that folder (kept)
 //   COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the project> node .../check.ts --seed-only   only prepare the folder for the app window and print the launch command
 //   ... --seed-only --broken-pin    the same for the broken-pin folder (claude 2.1.288 active but its executable changed, 2.1.280 previous)
+// Change 190 adds two steps: an unwritable cli-reminder.json (one check in 23 hours) and a recorded attempt time in the future.
 // The real claude and codex are never launched: every executable is a shell stub from the stand folder.
 import "../../../../packages/core/scenarios/language-ru.ts";
 import assert from "node:assert/strict";
@@ -186,7 +187,7 @@ function rig(s: Seed): Rig {
   let calls = 0;
   const running = () => historyItems(s.dir, new Map(), new Set()).some((i) => i.status === "running");
   const t = createCliTransition({
-    dataDir: s.dir, logger, env: s.env, now, osenVersion: "1.0.0", running, onChecked: () => {},
+    dataDir: s.dir, logger, env: s.env, now, monotonic: () => clock, osenVersion: "1.0.0", running, onChecked: () => {},
     candidateDeps: () => {
       const d = standCandidateDeps(s.standJson);
       return { releases: { list: (agent) => { calls++; return d.releases.list(agent); } }, source: d.source };
@@ -402,6 +403,48 @@ try {
     await R.t.maybeCheck();
     assert.equal(R.releaseCalls(), calls, "no retry within 24 h of a failed attempt");
     ok("step 11 failing release source after 25 h: outcome source_unavailable recorded with the new attempt time, error line in logs/app.log, the window state still returns a view, no retry for 24 h");
+  }
+
+  // ---- 190a: the reminder file cannot be written ----
+  {
+    const saved = clock;
+    const u = await seed(join(dir, "unwritable"), clock);
+    const file = reminderPath(u.dir);
+    writeFileSync(file, `${JSON.stringify({ schemaVersion: 1, periodDays: 30, lastCheck: { at: stamp(clock - 2 * DAY), candidates: [], failures: [] } }, null, 2)}\n`);
+    chmodSync(file, 0o444);
+    try {
+      const original = rbytes(u);
+      const U = rig(u);
+      const attempt = stamp(clock);
+      await U.t.maybeCheck();
+      for (let i = 0; i < 23; i++) { clock += HOUR; await U.t.maybeCheck(); }
+      assert.equal(U.releaseCalls(), 1, "one check in 23 hourly ticks");
+      assert.deepEqual(card(await U.view(), "claude").check?.notSaved, { file, code: "EACCES" });
+      assert.equal(card(await U.view(), "claude").check?.at, attempt);
+      assert.equal(rbytes(u), original, "the read-only file keeps its bytes");
+      assert.match(readFileSync(U.logFile, "utf8"), /CLI candidate check result not saved/);
+      clock += HOUR;
+      await U.t.maybeCheck();
+      assert.equal(U.releaseCalls(), 2, "24 hours after the attempt the check runs again");
+      assert.equal(rbytes(u), original);
+    } finally {
+      chmodSync(file, 0o644);
+      clock = saved;
+    }
+    ok("step 190a read-only cli-reminder.json (chmod 444): 1 check in 24 hourly ticks (counter 1), the card carries notSaved {file, EACCES} with the attempt time, the error line is in logs/app.log, the file bytes are unchanged; after 24 h the check runs again (counter 2)");
+  }
+
+  // ---- 190b: a recorded attempt time in the future ----
+  {
+    const saved = clock;
+    const f = await seed(join(dir, "future"), clock);
+    writeFileSync(reminderPath(f.dir), `${JSON.stringify({ schemaVersion: 1, periodDays: 30, lastCheck: { at: stamp(clock + 3 * DAY), candidates: [], failures: [] } }, null, 2)}\n`);
+    const F = rig(f);
+    await F.t.maybeCheck();
+    assert.equal(F.releaseCalls(), 1, "a future attempt time does not block the check");
+    assert.equal(JSON.parse(rbytes(f)!).lastCheck.at, stamp(clock));
+    clock = saved;
+    ok("step 190b recorded attempt time 3 days in the future: the next tick runs the check once (counter 1) and records the current time");
   }
 
   // ---- 10a: a broken file (en and ru) ----
