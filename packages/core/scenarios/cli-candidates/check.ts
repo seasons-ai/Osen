@@ -264,6 +264,48 @@ try {
   assert.equal(treeHash(join(K, "cli")), cliTree);
   ok("step 7c base from the active pin (claude 2.1.290): header names the base, only 2.1.291 is checked; pins.json and the whole cli/ tree unchanged");
 
+  // ---- 7d: corrupted pins.json is no base, not the built-in record (change 192) ----
+  const P = prepare();
+  mkdirSync(join(P, "cli"));
+  const badPins = join(P, "cli", "pins.json");
+  writeFileSync(badPins, "{bad");
+  const recordBefore7d = readFileSync(recordFile(P));
+  const mark7d = calls().length;
+  const r7d = await run(P, ["cli", "candidates", "--agent", "claude", "--json"]);
+  assert.equal(r7d.code, 2, r7d.out + r7d.err);
+  assert.deepEqual(oneJson(r7d), { schemaVersion: 1, candidates: [], failures: [{ agent: "claude", code: "no_base" }] });
+  const t7d = await run(P, ["cli", "candidates", "--agent", "claude"]);
+  assert.equal(t7d.code, 2, t7d.out + t7d.err);
+  assert.ok((t7d.out + t7d.err).includes(badPins), `the text must name ${badPins}: ${t7d.out}${t7d.err}`);
+  assert.equal(calls().length, mark7d);
+  assert.deepEqual(readFileSync(recordFile(P)), recordBefore7d);
+  assert.equal(readFileSync(badPins, "utf8"), "{bad");
+  assert.ok(!existsSync(join(P, "cli-candidates")));
+  ok("step 7d pins.json = {bad: --json failures [{claude, no_base}], the text names the pins.json path, exit 2; nothing fetched, cli-verified.json and pins.json byte-identical, no cli-candidates folder");
+
+  // ---- 7e: a file system error is install_failed, not a stack (change 192) ----
+  const Q = prepare();
+  const blocker = join(Q, "cli-candidates");
+  writeFileSync(blocker, "keep");
+  const mark7e = calls().length;
+  const r7e = await run(Q, ["cli", "candidates", "--json"]);
+  assert.equal(r7e.code, 1, r7e.out + r7e.err);
+  const d7e = oneJson(r7e);
+  assert.deepEqual(d7e.candidates, []);
+  assert.deepEqual(d7e.failures, [
+    { agent: "claude", code: "install_failed" }, { agent: "claude", code: "install_failed" },
+    { agent: "codex", code: "install_failed" }, { agent: "codex", code: "install_failed" },
+  ]);
+  assert.doesNotMatch(r7e.err, /^\s+at /m, `stderr must have no stack: ${r7e.err}`);
+  for (const v of ["claude 2.1.290", "claude 2.1.291", "codex 0.160.0", "codex 0.161.0"]) assert.ok(r7e.err.includes(`Could not check ${v}: `), `stderr must give the reason for ${v}: ${r7e.err}`);
+  const t7e = await run(Q, ["cli", "candidates", "--agent", "claude"]);
+  assert.equal(t7e.code, 1, t7e.out + t7e.err);
+  assert.match(t7e.out + t7e.err, /Could not check claude 2\.1\.290: .*EEXIST/);
+  assert.doesNotMatch(t7e.err, /^\s+at /m);
+  assert.equal(calls().length, mark7e);
+  assert.equal(readFileSync(blocker, "utf8"), "keep");
+  ok("step 7e a file in place of cli-candidates: --json is one document with install_failed for each of the 4 candidates, no stack, exit 1; text names the reason; the file is unchanged");
+
   // ---- 8 ----
   const files = readdirSync(counters);
   const kinds = new Set(files.map((f) => f.slice(f.lastIndexOf(".") + 1)));
