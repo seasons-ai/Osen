@@ -1,9 +1,10 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Logger } from "@model-council/core";
-import { installPin, pinsPath } from "../../../../packages/core/src/cli-agents/pins.ts";
+import type { Logger, ProviderStatus } from "@model-council/core";
+import { installPin, pinsPath, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { PackageSource } from "../../../../packages/core/src/cli-agents/pins.ts";
 import { addLocalEntry, loadVerifiedRecord } from "../../../../packages/core/src/cli-agents/verified-record.ts";
+import { inspectProvider } from "../../../../packages/core/src/registry/providers.ts";
 import { createCliTransition } from "./cli-transition.ts";
 import type { CliTransitionApi, CliTransitionDeps } from "./cli-transition.ts";
 
@@ -42,3 +43,16 @@ export async function installVersions(dataDir: string, agent: "claude" | "codex"
 }
 
 export const pinsBytes = (dataDir: string): string => readFileSync(pinsPath(dataDir), "utf8");
+
+/** claude 2.1.288 active, 2.1.280 previous (both installed), then the unavailable status the real core reports for a pin that failed the pre-launch check. */
+export async function guardedPinStatus(dataDir: string, now: Date, newerReal?: string): Promise<ProviderStatus> {
+  record(dataDir, "claude", "2.1.280", "real", "2026-08-30");
+  record(dataDir, "claude", "2.1.288", "real", "2026-09-30");
+  if (newerReal) record(dataDir, "claude", newerReal, "real", "2026-10-15");
+  await installVersions(dataDir, "claude", [{ version: "2.1.280" }, { version: "2.1.288" }, ...(newerReal ? [{ version: newerReal }] : [])], () => now);
+  const u = usePin(dataDir, "claude", "2.1.288", { record: loadVerifiedRecord(dataDir), now: () => now });
+  if (!u.ok) throw new Error(u.text);
+  const locate = async () => ({ agent: "claude" as const, found: false, source: "pin" as const, searchPath: dataDir, reason: "Pinned install changed after install" });
+  const { status } = await inspectProvider({ id: "claude", kind: "cli", label: "Claude Code", agent: "claude", models: [] }, { env: {}, withModels: false, deps: { locate } });
+  return status;
+}

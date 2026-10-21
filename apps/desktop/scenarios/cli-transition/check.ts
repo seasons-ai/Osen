@@ -3,18 +3,20 @@
 //   COUNCIL_DEV=1 node apps/desktop/scenarios/cli-transition/check.ts                      full run; folder .council-data/cli-transition-check-* is created and removed on success
 //   COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the project> node .../check.ts           full run in that folder (kept)
 //   COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the project> node .../check.ts --seed-only   only prepare the folder for the app window and print the launch command
+//   ... --seed-only --broken-pin    the same for the broken-pin folder (claude 2.1.288 active but its executable changed, 2.1.280 previous)
 // The real claude and codex are never launched: every executable is a shell stub from the stand folder.
 import "../../../../packages/core/scenarios/language-ru.ts";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { createLogger, ensureDataDir, initialRegistry, readRegistry, setProcessLanguage, writeRegistry } from "../../../../packages/core/src/index.ts";
 import type { Registry } from "../../../../packages/core/src/index.ts";
-import { installPin, pinsPath } from "../../../../packages/core/src/cli-agents/pins.ts";
+import { activePin, installPin, pinsPath, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { PackageSource } from "../../../../packages/core/src/cli-agents/pins.ts";
 import { addLocalEntry, loadVerifiedRecord } from "../../../../packages/core/src/cli-agents/verified-record.ts";
+import { providerMessages } from "../../../../packages/core/src/messages/providers.ts";
 import { createBridge } from "../../src/main/bridge.ts";
 import { standCandidateDeps } from "../../src/main/cli-stand.ts";
 import { REMINDER_FILE, createCliTransition, reminderPath } from "../../src/main/cli-transition.ts";
@@ -26,6 +28,7 @@ import type { SettingsView } from "../../src/shared/settings.ts";
 
 const repo = resolve(import.meta.dirname, "../../../..");
 const seedOnly = process.argv.includes("--seed-only");
+const brokenPinOnly = process.argv.includes("--broken-pin");
 if (process.env.COUNCIL_DEV !== "1" || (seedOnly && !process.env.COUNCIL_HOME)) {
   console.error("COUNCIL_DEV=1 is required (and, with --seed-only, COUNCIL_HOME: a new folder inside the project). Run: COUNCIL_DEV=1 COUNCIL_HOME=<folder> node apps/desktop/scenarios/cli-transition/check.ts [--seed-only]");
   process.exit(2);
@@ -100,7 +103,36 @@ async function seed(dir: string, nowMs: number): Promise<Seed> {
   return { dir, stand, bin, standJson, explicit, shell, env };
 }
 
+/** Change 189: claude 2.1.280 and 2.1.288 pinned (active 2.1.288, previous 2.1.280), then the 2.1.288 executable gets extra bytes: only the sha256 differs, the pre-launch check fails. */
+async function seedBrokenPin(dir: string, nowMs: number): Promise<Seed> {
+  const s = await seedBare(dir);
+  for (const version of ["2.1.280", "2.1.288"]) {
+    const r = addLocalEntry(dir, { agent: "claude", version, level: "real", checkedAt: "2026-10-07", os: "darwin-arm64", osenVersion: "1.0.0", modelCalls: 2 });
+    assert.ok(r.ok, r.ok ? "" : r.reason);
+  }
+  for (const version of ["2.1.280", "2.1.288"]) {
+    const r = await installPin(dir, "claude", { version }, { source: stubSource, record: loadVerifiedRecord(dir), now: () => new Date(nowMs - 40 * DAY) });
+    assert.ok(r.ok, r.text);
+  }
+  const u = usePin(dir, "claude", "2.1.288", { record: loadVerifiedRecord(dir), now: () => new Date(nowMs - 40 * DAY) });
+  assert.ok(u.ok, u.text);
+  const a = (JSON.parse(readFileSync(pinsPath(dir), "utf8")) as { agents: { claude: { active: string; previous: string | null } } }).agents.claude;
+  assert.deepEqual([a.active, a.previous], ["2.1.288", "2.1.280"]);
+  const pin = activePin(dir, "claude");
+  assert.equal(pin.state, "pin");
+  if (pin.state === "pin") appendFileSync(pin.path, "# changed after the pin\n");
+  return s;
+}
+
 // ---------- seed-only ----------
+if (seedOnly && brokenPinOnly) {
+  const dir = realpathSync(work);
+  const s = await seedBrokenPin(dir, Date.now());
+  console.log(`Data folder prepared: ${dir}`);
+  console.log("claude: pinned by Osen, active 2.1.288 (its executable was changed after the pin: the pre-launch check fails), previous 2.1.280 (real 2026-10-07)");
+  console.log(`cd "${repo}" && COUNCIL_DEV=1 COUNCIL_HOME="${dir}" COUNCIL_CLI_STAND="${s.standJson}" PATH="${s.bin}:$PATH" npm run desktop`);
+  process.exit(0);
+}
 if (seedOnly) {
   const dir = realpathSync(work);
   const s = await seed(dir, Date.now());
@@ -406,6 +438,39 @@ try {
       assert.equal(rbytes(seedDir), expected, "council must not create or change cli-reminder.json");
     }
     ok("data-directory: `council providers` and a short scripted session do not create (fresh folder) or change (existing file) cli-reminder.json");
+  }
+
+  // ---- change 189: the active pin fails the pre-launch check ----
+  {
+    const b = await seedBrokenPin(join(dir, "broken"), NOW0);
+    const B = rig(b);
+    const pin = activePin(b.dir, "claude");
+    assert.equal(pin.state, "pin");
+    if (pin.state !== "pin") throw new Error("unreachable");
+    const expected = providerMessages().pinSha256Mismatch("claude", "2.1.288", pin.path, pin.sha256, sha(pin.path));
+    let bv = await B.view();
+    let bc = card(bv, "claude");
+    const pc = bv.providers.find((p) => p.id === "claude")!;
+    assert.equal(pc.available, false);
+    assert.equal(pc.reason, expected);
+    assert.equal(bc.source, "pin");
+    assert.equal(bc.pin?.version, "2.1.288");
+    assert.equal(bc.pin?.previous, "2.1.280");
+    ok("step 189a broken pin: claude card unavailable with the guard's checksum reason, source pin, pin 2.1.288, previous 2.1.280");
+
+    const pj = await runCouncil(b, ["providers", "--json"]);
+    const item = (JSON.parse(pj.out.split("\n").find((l) => l.startsWith("{"))!) as { providers: { id: string; available: boolean; source: string | null; reason: string | null }[] }).providers.find((p) => p.id === "claude")!;
+    assert.deepEqual([item.available, item.source, item.reason], [false, "pin", expected], pj.out);
+    ok("step 189b `council providers --json` on the broken pin: claude available false, source pin, the same reason");
+
+    const rb = await B.call("rollbackCli", "claude");
+    assert.ok(rb.ok, rb.error);
+    assert.equal(activeOf(b).active, "2.1.280");
+    bv = await B.view();
+    bc = card(bv, "claude");
+    const ac = bv.providers.find((p) => p.id === "claude")!;
+    assert.deepEqual([ac.available, ac.version, bc.source], [true, "2.1.280", "pin"]);
+    ok("step 189c rollbackCli through the bridge: pins.json active 2.1.280, the view shows claude available, version 2.1.280, source pin");
   }
 
   success = true;

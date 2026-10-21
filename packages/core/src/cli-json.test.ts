@@ -186,7 +186,7 @@ describe("council --json", () => {
   it("providers: one document, warning in the provider and in stderr, no key value", async () => {
     const home = tmp();
     const found = async (agent: "claude" | "codex") => agent === "claude"
-      ? { agent, found: true as const, path: "/nope/claude", version: "9.9.9", searchPath: "", warning: "version is newer than tested" }
+      ? { agent, found: true as const, path: "/nope/claude", version: "9.9.9", source: "path" as const, searchPath: "", warning: "version is newer than tested" }
       : { agent, found: false as const, searchPath: "", reason: "not found" };
     const r = await run(["providers", "--json"], home, { inspectDeps: { locate: found, listModels: async () => ({ models: [], confirmed: false, reason: "no list" }), readHelp: async () => "" } });
     expect(r.code).toBe(0);
@@ -194,7 +194,8 @@ describe("council --json", () => {
     const claude = d.providers.find((p: { id: string }) => p.id === "claude");
     expect(claude.warning).toBe("version is newer than tested");
     expect(r.err).toContain("version is newer than tested");
-    expect(Object.keys(claude)).toEqual(["id", "kind", "label", "available", "reason", "warning", "path", "version", "verified", "baseUrl", "keyEnv", "keySet", "models", "modelsConfirmed", "modelsReason"]);
+    expect(Object.keys(claude)).toEqual(["id", "kind", "label", "available", "reason", "warning", "path", "version", "source", "verified", "baseUrl", "keyEnv", "keySet", "models", "modelsConfirmed", "modelsReason"]);
+    expect(claude.source).toBe("path");
     expect(claude.baseUrl).toBeNull();
     expect(claude.verified).toBeNull();
     expect(JSON.stringify(d)).not.toContain("searchPath");
