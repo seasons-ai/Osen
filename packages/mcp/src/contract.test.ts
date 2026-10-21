@@ -72,6 +72,24 @@ describe("Проверка контракта после обновления х
     expect(findings.filter((f) => !f.ok).length).toBeGreaterThan(0);
     expect(findings[0]!.detail).toMatch(/ENOENT/);
   }, 25_000);
+
+  it("Проверка контракта после обновления хост-агента: ответ initialize, разрезанный посреди многобайтного знака", async () => {
+    const fake = mkdtempSync(join(tmpdir(), "split-server-"));
+    dirs.push(fake);
+    mkdirSync(join(fake, "packages/mcp/src"), { recursive: true });
+    // the reply is written in two chunks; the split falls inside the 2-byte "с" of the server name
+    writeFileSync(join(fake, "packages/mcp/src/main.ts"), `
+      const line = Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { protocolVersion: "2025-11-25", serverInfo: { name: "осень", version: "0" }, capabilities: {} } }) + "\\n");
+      const cut = line.indexOf(Buffer.from("с")) + 1;
+      process.stdin.once("data", () => {
+        process.stdout.write(line.subarray(0, cut));
+        setTimeout(() => process.stdout.write(line.subarray(cut)), 100);
+      });
+      process.stdin.on("end", () => process.exit(0));
+    `);
+    const findings = await checkProtocol(fake, { ...baseEnv, COUNCIL_HOME: tmp(), COUNCIL_DEV: "1" });
+    expect(findings.find((f) => f.check === "server name")!.detail).toBe("expected osen, got осень");
+  }, 25_000);
 });
 
 describe("Точная версия SDK", () => {
@@ -84,10 +102,24 @@ describe("Точная версия SDK", () => {
       writeFileSync(join(d, "package-lock.json"), JSON.stringify({ packages: { "node_modules/@modelcontextprotocol/sdk": { version: locked } } }));
       return checkSdkPin(d).filter((f) => !f.ok).map((f) => f.detail);
     };
-    expect(pin("^1.32.1", "1.32.1")).toEqual(['@modelcontextprotocol/sdk is "^1.32.1", expected an exact version without a range']);
+    expect(pin("^1.32.1", "1.32.1")).toEqual(['@modelcontextprotocol/sdk in dependencies is "^1.32.1", expected an exact version without a range']);
     expect(pin("~1.32.1", "1.32.1")[0]).toContain("@modelcontextprotocol/sdk");
-    expect(pin("1.32.0", "1.32.1")).toEqual(["@modelcontextprotocol/sdk is 1.32.0, lock file has 1.32.1"]);
+    expect(pin("1.32.0", "1.32.1")).toEqual(["@modelcontextprotocol/sdk in dependencies is 1.32.0, lock file has 1.32.1"]);
     expect(pin("1.32.1", "1.32.1")).toEqual([]);
+  });
+
+  it("Точная версия SDK: SDK в другом разделе зависимостей", () => {
+    const pin = (section: string, range: string) => {
+      const d = mkdtempSync(join(tmpdir(), "sdk-pin-"));
+      dirs.push(d);
+      mkdirSync(join(d, "packages/mcp"), { recursive: true });
+      writeFileSync(join(d, "packages/mcp/package.json"), JSON.stringify({ [section]: { "@modelcontextprotocol/sdk": range } }));
+      writeFileSync(join(d, "package-lock.json"), JSON.stringify({ packages: { "node_modules/@modelcontextprotocol/sdk": { version: "1.32.1" } } }));
+      return checkSdkPin(d).filter((f) => !f.ok).map((f) => f.detail);
+    };
+    expect(pin("devDependencies", "^1.32.1")).toEqual(['@modelcontextprotocol/sdk in devDependencies is "^1.32.1", expected an exact version without a range']);
+    expect(pin("peerDependencies", "1.32.0")).toEqual(["@modelcontextprotocol/sdk in peerDependencies is 1.32.0, lock file has 1.32.1"]);
+    expect(pin("optionalDependencies", "1.32.1")).toEqual([]);
   });
 
   it("Точная версия SDK: no range and equals the lock file", () => {
