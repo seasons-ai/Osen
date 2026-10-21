@@ -125,6 +125,10 @@ export async function checkCandidates(dataDir: string, agents: readonly CliAgent
     for (const agent of agents) {
       check();
       const pin = activePin(dataDir, agent);
+      if (pin.state === "rejected") {
+        fail(agent, "no_base", m.candidatesPinsRejected(agent, pin.reason));
+        continue;
+      }
       // Interface entries written by this command must not move the base: only builtin entries and local real ones count.
       const baseRecord = mergeRecords(deps.builtin ?? BUILTIN_RECORD, (local.state === "loaded" ? local.entries : []).filter((e) => e.level === "real"));
       const recorded = baseRecord.filter((e) => e.agent === agent).map((e) => e.version);
@@ -161,21 +165,14 @@ export async function checkCandidates(dataDir: string, agents: readonly CliAgent
   return finish();
 
   async function checkOne(agent: CliAgent, version: string): Promise<void> {
-    mkdirSync(join(dataDir, CANDIDATES_DIR), { recursive: true });
     let prefix: string | undefined;
     try {
+      mkdirSync(join(dataDir, CANDIDATES_DIR), { recursive: true });
       prefix = mkdtempSync(join(dataDir, CANDIDATES_DIR, `${agent}-${version}-`));
-      let exe: string;
-      try {
-        const got = await step(deps.source.fetch(agent, version, prefix, signal));
-        exe = resolve(got.executable);
-        if (!exe.startsWith(resolve(prefix) + sep)) throw new Error(pinMessages().executableOutside(got.executable));
-        try { accessSync(exe, constants.X_OK); } catch { throw new Error(pinMessages().executableNotRunnable(exe)); }
-      } catch (e) {
-        if (e instanceof Interrupted) throw e;
-        fail(agent, "install_failed", m.candidatesInstallFailed(agent, version, e instanceof Error ? e.message : String(e)));
-        return;
-      }
+      const got = await step(deps.source.fetch(agent, version, prefix, signal));
+      const exe = resolve(got.executable);
+      if (!exe.startsWith(resolve(prefix) + sep)) throw new Error(pinMessages().executableOutside(got.executable));
+      try { accessSync(exe, constants.X_OK); } catch { throw new Error(pinMessages().executableNotRunnable(exe)); }
       const configDir = join(prefix, "config");
       mkdirSync(configDir, { recursive: true });
       const childEnv = { ...env, ...pinnedEnv(agent, configDir) };
@@ -212,6 +209,10 @@ export async function checkCandidates(dataDir: string, agents: readonly CliAgent
       });
       report.candidates.push({ agent, version, status: "ok", violations: [], recorded: added.ok });
       if (!added.ok) fail(agent, "record_failed", added.reason);
+    } catch (e) {
+      // Install, temp folder, config folder or hash read failed: this candidate fails, the rest go on.
+      if (e instanceof Interrupted) throw e;
+      fail(agent, "install_failed", m.candidatesInstallFailed(agent, version, e instanceof Error ? e.message : String(e)));
     } finally {
       if (prefix) rmSync(prefix, { recursive: true, force: true });
       try { rmdirSync(join(dataDir, CANDIDATES_DIR)); } catch {}

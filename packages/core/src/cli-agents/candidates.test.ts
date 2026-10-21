@@ -198,6 +198,78 @@ describe("Команда cli candidates / Нет базовой версии", (
   });
 });
 
+describe("Команда cli candidates / Повреждённый pins.json", () => {
+  it("unparsable pins.json: no_base with the file path for each agent, nothing fetched or written, code 2", async () => {
+    mkdirSync(join(dir, "cli"));
+    const pinsFile = join(dir, "cli", "pins.json");
+    writeFileSync(pinsFile, "{bad");
+    const h = harness({ versions: { claude: ["2.1.290"], codex: ["0.160.0"] } });
+    const r = await checkCandidates(dir, ["claude", "codex"], h.deps);
+    expect(r.code).toBe(2);
+    expect(r.failures.map((f) => [f.agent, f.code])).toEqual([["claude", "no_base"], ["codex", "no_base"]]);
+    expect(r.failures[0]!.reason).toContain(pinsFile);
+    expect(r.failures[0]!.reason).toContain("claude");
+    expect(h.fetched).toEqual([]);
+    expect(r.candidates).toEqual([]);
+    expect(existsSync(recordFile())).toBe(false);
+    expect(readFileSync(pinsFile, "utf8")).toBe("{bad");
+    expect(existsSync(join(dir, CANDIDATES_DIR))).toBe(false);
+  });
+  it("unreadable pins.json (chmod 000) is also no_base", async () => {
+    mkdirSync(join(dir, "cli"));
+    const pinsFile = join(dir, "cli", "pins.json");
+    writeFileSync(pinsFile, "{}");
+    chmodSync(pinsFile, 0o000);
+    try {
+      const h = harness();
+      const r = await checkCandidates(dir, ["claude"], h.deps);
+      expect(r.failures.map((f) => f.code)).toEqual(["no_base"]);
+      expect(r.failures[0]!.reason).toContain(pinsFile);
+      expect(h.fetched).toEqual([]);
+    } finally {
+      chmodSync(pinsFile, 0o644);
+    }
+  });
+  it("pins.json failing the schema is also no_base", async () => {
+    mkdirSync(join(dir, "cli"));
+    writeFileSync(join(dir, "cli", "pins.json"), JSON.stringify({ schemaVersion: 1, agents: { claude: { active: 5 } } }));
+    const h = harness();
+    const r = await checkCandidates(dir, ["claude"], h.deps);
+    expect(r.failures.map((f) => f.code)).toEqual(["no_base"]);
+    expect(h.fetched).toEqual([]);
+  });
+});
+
+describe("Команда cli candidates / Ошибка файловой системы", () => {
+  it("a file where the cli-candidates folder goes: install_failed per candidate, no throw, file untouched, code 1", async () => {
+    const blocker = join(dir, CANDIDATES_DIR);
+    writeFileSync(blocker, "keep");
+    const h = harness();
+    const r = await checkCandidates(dir, ["claude", "codex"], h.deps);
+    expect(r.code).toBe(1);
+    expect(r.failures.map((f) => [f.agent, f.code])).toEqual([["claude", "install_failed"], ["codex", "install_failed"]]);
+    expect(r.failures[0]!.reason).toContain("2.1.289");
+    expect(r.candidates).toEqual([]);
+    expect(h.fetched).toEqual([]);
+    expect(readFileSync(blocker, "utf8")).toBe("keep");
+    expect(existsSync(recordFile())).toBe(false);
+  });
+  it("hash read failure: install_failed, prefix removed, other agent still checked", async () => {
+    const h = harness();
+    const run = h.deps.run!;
+    h.deps.run = async (path, args, env, signal) => {
+      const out = await run(path, args, env, signal);
+      if (path.includes("/claude") && args[0] !== "--version") rmSync(path);
+      return out;
+    };
+    const r = await checkCandidates(dir, ["claude", "codex"], h.deps);
+    expect(r.code).toBe(1);
+    expect(r.failures.map((f) => [f.agent, f.code])).toEqual([["claude", "install_failed"]]);
+    expect(r.candidates.map((c) => [c.agent, c.status])).toEqual([["codex", "ok"]]);
+    expect(leftovers()).toEqual([false, false]);
+  });
+});
+
 describe("Вывод и запись результата проверки кандидата / Сбой записи", () => {
   it("read-only record: recorded false, record_failed, code 1, prefix removed", async () => {
     writeFileSync(recordFile(), `${JSON.stringify({ schemaVersion: 1, entries: [{ agent: "claude", version: "1.0.0", level: "interface", checkedAt: "2026-01-01", os: "x", osenVersion: "1" }] })}\n`);

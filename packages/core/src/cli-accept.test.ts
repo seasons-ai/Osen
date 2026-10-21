@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -162,6 +162,37 @@ describe("council cli accept", () => {
     const list = await run(["cli", "list"], h, { ownRecord: true });
     expect(list.code).toBe(0);
     expect(list.out).toMatch(/9\.9\.9[\s\S]*real/);
+  }, PROBE_TIMEOUT);
+
+  it.each([
+    ["not JSON", "{bad"],
+    ["schema-invalid", JSON.stringify({ schemaVersion: 1, entries: [{ agent: "codex", version: "x" }] })],
+  ])("corrupted verified record (%s): refused before the plan with the file path, exit 1, no probe, file unchanged", async (_label, bytes) => {
+    const h = home();
+    await installCandidate(h);
+    writeFileSync(verifiedPath(h), bytes);
+    const r = await run(["cli", "accept", "codex", "9.9.9", "--candidate", "--max-calls", "7"], h, { ownRecord: true });
+    expect(r.code).toBe(1);
+    expect(r.err).toContain(verifiedPath(h));
+    expect(probeLines(r.out)).toEqual([]);
+    expect(probeLogLines(h)).toEqual([]);
+    expect(readFileSync(verifiedPath(h), "utf8")).toBe(bytes);
+  }, PROBE_TIMEOUT);
+
+  it("re-acceptance: one entry with the data of the second run, the summary matches the file", async () => {
+    const h = home();
+    await installCandidate(h);
+    const old = { agent: "codex", version: "9.9.9", level: "real", checkedAt: "2026-10-01", os: "old-os", osenVersion: "0.0.1", modelCalls: 3 };
+    writeFileSync(verifiedPath(h), JSON.stringify({ schemaVersion: 1, entries: [old] }));
+    const r = await run(["cli", "accept", "codex", "9.9.9", "--candidate", "--max-calls", "7"], h, { ownRecord: true });
+    expect(r.code, r.err).toBe(0);
+    const real = realEntries(h);
+    expect(real).toHaveLength(1);
+    expect(real[0].checkedAt).toBe(new Date().toISOString().slice(0, 10));
+    expect(real[0].os).not.toBe("old-os");
+    expect(real[0].osenVersion).not.toBe("0.0.1");
+    expect(real[0].modelCalls).toBe(7);
+    expect(r.out).toContain(`model calls: ${real[0].modelCalls}`);
   }, PROBE_TIMEOUT);
 
   it("a probe failed: exit 5, the instructions probe is named, later probes not run, no real entry", async () => {

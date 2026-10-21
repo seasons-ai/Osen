@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { BUILTIN_RECORD, VERIFIED_FILE, loadVerifiedRecord, mergeRecords, type VerifiedEntry } from "./verified-record.ts";
+import { BUILTIN_RECORD, VERIFIED_FILE, addLocalEntry, loadVerifiedRecord, mergeRecords, type VerifiedEntry } from "./verified-record.ts";
 
 // Own seeded generator: fast-check is not connected.
 function mulberry32(seed: number) {
@@ -80,6 +80,41 @@ describe("Verified-versions record: merge invariant", () => {
         expect(loaded.rejected, `seed ${seed}`).toBeDefined();
         expect(loaded.entries, `seed ${seed}`).toEqual(loadVerifiedRecord().entries);
         expect(loaded.entries, `seed ${seed}`).toEqual(mergeRecords(BUILTIN_RECORD, []));
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("Result of acceptance and real record: one entry per version", () => {
+  it("one entry per pair, level never goes down, the last successful real write is what the file holds", () => {
+    const dir = mkdtempSync(join(tmpdir(), "verified-prop-"));
+    const file = join(dir, VERIFIED_FILE);
+    const read = (): VerifiedEntry[] => (existsSync(file) ? JSON.parse(readFileSync(file, "utf8")).entries : []);
+    try {
+      for (let seed = 1; seed <= 150; seed++) {
+        rmSync(file, { force: true });
+        const r = mulberry32(seed);
+        const lastReal = new Map<string, VerifiedEntry>();
+        const best = new Map<string, number>();
+        for (let step = 0; step < 12; step++) {
+          const e = entry(r);
+          const real = e.level === "real";
+          const readOnly = r() < 0.2 && existsSync(file);
+          if (readOnly) chmodSync(file, 0o444);
+          const res = addLocalEntry(dir, e, real ? { replaceSameLevel: true } : {});
+          if (readOnly) chmodSync(file, 0o644);
+          const ctx = `seed ${seed} step ${step}`;
+          if (res.ok) {
+            best.set(key(e), Math.max(best.get(key(e)) ?? 0, rank(e)));
+            if (real) lastReal.set(key(e), e);
+          }
+          const now = read();
+          expect(new Set(now.map(key)).size, ctx).toBe(now.length);
+          for (const x of now) expect(rank(x), ctx).toBeGreaterThanOrEqual(best.get(key(x)) ?? 0);
+          for (const [k, want] of lastReal) expect(now.find((x) => key(x) === k), ctx).toEqual(want);
+        }
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });

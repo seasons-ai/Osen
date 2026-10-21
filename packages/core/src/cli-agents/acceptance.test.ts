@@ -305,6 +305,19 @@ describe("runAcceptance with injected probes", () => {
     expect(seen.map((o) => [o.probe, o.ok])).toEqual([["valid_turn", true], ["outside_file", true], ["tool_call", true], ["mcp_server", true], ["instructions", false]]);
   });
 
+  it("re-acceptance: two runs with different dates and call counts leave one entry with the second run's data", async () => {
+    install("codex", "0.159.2");
+    const plan = await planFor(realRecord("codex", "0.159.2"));
+    const inspect = async () => ({ flags: new Set<string>() });
+    const first = fakeRunner(undefined, { stop: 0, resume: 0 });
+    expect((await runAcceptance(dataDir, plan, runOpts({ osenVersion: "0.8.0", now: () => new Date("2026-10-10T00:00:00Z") }), { runProbe: first.runner, inspect })).code).toBe(0);
+    expect(realEntries()).toMatchObject([{ checkedAt: "2026-10-10", modelCalls: 5, osenVersion: "0.8.0" }]);
+    const second = fakeRunner();
+    expect((await runAcceptance(dataDir, plan, runOpts(), { runProbe: second.runner, inspect })).code).toBe(0);
+    expect(realEntries()).toMatchObject([{ agent: "codex", version: "0.159.2", level: "real", checkedAt: "2026-10-20", modelCalls: 7, osenVersion: "0.9.0" }]);
+    expect(realEntries()).toHaveLength(1);
+  });
+
   it("a record write failure is code 1 with its reason", async () => {
     install("codex", "0.159.2");
     const plan = await planFor(realRecord("codex", "0.159.2"));

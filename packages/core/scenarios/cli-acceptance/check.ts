@@ -305,6 +305,53 @@ try {
   assert.deepEqual(turnPids(rb), []);
   ok("installed stub changed after install: exit 2, stderr names the sha256 mismatch, no stub launch");
 
+  // ---- 7: corrupted local record ----
+  const h7 = H("corrupt");
+  await install(h7);
+  const recFile = join(h7, "cli-verified.json");
+  writeFileSync(recFile, "{bad");
+  const bytes7 = readFileSync(recFile);
+  const r7 = await accept(h7, ["--candidate", "--max-calls", "7"]);
+  assert.equal(r7.code, 1, `${r7.out}\n${r7.err}`);
+  assert.ok(r7.err.includes(recFile), r7.err);
+  assert.deepEqual(turnPids(r7), []);
+  assert.ok(readFileSync(recFile).equals(bytes7));
+  assert.deepEqual(planLines(r7.out), []);
+  ok("corrupted record: exit 1, stderr names the file's absolute path, no plan, no stub launch, file unchanged byte for byte");
+
+  // ---- 8: re-acceptance replaces the real entry ----
+  const h8 = H("reaccept");
+  await install(h8);
+  const old = { agent: "codex", version: "9.9.9", level: "real", checkedAt: "2026-10-01", os: "old-os", osenVersion: "0.0.1", sha256: installed(h8).sha256, modelCalls: 3 };
+  writeFileSync(join(h8, "cli-verified.json"), JSON.stringify({ schemaVersion: 1, entries: [old] }));
+  const r8 = await accept(h8, ["--candidate", "--max-calls", "7"]);
+  assert.equal(r8.code, 0, `${r8.out}\n${r8.err}`);
+  const real8 = realOf(h8);
+  assert.equal(real8.length, 1, JSON.stringify(real8));
+  assert.equal(real8[0]!.checkedAt, new Date().toISOString().slice(0, 10));
+  assert.notEqual(real8[0]!.os, "old-os");
+  assert.ok(real8[0]!.modelCalls >= 1 && real8[0]!.modelCalls <= 7);
+  assert.ok(r8.out.includes(`model calls: ${real8[0]!.modelCalls}`), r8.out);
+  ok(`re-acceptance: one real entry for 9.9.9, dated today (not 2026-10-01), modelCalls ${real8[0]!.modelCalls} equal to the printed summary`);
+
+  // ---- 9: SIGTERM and SIGHUP during a probe ----
+  for (const sig of ["SIGTERM", "SIGHUP"] as const) {
+    const h = H(`signal-${sig.toLowerCase()}`);
+    await install(h);
+    let c: ChildProcess | undefined;
+    let t = "";
+    const pend = accept(h, ["--candidate", "--max-calls", "7"], { mode: "slow", onSpawn: (cp, tg) => { c = cp; t = tg; } });
+    assert.ok(await waitFor(() => turnPids({ tag: t }).length >= 1, 90_000), "the first probe was not launched");
+    const pids = turnPids({ tag: t });
+    c!.kill(sig);
+    const r = await pend;
+    assert.equal(r.code, 1, `${sig}: ${r.out}\n${r.err}`);
+    assert.ok(r.err.includes("interrupted"), r.err);
+    assert.ok(await waitFor(() => pids.every((p) => !isAlive(p)), 5000), `${sig}: stub processes left: ${pids.filter(isAlive).join(", ")}`);
+    assert.deepEqual(realOf(h), []);
+    ok(`${sig} during the first probe: exit 1, stderr says interrupted, no stub process alive within 5 s, no real entry`);
+  }
+
   // ---- safety ----
   assert.deepEqual(ownerNames(), namesBefore);
   ok("safety: top-level entries of ~/.claude and ~/.codex unchanged; the stub was the only binary launched");
