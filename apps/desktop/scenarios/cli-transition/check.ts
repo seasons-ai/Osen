@@ -5,6 +5,8 @@
 //   COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the project> node .../check.ts --seed-only   only prepare the folder for the app window and print the launch command
 //   ... --seed-only --broken-pin    the same for the broken-pin folder (claude 2.1.288 active but its executable changed, 2.1.280 previous)
 // Change 190 adds two steps: an unwritable cli-reminder.json (one check in 23 hours) and a recorded attempt time in the future.
+// Change 196 adds: the switch target only among intact installs (a changed or deleted executable is listed in `broken`, no install command),
+// and a notSaved view without the path of cli-reminder.json.
 // The real claude and codex are never launched: every executable is a shell stub from the stand folder.
 import "../../../../packages/core/scenarios/language-ru.ts";
 import assert from "node:assert/strict";
@@ -14,7 +16,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdir
 import { join, relative, resolve } from "node:path";
 import { createLogger, ensureDataDir, initialRegistry, readRegistry, setProcessLanguage, writeRegistry } from "../../../../packages/core/src/index.ts";
 import type { Registry } from "../../../../packages/core/src/index.ts";
-import { activePin, installPin, pinsPath, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
+import { activePin, installPin, installedPath, pinsPath, readPins, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { PackageSource } from "../../../../packages/core/src/cli-agents/pins.ts";
 import { addLocalEntry, loadVerifiedRecord } from "../../../../packages/core/src/cli-agents/verified-record.ts";
 import { providerMessages } from "../../../../packages/core/src/messages/providers.ts";
@@ -420,9 +422,12 @@ try {
       await U.t.maybeCheck();
       for (let i = 0; i < 23; i++) { clock += HOUR; await U.t.maybeCheck(); }
       assert.equal(U.releaseCalls(), 1, "one check in 23 hourly ticks");
-      assert.deepEqual(card(await U.view(), "claude").check?.notSaved, { file, code: "EACCES" });
+      assert.deepEqual(card(await U.view(), "claude").check?.notSaved, { code: "EACCES" });
       assert.equal(card(await U.view(), "claude").check?.at, attempt);
       assert.equal(rbytes(u), original, "the read-only file keeps its bytes");
+      const whole = JSON.stringify(await U.view());
+      assert.ok(!whole.includes(REMINDER_FILE) && !whole.includes(file), "the view sent to the window has no cli-reminder.json path or name");
+      assert.ok(readFileSync(U.logFile, "utf8").includes(file), "the path is in logs/app.log");
       assert.match(readFileSync(U.logFile, "utf8"), /CLI candidate check result not saved/);
       clock += HOUR;
       await U.t.maybeCheck();
@@ -432,7 +437,7 @@ try {
       chmodSync(file, 0o644);
       clock = saved;
     }
-    ok("step 190a read-only cli-reminder.json (chmod 444): 1 check in 24 hourly ticks (counter 1), the card carries notSaved {file, EACCES} with the attempt time, the error line is in logs/app.log, the file bytes are unchanged; after 24 h the check runs again (counter 2)");
+    ok("step 190a read-only cli-reminder.json (chmod 444): 1 check in 24 hourly ticks (counter 1), the card carries notSaved {EACCES} with the attempt time, the error line with the path is in logs/app.log and the whole view has no cli-reminder.json, the file bytes are unchanged; after 24 h the check runs again (counter 2)");
   }
 
   // ---- 190b: a recorded attempt time in the future ----
@@ -516,6 +521,41 @@ try {
     const ac = bv.providers.find((p) => p.id === "claude")!;
     assert.deepEqual([ac.available, ac.version, bc.source], [true, "2.1.280", "pin"]);
     ok("step 189c rollbackCli through the bridge: pins.json active 2.1.280, the view shows claude available, version 2.1.280, source pin");
+
+    // ---- change 196: target and install only for intact installs ----
+    const pinPath = pin.path;
+    const changed = readFileSync(pinPath);
+    const tail = Buffer.from("# changed after the pin\n");
+    assert.ok(changed.subarray(changed.length - tail.length).equals(tail));
+    const original = changed.subarray(0, changed.length - tail.length);
+    assert.equal(createHash("sha256").update(original).digest("hex"), pin.sha256);
+    bc = card(await B.view(), "claude");
+    assert.equal(bc.target, null, "a changed executable is no switch target");
+    assert.equal(bc.install, null, "no install command for an installed version");
+    assert.deepEqual(bc.broken, [{ version: "2.1.288", code: "sha256_mismatch" }]);
+    ok("step 196a rollback onto 2.1.280 with the 2.1.288 executable changed: target null, install null, broken [2.1.288 sha256_mismatch]");
+
+    writeFileSync(pinPath, original);
+    bc = card(await B.view(), "claude");
+    assert.equal(bc.target?.version, "2.1.288");
+    assert.deepEqual(bc.broken, []);
+    ok("step 196b original bytes restored (sha256 equals pins.json): the fresh view has target 2.1.288 and no broken installs");
+
+    const added = addLocalEntry(b.dir, { agent: "claude", version: "2.1.290", level: "real", checkedAt: "2026-10-10", os: "darwin-arm64", osenVersion: "1.0.0", modelCalls: 2 });
+    assert.ok(added.ok, added.ok ? "" : added.reason);
+    const ins = await installPin(b.dir, "claude", { version: "2.1.290" }, { source: stubSource, record: loadVerifiedRecord(b.dir), now: () => new Date(NOW0 - 40 * DAY) });
+    assert.ok(ins.ok, ins.text);
+    assert.equal(activeOf(b).active, "2.1.280", "installing a newer version does not move the active pin");
+    assert.equal(card(await B.view(), "claude").target?.version, "2.1.290");
+    const st = readPins(b.dir);
+    assert.equal(st.state, "loaded");
+    if (st.state !== "loaded") throw new Error("unreachable");
+    rmSync(installedPath(b.dir, "claude", st.pins.agents.claude!.installed.find((i) => i.version === "2.1.290")!));
+    bc = card(await B.view(), "claude");
+    assert.equal(bc.target?.version, "2.1.288", "the newest intact real install is the target while the newer one is missing");
+    assert.equal(bc.install, null, "no install command for a missing recorded install");
+    assert.deepEqual(bc.broken, [{ version: "2.1.290", code: "missing" }]);
+    ok("step 196c executable of the newer real install 2.1.290 deleted: broken [2.1.290 missing], target stays 2.1.288 (intact), install null");
   }
 
   success = true;

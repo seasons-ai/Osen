@@ -177,7 +177,7 @@ describe("CLI transition in the card", () => {
   const tr = (o: Partial<CliTransition> = {}): CliTransition => ({
     agent: "claude", source: "pin", level: "real", checkedAt: "2026-10-07",
     pin: { version: "2.1.288", activatedAt: "2026-09-10T08:30:00Z", ageDays: 40, previous: "2.1.270" },
-    due: null, target: null, install: null, candidates: [], violations: [], check: null, ...o,
+    due: null, target: null, install: null, broken: [], candidates: [], violations: [], check: null, ...o,
   });
   const day = (d: string, lang: string) => new Intl.DateTimeFormat(lang, { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${d}T00:00:00Z`));
   const card = (cli: CliTransition | null, o: Over = {}, lang: "en" | "ru" = "en") => { setProcessLanguage(lang); return html({ ...base, cli }, o); };
@@ -279,13 +279,24 @@ describe("CLI transition in the card", () => {
     expect(card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "no_base" } }))).toContain("no active pin");
   });
 
-  it("check result not saved: its own warning with file and code, not the failure line", () => {
-    const notSaved = { file: "/d/cli-reminder.json", code: "EACCES" };
+  it("check result not saved: its own warning with the code and without a path, not the failure line", () => {
+    const notSaved = { code: "EACCES" };
     const h = card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "ok", notSaved } }));
-    for (const w of ["Check result not saved", "/d/cli-reminder.json", "EACCES"]) expect(h).toContain(w);
+    for (const w of ["Check result not saved", "EACCES"]) expect(h).toContain(w);
+    expect(h).not.toContain("cli-reminder.json");
+    expect(card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "ok", notSaved } }), {}, "ru")).not.toContain("cli-reminder.json");
     expect(h).not.toContain("Candidate check failed");
     expect(card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "ok", notSaved } }), {}, "ru")).toContain("Итог проверки не сохранён");
     expect(card(tr({ check: { at: "2026-10-20T14:32:00Z", outcome: "ok" } }))).not.toContain("Check result not saved");
+  });
+
+  it("damaged install: a warning with the version and the code, no path, en and ru (scenario «Файл установки отсутствует»)", () => {
+    const broken = [{ version: "2.1.300", code: "sha256_mismatch" as const }, { version: "2.1.299", code: "missing" as const }];
+    const en = card(tr({ broken }));
+    for (const w of ["Installation 2.1.300 is damaged", "sha256_mismatch", "Installation 2.1.299 is damaged", "(missing)", "unavailable"]) expect(en).toContain(w);
+    const ru = card(tr({ broken }), {}, "ru");
+    for (const w of ["Установка 2.1.300 повреждена", "sha256_mismatch", "Установка 2.1.299 повреждена", "(missing)", "недоступен"]) expect(ru).toContain(w);
+    expect(card(tr())).not.toContain("is damaged");
   });
 
   it("running session: both buttons disabled with a visible reason", () => {
@@ -328,7 +339,7 @@ describe("CLI transition in the card", () => {
       const status = await guardedPinStatus(dir, new Date("2026-09-01T00:00:00Z"));
       const reason = status.reason ?? "";
       const logger = { info() {}, error() {} };
-      const cli = createCliTransition({ dataDir: dir, logger, running: () => false, onChecked() {}, candidateDeps: () => { throw new Error("no check"); } }).forProvider("claude", status);
+      const cli = await createCliTransition({ dataDir: dir, logger, running: () => false, onChecked() {}, candidateDeps: () => { throw new Error("no check"); } }).forProvider("claude", status);
       const down = html({ ...base, available: false, reason, version: null, path: null, cli }, {});
       expect(down).toContain(reason);
       expect(down).toContain("<dt>Source</dt><dd>Osen pin</dd>");
@@ -343,7 +354,7 @@ describe("CLI transition in the card", () => {
     try {
       const status = await guardedPinStatus(dir, new Date("2026-09-01T00:00:00Z"), "2.1.300");
       const logger = { info() {}, error() {} };
-      const cli = createCliTransition({ dataDir: dir, logger, running: () => false, onChecked() {}, candidateDeps: () => { throw new Error("no check"); } }).forProvider("claude", status);
+      const cli = await createCliTransition({ dataDir: dir, logger, running: () => false, onChecked() {}, candidateDeps: () => { throw new Error("no check"); } }).forProvider("claude", status);
       const down = html({ ...base, available: false, reason: status.reason ?? "", version: null, path: null, cli }, {});
       expect(btn(down, "Switch to 2.1.300")).not.toBe("");
       expect(btn(down, "Switch to 2.1.300")).not.toContain("disabled");

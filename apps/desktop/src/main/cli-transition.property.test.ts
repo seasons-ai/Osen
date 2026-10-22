@@ -25,6 +25,7 @@ const ACTIVE = "5.0.0";
 // 10.0.0 sits next to 5.x so that a string comparison would order it wrong
 const VERSIONS = ["4.9.0", "5.0.0", "5.0.1", "5.1.0", "5.10.0", "6.0.0", "10.0.0"];
 const num = (v: string) => v.split(".").map(Number);
+const cmpV = (a: string, b: string) => { const [x, y] = [num(a), num(b)]; return x[0]! - y[0]! || x[1]! - y[1]! || x[2]! - y[2]!; };
 const newer = (v: string) => { const [a, b] = [num(v), num(ACTIVE)]; return a[0]! !== b[0]! ? a[0]! > b[0]! : a[1]! !== b[1]! ? a[1]! > b[1]! : a[2]! > b[2]!; };
 
 interface Case { seed: number; period: number; source: CliSource | null; age: number | null; entries: VerifiedEntry[]; installed: string[]; label: string }
@@ -55,8 +56,8 @@ function pinsOf(c: Case, r: () => number): AgentPins {
   };
 }
 
-const compute = (c: Case, r: () => number, lastCheck: LastCheck | null = null) =>
-  computeTransition({ agent: "claude", now: new Date(NOW), periodDays: c.period, source: c.source, level: "real", checkedAt: "2026-10-07", pins: pinsOf(c, r), record: c.entries, lastCheck });
+const compute = (c: Case, r: () => number, lastCheck: LastCheck | null = null, integrity: ReadonlyMap<string, "ok" | "missing" | "sha256_mismatch"> = new Map(c.installed.map((v) => [v, "ok" as const]))) =>
+  computeTransition({ agent: "claude", now: new Date(NOW), periodDays: c.period, source: c.source, level: "real", checkedAt: "2026-10-07", pins: pinsOf(c, r), record: c.entries, lastCheck, integrity });
 
 describe("Requirement: Напоминание о плановом переходе и о кандидате (property)", () => {
   it("due only for a pin older than the period with a newer real version; target only for an installed real one (seeded, 3000 cases)", () => {
@@ -89,6 +90,30 @@ describe("Requirement: Напоминание о плановом переход
       if (c.source === "pin") {
         expect(t.candidates.map((x) => x.version).sort(), c.label).toEqual(c.entries.filter((e) => e.level === "interface" && newer(e.version)).map((e) => e.version).sort());
       }
+    }
+  });
+
+  it("target only among intact installs: a broken version is never the target, is listed in broken, and install never names a recorded version (seeded, 3000 cases)", () => {
+    for (let seed = 1; seed <= 3000; seed++) {
+      const c = gen(seed);
+      const r = mulberry32(seed + 13);
+      const integrity = new Map<string, "ok" | "missing" | "sha256_mismatch">();
+      for (const e of c.entries) {
+        if (e.level === "real" && newer(e.version) && c.installed.includes(e.version)) integrity.set(e.version, r() < 0.5 ? "ok" : r() < 0.5 ? "missing" : "sha256_mismatch");
+      }
+      // the newest installed real version is broken in a fixed share of cases
+      const realInstalled = c.entries.filter((e) => e.level === "real" && newer(e.version) && c.installed.includes(e.version)).map((e) => e.version).sort((a, b) => cmpV(b, a));
+      if (seed % 3 === 0 && realInstalled[0]) integrity.set(realInstalled[0], "sha256_mismatch");
+      const t = compute(c, mulberry32(seed + 7), null, integrity);
+      const label = `${c.label} ${JSON.stringify([...integrity])}`;
+      if (c.source !== "pin") { expect(t.broken, label).toEqual([]); continue; }
+      const intact = realInstalled.filter((v) => integrity.get(v) === "ok");
+      const broken = realInstalled.filter((v) => integrity.get(v) !== "ok");
+      expect(t.target?.version ?? null, label).toBe(intact[0] ?? null);
+      expect(broken, label).not.toContain(t.target?.version);
+      expect(t.broken.map((b) => b.version), label).toEqual(broken);
+      for (const b of t.broken) expect(b.code, label).toBe(integrity.get(b.version));
+      if (t.install) expect(c.installed, label).not.toContain(t.install.version);
     }
   });
 
