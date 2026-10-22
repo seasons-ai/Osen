@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Stand service entry: like council.ts, but with a substitute release source, a substitute package source and an optional
 // substitute built-in record. The production council.ts entry never passes them; this file lives only in the scenarios folder.
-// CLI_CANDIDATES_STAND = JSON {releases, counter, log, builtin?, slowInstallMs?}:
+// CLI_CANDIDATES_STAND = JSON {releases, counter, log, builtin?, slowInstallMs?, slowOnly?}:
 //   releases: path of a JSON file {claude: string[] | "error", codex: string[] | "error"}, read on every list()
 //   counter: folder of the launch counters of the stubs; log: jsonl of source fetch calls
+//   slowOnly: "<agent>@<version>" — only this install is slow (slowInstallMs), the others are immediate
 import { appendFileSync, chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main } from "../../src/cli.ts";
@@ -20,7 +21,7 @@ if (!raw) {
   console.error("The CLI_CANDIDATES_STAND variable is not set (JSON with releases, counter, log): this is the stand service entry.");
   process.exit(2);
 }
-const stand = JSON.parse(raw) as { releases: string; counter: string; log: string; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number };
+const stand = JSON.parse(raw) as { releases: string; counter: string; log: string; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number; slowOnly?: string };
 
 const stubs = join(import.meta.dirname, "stubs");
 const fixtures = join(import.meta.dirname, "../../src/cli-agents/fixtures");
@@ -46,7 +47,7 @@ const releases: ReleaseSource = {
 const source: PackageSource = {
   async fetch(agent, version, dir, signal) {
     appendFileSync(stand.log, `${JSON.stringify({ agent, version, dir })}\n`);
-    if (stand.slowInstallMs) {
+    if (stand.slowInstallMs && (!stand.slowOnly || stand.slowOnly === `${agent}@${version}`)) {
       await new Promise<void>((res, rej) => {
         const timer = setTimeout(res, stand.slowInstallMs);
         signal?.addEventListener("abort", () => { clearTimeout(timer); rej(new Error("aborted")); }, { once: true });
