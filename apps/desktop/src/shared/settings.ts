@@ -52,7 +52,6 @@ export interface CliTransition {
 }
 export interface CliTransitionSettings {
   periodDays: number;           // planned transition period; 30 when the file is absent or broken
-  file: string;                 // absolute path of cli-reminder.json
   fileError: string | null;     // the file is unreadable or fails the schema: the reason (localized at read time)
   running: boolean;             // at least one session is running: switch and rollback are unavailable
 }

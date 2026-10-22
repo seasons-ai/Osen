@@ -258,7 +258,7 @@ describe("Requirement: Ежесуточная проверка кандидат�
 describe("Requirement: Срок планового перехода", () => {
   it("default 30 without creating the file", async () => {
     const t = make();
-    expect(t.settingsView()).toMatchObject({ periodDays: 30, file: reminderPath(dir), fileError: null, running: false });
+    expect(t.settingsView()).toMatchObject({ periodDays: 30, fileError: null, running: false });
     t.forProvider("claude", status());
     expect(names()).toEqual([]);
   });
@@ -300,6 +300,23 @@ describe("Requirement: Срок планового перехода", () => {
     } finally {
       chmodSync(reminderPath(dir), 0o644);
     }
+  });
+
+  it("the settings view carries no absolute path outside fileError (healthy and damaged file)", () => {
+    const check = () => {
+      const view = make().settingsView();
+      const { fileError, ...rest } = view;
+      expect(Object.keys(view).sort()).toEqual(["fileError", "periodDays", "running"]);
+      const walk = (x: unknown): void => {
+        if (typeof x === "string") expect(x.startsWith("/")).toBe(false);
+        else if (x && typeof x === "object") for (const [k, v] of Object.entries(x)) { expect(k).not.toBe("file"); walk(v); }
+      };
+      walk(rest);
+      return fileError;
+    };
+    expect(check()).toBeNull();
+    writeFileSync(reminderPath(dir), "garbage");
+    expect(check()).toContain(reminderPath(dir));
   });
 
   it("a damaged file is replaced only by the explicit save", () => {
