@@ -64,13 +64,13 @@ describe("document materials", () => {
     expect(set.skipped.map((s) => s.reason).sort()).toEqual(cases.map((c) => c[2]).sort());
   }, 60_000);
 
-  it("a plain ZIP is non-text: explicit refused as before, skipped in a folder", () => {
+  it("a plain ZIP is an archive: expanded when explicit, skipped in a folder (change 215)", () => {
     const zip = makeZip([{ name: "a.txt", data: "hi" }]);
     const f = put("plain.zip", zip);
-    expect(refusal(() => collectMaterials([f], opts)).reasons).toEqual([`«${f}»: нетекстовый файл (не UTF-8 или бинарные данные)`]);
+    expect(collectMaterials([f], opts).materials.map((m) => [m.name, m.text])).toEqual([["plain.zip/a.txt", "hi"]]);
     put("d/a.md", "a");
     put("d/plain.zip", zip);
-    expect(collectMaterials([join(root, "d")], opts).skipped).toEqual([{ name: "d/plain.zip", reason: "нетекстовый файл" }]);
+    expect(collectMaterials([join(root, "d")], opts).skipped).toEqual([{ name: "d/plain.zip", reason: "архив внутри папки не раскрывается — приложите его отдельно" }]);
   }, SLOW);
 
   it("folder over the limit: .docx is a description", () => {

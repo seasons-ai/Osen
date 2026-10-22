@@ -1,14 +1,14 @@
 import { inflateRawSync } from "node:zlib";
 import { DOC_LIMITS, DocError, type DocLimits } from "./limits.ts";
 
-export interface ZipEntry { name: string; method: number; flags: number; compressedSize: number; size: number; localOffset: number }
+export interface ZipEntry { name: string; method: number; flags: number; compressedSize: number; size: number; localOffset: number; madeBy: number; external: number }
 export interface Zip { entries: Map<string, ZipEntry>; read(name: string): Uint8Array }
 
 const EOCD = 0x06054b50, CEN = 0x02014b50, LOC = 0x04034b50;
 const MAX32 = 0xffffffff;
 
 // ponytail: ZIP64 is not supported (design.md Non-Goals); such files end up as "unsupported" or "damaged".
-export function openZip(bytes: Uint8Array, limits: Pick<DocLimits, "ratio" | "unpackedBytes"> = DOC_LIMITS): Zip {
+export function openZip(bytes: Uint8Array, limits: Pick<DocLimits, "ratio" | "unpackedBytes"> = DOC_LIMITS, duplicates?: string[]): Zip {
   let unpacked = 0;
   const counted = new Set<string>();
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -31,10 +31,17 @@ export function openZip(bytes: Uint8Array, limits: Pick<DocLimits, "ratio" | "un
     let name = "";
     try { name = decoder.decode(bytes.subarray(pos + 46, pos + 46 + nameLen)); } catch { bad(); }
     const localOffset = v.getUint32(pos + 42, true);
-    if (entries.has(name) || localOffset === MAX32) bad();
+    if (localOffset === MAX32) bad();
+    if (entries.has(name)) {
+      if (!duplicates) bad();
+      duplicates!.push(name);
+      pos = end;
+      continue;
+    }
     entries.set(name, {
       name, flags: v.getUint16(pos + 8, true), method: v.getUint16(pos + 10, true),
       compressedSize: v.getUint32(pos + 20, true), size: v.getUint32(pos + 24, true), localOffset,
+      madeBy: v.getUint16(pos + 4, true), external: v.getUint32(pos + 38, true),
     });
     pos = end;
   }

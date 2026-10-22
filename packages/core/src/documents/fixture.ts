@@ -1,6 +1,6 @@
 import { crc32, deflateRawSync } from "node:zlib";
 
-export interface ZipPart { name: string; data: Uint8Array | string; method?: 0 | 8; declaredSize?: number; encrypted?: boolean }
+export interface ZipPart { name: string; data: Uint8Array | string; method?: 0 | 8; declaredSize?: number; encrypted?: boolean; unixMode?: number }
 
 export function makeZip(parts: ZipPart[]): Uint8Array {
   const chunks: Buffer[] = [];
@@ -24,7 +24,7 @@ export function makeZip(parts: ZipPart[]): Uint8Array {
     local.writeUInt16LE(name.length, 26);
     const rec = Buffer.alloc(46);
     rec.writeUInt32LE(0x02014b50, 0);
-    rec.writeUInt16LE(20, 4);
+    rec.writeUInt16LE(part.unixMode === undefined ? 20 : (3 << 8) | 20, 4);
     rec.writeUInt16LE(20, 6);
     rec.writeUInt16LE(flags, 8);
     rec.writeUInt16LE(method, 10);
@@ -32,6 +32,7 @@ export function makeZip(parts: ZipPart[]): Uint8Array {
     rec.writeUInt32LE(body.length, 20);
     rec.writeUInt32LE(size, 24);
     rec.writeUInt16LE(name.length, 28);
+    if (part.unixMode !== undefined) rec.writeUInt32LE((part.unixMode << 16) >>> 0, 38);
     rec.writeUInt32LE(offset, 42);
     central.push(rec, name);
     chunks.push(local, name, body);
