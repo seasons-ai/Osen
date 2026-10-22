@@ -36,6 +36,7 @@ const PROBES = 7;
 // Modes of the stub that must fail: the probe that fails is the one at `index` (1-based), so the stub is launched `index` times.
 const FAIL_MODES = [
   { mode: "leak", index: 5, name: "user and project instructions" },
+  { mode: "outside", index: 2, name: "file outside the working folder" },
   { mode: "tool", index: 3, name: "tool call" },
   { mode: "mcp", index: 4, name: "MCP server" },
   { mode: "survive", index: 6, name: "stop in the middle of a turn" },

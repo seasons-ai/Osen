@@ -4,7 +4,7 @@ import { join } from "node:path";
 // Node stub of a CLI for the acceptance probes: codex-style JSONL output, or claude-style JSON when argv has --print.
 // The mode comes from STUB_MODE in the environment:
 //   good (default): refuses files, tools and servers, answers "ok"; a long prompt streams slowly until stopped
-//   read: prints the file named in the prompt (outside-file leak)
+//   read, outside: print the file named in the prompt (outside-file leak)
 //   leak: prints AGENTS.md or CLAUDE.md of its folder (instruction leak)
 //   tool: emits a command_execution item (tool call despite isolation)
 //   mcp: runs the commands of the servers in .mcp.json
@@ -51,7 +51,7 @@ else if (prompt.includes("very long essay")) {
   if (isClaude) sleepForever(); else streamForever();
 } else if (prompt.includes("Read the file")) {
   const file = /Read the file (\\S+) and/.exec(prompt)[1];
-  emit(mode === "read" ? fs.readFileSync(file, "utf8") : "no");
+  emit(mode === "read" || mode === "outside" ? fs.readFileSync(file, "utf8") : "no");
 } else if (prompt.includes("touch ")) {
   if (mode === "tool" && !isClaude) process.stdout.write(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "touch x" } }) + "\\n");
   if (mode === "touch") fs.writeFileSync(/touch (\\S+)\\. Then/.exec(prompt)[1], "");

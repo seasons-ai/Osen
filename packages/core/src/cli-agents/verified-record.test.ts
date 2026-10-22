@@ -1,6 +1,8 @@
-import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setProcessLanguage } from "../i18n/process-language.ts";
 import {
@@ -10,6 +12,7 @@ import {
   loadVerifiedRecord,
   lookupVerified,
   parseVerifiedRecord,
+  readLocalRecord,
   type VerifiedEntry
 } from "./verified-record.ts";
 
@@ -140,5 +143,64 @@ describe("Verified-versions record", () => {
     expect(addLocalEntry(dir, real("codex", "1.0.0"))).toEqual({ ok: true, changed: true });
     expect(addLocalEntry(dir, iface("codex", "1.0.0"))).toEqual({ ok: true, changed: false });
     expect(JSON.parse(readFileSync(file(), "utf8")).entries).toEqual([real("codex", "1.0.0")]);
+  });
+});
+
+const WORKER = `import { addLocalEntry, recordTestHooks } from ${JSON.stringify(pathToFileURL(join(import.meta.dirname, "verified-record.ts")).href)};
+const [dir, agent, version, startAt] = process.argv.slice(1);
+recordTestHooks.beforeWrite = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+while (Date.now() < Number(startAt)) { /* barrier: both children start together */ }
+const r = addLocalEntry(dir, { agent, version, level: "interface", checkedAt: "2026-10-20", os: "linux-x64", osenVersion: "1.0.0" });
+process.exit(r.ok && r.changed ? 0 : 3);`;
+
+const runWorker = (args: string[]) =>
+  new Promise<number | null>((res) => spawn(process.execPath, ["--input-type=module", "-e", WORKER, ...args], { stdio: "inherit" }).on("close", res));
+
+describe("Adding an entry to the local record across processes", () => {
+  it("two processes add entries at the same time (20 repeats): both entries kept, schema valid, no temp or lock files", async () => {
+    const lost: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      const startAt = String(Date.now() + 500);
+      const codes = await Promise.all([
+        runWorker([dir, "codex", `1.0.${i}`, startAt]),
+        runWorker([dir, "claude", `2.0.${i}`, startAt])
+      ]);
+      expect(codes, `repeat ${i}`).toEqual([0, 0]);
+      const local = readLocalRecord(dir);
+      expect(local.state, `repeat ${i}`).toBe("loaded");
+      const keys = local.state === "loaded" ? local.entries.map((e) => `${e.agent}@${e.version}`) : [];
+      // every repeat adds to the same file: both new entries must be in it next to all earlier ones
+      if (!keys.includes(`codex@1.0.${i}`) || !keys.includes(`claude@2.0.${i}`)) lost.push(i);
+      expect(readdirSync(dir), `repeat ${i}`).toEqual([VERIFIED_FILE]);
+    }
+    expect(lost, "repeats that lost an entry").toEqual([]);
+    const local = readLocalRecord(dir);
+    expect(local.state === "loaded" ? local.entries.length : -1).toBe(40);
+  }, 60000);
+
+  it("a lock held by a dead process does not block the add and is removed afterwards", () => {
+    const dead = spawnSync(process.execPath, ["-e", ""]).pid!;
+    writeFileSync(join(dir, `${VERIFIED_FILE}.lock`), String(dead));
+    expect(addLocalEntry(dir, real("codex", "1.0.0"))).toEqual({ ok: true, changed: true });
+    expect(existsSync(join(dir, `${VERIFIED_FILE}.lock`))).toBe(false);
+    expect(readdirSync(dir)).toEqual([VERIFIED_FILE]);
+  });
+
+  it("a lock held by a live process: after 5 s the add fails as a write failure, the lock and the file stay", () => {
+    const lock = join(dir, `${VERIFIED_FILE}.lock`);
+    writeFileSync(lock, String(process.pid));
+    const started = Date.now();
+    const res = addLocalEntry(dir, iface("codex", "1.0.0"));
+    expect(Date.now() - started).toBeGreaterThanOrEqual(5000);
+    expect(res.ok).toBe(false);
+    expect(res.ok ? "" : res.reason).toMatch(/EBUSY/);
+    expect(readFileSync(lock, "utf8")).toBe(String(process.pid));
+    expect(existsSync(join(dir, VERIFIED_FILE))).toBe(false);
+  }, 15000);
+
+  it("the lock is released after a no-op add", () => {
+    addLocalEntry(dir, real("codex", "1.0.0"));
+    expect(addLocalEntry(dir, iface("codex", "1.0.0"))).toEqual({ ok: true, changed: false });
+    expect(readdirSync(dir)).toEqual([VERIFIED_FILE]);
   });
 });

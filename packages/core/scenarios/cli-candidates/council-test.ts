@@ -20,7 +20,7 @@ if (!raw) {
   console.error("The CLI_CANDIDATES_STAND variable is not set (JSON with releases, counter, log): this is the stand service entry.");
   process.exit(2);
 }
-const stand = JSON.parse(raw) as { releases: string; counter: string; log: string; builtin?: "claude-only"; slowInstallMs?: number };
+const stand = JSON.parse(raw) as { releases: string; counter: string; log: string; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number };
 
 const stubs = join(import.meta.dirname, "stubs");
 const fixtures = join(import.meta.dirname, "../../src/cli-agents/fixtures");
@@ -70,5 +70,5 @@ process.on("SIGINT", () => controller.abort());
 process.exitCode = await main(process.argv.slice(2), {
   stdout: console.log, stderr: console.error, env: standEnv, signal: controller.signal,
   chunk: (t) => process.stderr.write(t), appVersion: "0.0.0-stand",
-  cliPin: { releases, source, ...(stand.builtin === "claude-only" ? { builtin: BUILTIN_RECORD.filter((e) => e.agent === "claude") } : {}) },
+  cliPin: { releases, source, ...(stand.builtin ? { builtin: BUILTIN_RECORD.filter((e) => e.agent === stand.builtin!.split("-")[0]) } : {}) },
 });

@@ -97,7 +97,7 @@ export async function checkCandidates(dataDir: string, agents: readonly CliAgent
   const env = deps.env ?? process.env;
   const report: CandidatesReport = { bases: {}, candidates: [], failures: [], interrupted: false, code: 0 };
   const finish = (): CandidatesReport => {
-    report.code = report.failures.some((f) => f.code === "no_base") ? 2 : report.failures.length || report.interrupted ? 1 : 0;
+    report.code = report.interrupted ? 1 : report.failures.some((f) => f.code === "no_base") ? 2 : report.failures.length ? 1 : 0; // an interruption is always 1
     return report;
   };
   const check = () => { if (signal?.aborted) throw new Interrupted(); };
