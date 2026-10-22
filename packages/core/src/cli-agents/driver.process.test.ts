@@ -109,4 +109,17 @@ describe("Stub processes in contract checks", () => {
     expect(await waitFor(() => !alive(pid) && !alive(child))).toBe(true);
     expect(existsSync(turnDirOf(s))).toBe(false);
   });
+
+  it("Таймаут и прерывание: потомок игнорирует SIGTERM — the stub has exited, its SIGTERM-ignoring child gets SIGKILL", async () => {
+    const s = stub("claude", { sleep: 30, child: "ignores-term" });
+    const ac = new AbortController();
+    const { p } = start(s, ac.signal);
+    expect(await waitFor(() => s.has("ls") && s.has("child") && readFileSync(s.proto("child"), "utf8").trim() !== "")).toBe(true);
+    const [pid, child] = [pidOf(s, "pid"), pidOf(s, "child")];
+    try {
+      ac.abort();
+      await rejection(p);
+      expect(await waitFor(() => !alive(pid) && !alive(child))).toBe(true);
+    } finally { try { process.kill(child, "SIGKILL"); } catch { /* already gone */ } }
+  });
 });

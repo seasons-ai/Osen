@@ -379,6 +379,46 @@ try {
     }
   }
 
+  // ---- 11: a probe's child ignores SIGTERM and the probe process has already exited (change 200) ----
+  // the child writes its own pid to STUB_PIDFILE once its trap is set; it holds no pipes, so the probe ends as soon as the stub exits
+  const ignorerPid = async (t: string): Promise<number> => {
+    const f = join(pidDir, `${t}.pid`);
+    assert.ok(await waitFor(() => existsSync(f) && readFileSync(f, "utf8").trim() !== "", 90_000), "the stub did not start its SIGTERM-ignoring child");
+    return Number(readFileSync(f, "utf8").trim());
+  };
+  {
+    const h = H("term-ignorer");
+    await install(h);
+    let c: ChildProcess | undefined;
+    let t = "";
+    const pend = accept(h, ["--candidate", "--max-calls", "7"], { mode: "term_ignorer", onSpawn: (cp, tg) => { c = cp; t = tg; } });
+    const pid = await ignorerPid(t);
+    assert.ok(isAlive(pid), "the SIGTERM-ignoring child must be alive before the stop");
+    c!.kill("SIGTERM");
+    const r = await pend;
+    assert.equal(r.code, 1, `${r.out}\n${r.err}`);
+    assert.ok(r.err.includes("interrupted"), r.err);
+    assert.equal(turnPids(r).length, 1, "a probe after the first one was launched");
+    const gone = await waitFor(() => !isAlive(pid), 5000);
+    if (!gone) try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+    assert.ok(gone, `the probe's SIGTERM-ignoring child ${pid} outlived the stop`);
+    assert.deepEqual(realOf(h), []);
+    ok("SIGTERM during the first probe whose stub leaves a SIGTERM-ignoring child: exit 1, interrupted, no further probe, the child gone within 5 s, no real entry");
+  }
+  {
+    const h = H("term-ignorer-stop");
+    await install(h);
+    let t = "";
+    const r = await accept(h, ["--candidate", "--max-calls", "7"], { mode: "term_ignorer_stop", onSpawn: (_cp, tg) => { t = tg; } });
+    const pid = await ignorerPid(t);
+    const gone = !isAlive(pid);
+    if (!gone) try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+    assert.equal(r.code, 0, `${r.out}\n${r.err}`);
+    assert.ok(gone, `the stop turn's SIGTERM-ignoring child ${pid} outlived the turn`);
+    assert.equal(realOf(h).length, 1);
+    ok("the stop probe's turn leaves a SIGTERM-ignoring child: the turn stop kills it within the stop grace, the probe passes, all 7 probes pass, exit 0, one real entry");
+  }
+
   // ---- safety ----
   assert.deepEqual(ownerNames(), namesBefore);
   ok("safety: top-level entries of ~/.claude and ~/.codex unchanged; the stub was the only binary launched");

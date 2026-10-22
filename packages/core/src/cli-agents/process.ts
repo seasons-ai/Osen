@@ -43,7 +43,7 @@ export function runProcess(spec: RunSpec): Promise<RunResult> {
       if (settled) return;
       settled = true;
       clearTimeout(exitTimer);
-      clearTimeout(killTimer);
+      // After a stop the SIGKILL timer stays armed: a leader that exited early may leave a SIGTERM-ignoring descendant in the group.
       signal?.removeEventListener("abort", onAbort);
       resolve({
         exitCode: exit?.code ?? null, signal: exit?.signal ?? null, stdout, stderr, aborted,
@@ -94,4 +94,27 @@ export function runProcess(spec: RunSpec): Promise<RunResult> {
     child.stdin.end(spec.stdin);
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+const INSPECT_TIMEOUT_MS = 10_000;
+const INSPECT_MAX_BYTES = 4 * 1024 * 1024;
+
+/** Reads the output of one CLI call in its own process group: a stop, the time limit or too much output ends the whole group.
+ *  Rejects on a non-zero exit, a launch error, the time limit, more than maxBytes and the caller's signal; only that signal means an interruption. */
+export async function readOutput(command: string, args: readonly string[], env: Record<string, string | undefined>, signal?: AbortSignal, timeoutMs = INSPECT_TIMEOUT_MS, maxBytes = INSPECT_MAX_BYTES): Promise<string> {
+  const overflow = new AbortController();
+  const timeout = AbortSignal.timeout(timeoutMs);
+  let bytes = 0;
+  const run = await runProcess({
+    command, args, cwd: process.cwd(), stdin: "", env,
+    signal: AbortSignal.any([overflow.signal, timeout, ...(signal ? [signal] : [])]),
+    onStdout: (chunk) => { bytes += Buffer.byteLength(chunk); if (bytes > maxBytes) overflow.abort(); },
+  });
+  if (run.spawnError) throw run.spawnError;
+  if (run.aborted) {
+    if (signal?.aborted) throw new Error("interrupted");
+    throw new Error(overflow.signal.aborted ? `output is larger than ${maxBytes} bytes` : `no answer within ${timeoutMs} ms`);
+  }
+  if (run.exitCode !== 0) throw new Error(`${command} ${args.join(" ")} exited with ${run.exitCode ?? run.signal}${run.stderr.trim() ? `: ${run.stderr.trim()}` : ""}`);
+  return run.stdout;
 }

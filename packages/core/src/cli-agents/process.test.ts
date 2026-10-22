@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { runProcess } from "./process.ts";
+import { readOutput, runProcess } from "./process.ts";
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "proc-")); });
@@ -85,3 +85,54 @@ describe("runProcess", () => {
   });
 });
 
+
+// A background grandchild that ignores SIGTERM and holds no pipes.
+// The grandchild writes its own pid after the trap is set, so a stop never lands before it ignores SIGTERM.
+const IGNORER = (pidfile: string) => `sh -c 'trap "" TERM; echo $$ > ${pidfile}; exec sleep 20' >/dev/null 2>&1 </dev/null &`;
+const readPid = (pidfile: string) => Number(readFileSync(pidfile, "utf8").trim());
+const reap = (pid: number) => { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } };
+
+describe("Таймаут и прерывание: потомок игнорирует SIGTERM", () => {
+  it("leader exits before the kill grace: the grandchild still gets SIGKILL", async () => {
+    const pidfile = join(dir, "pid");
+    const ac = new AbortController();
+    const p = run(stub(`${IGNORER(pidfile)}\nwait`), { signal: ac.signal, killGraceMs: 300 });
+    await waitFor(() => existsSync(pidfile) && readFileSync(pidfile, "utf8").trim() !== "");
+    const pid = readPid(pidfile);
+    try {
+      ac.abort();
+      expect((await p).aborted).toBe(true);
+      await waitFor(() => !alive(pid), 3000);
+      expect(alive(pid)).toBe(false);
+    } finally { reap(pid); }
+  });
+  it("leader still alive at the kill grace: leader and grandchild get SIGKILL", async () => {
+    const pidfile = join(dir, "pid");
+    const ac = new AbortController();
+    const p = run(stub(`trap '' TERM\n${IGNORER(pidfile)}\nwhile :; do sleep 1; done`), { signal: ac.signal, killGraceMs: 300 });
+    await waitFor(() => existsSync(pidfile) && readFileSync(pidfile, "utf8").trim() !== "");
+    const pid = readPid(pidfile);
+    try {
+      ac.abort();
+      expect(await p).toMatchObject({ aborted: true, signal: "SIGKILL" });
+      await waitFor(() => !alive(pid), 3000);
+      expect(alive(pid)).toBe(false);
+    } finally { reap(pid); }
+  });
+});
+
+describe("readOutput: the CLI read used by candidates and npm", () => {
+  it("output over maxBytes: rejects", async () => {
+    await expect(readOutput(stub("head -c 2000 /dev/zero | tr '\\0' x"), [], { PATH: "/usr/bin:/bin" }, undefined, 5000, 1024)).rejects.toThrow(/larger than 1024 bytes/);
+  });
+  it("Срок проверки истёк: a hung command with a SIGTERM-ignoring child times out and its group is killed", async () => {
+    const pidfile = join(dir, "pid");
+    const e = await readOutput(stub(`${IGNORER(pidfile)}\nsleep 30 & wait`), [], { PATH: "/usr/bin:/bin" }, undefined, 6000).catch((x: unknown) => x);
+    const pid = readPid(pidfile);
+    try {
+      expect((e as Error).message).toMatch(/no answer within 6000 ms/);
+      await waitFor(() => !alive(pid), 5000);
+      expect(alive(pid)).toBe(false);
+    } finally { reap(pid); }
+  });
+});

@@ -5,6 +5,8 @@
 //   releases: path of a JSON file {claude: string[] | "error", codex: string[] | "error"}, read on every list()
 //   counter: folder of the launch counters of the stubs; log: jsonl of source fetch calls
 //   slowOnly: "<agent>@<version>" — only this install is slow (slowInstallMs), the others are immediate
+//   hangHelp: "<agent>@<version>" — the help of this stub hangs with children, their pids go to hangPid (codex stub only)
+//   npm: true — the real npm package source (npm-source.ts) instead of the substitute one; `npm` is whatever the stand puts in PATH
 import { appendFileSync, chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main } from "../../src/cli.ts";
@@ -21,7 +23,7 @@ if (!raw) {
   console.error("The CLI_CANDIDATES_STAND variable is not set (JSON with releases, counter, log): this is the stand service entry.");
   process.exit(2);
 }
-const stand = JSON.parse(raw) as { releases: string; counter: string; log: string; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number; slowOnly?: string };
+const stand = JSON.parse(raw) as { releases: string; counter: string; log: string; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number; slowOnly?: string; hangHelp?: string; hangPid?: string; npm?: boolean };
 
 const stubs = join(import.meta.dirname, "stubs");
 const fixtures = join(import.meta.dirname, "../../src/cli-agents/fixtures");
@@ -60,7 +62,7 @@ const source: PackageSource = {
     const exe = join(bin, agent);
     copyFileSync(join(stubs, agent), exe);
     chmodSync(exe, 0o755);
-    const settings = { VERSION: version, COUNTER: join(stand.counter, `${agent}-${version}`), ...files(agent, VARIANTS[`${agent}@${version}`] ?? "full") };
+    const settings = { VERSION: version, COUNTER: join(stand.counter, `${agent}-${version}`), ...files(agent, VARIANTS[`${agent}@${version}`] ?? "full"), ...(stand.hangHelp === `${agent}@${version}` && stand.hangPid ? { HANG_PID: stand.hangPid } : {}) };
     writeFileSync(join(bin, "stub.env"), `${Object.entries(settings).map(([k, v]) => `${k}=${q(v)}`).join("\n")}\n`);
     return { executable: exe, source: `stand:${agent}@${version}` };
   },
@@ -71,5 +73,5 @@ process.on("SIGINT", () => controller.abort());
 process.exitCode = await main(process.argv.slice(2), {
   stdout: console.log, stderr: console.error, env: standEnv, signal: controller.signal,
   chunk: (t) => process.stderr.write(t), appVersion: "0.0.0-stand",
-  cliPin: { releases, source, ...(stand.builtin ? { builtin: BUILTIN_RECORD.filter((e) => e.agent === stand.builtin!.split("-")[0]) } : {}) },
+  cliPin: { releases, ...(stand.npm ? {} : { source }), ...(stand.builtin ? { builtin: BUILTIN_RECORD.filter((e) => e.agent === stand.builtin!.split("-")[0]) } : {}) },
 });
