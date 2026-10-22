@@ -482,7 +482,7 @@ describe("local PDFs", () => {
   const TEXT = "Первая страница\n\nВторая страница";
   const R = {
     enc: "PDF зашифрован — пароль не запрашивается",
-    scan: "в PDF нет текстового слоя — распознавание не выполняется",
+    scan: "в PDF не найден текст",
     bad: "PDF повреждён",
   };
   const sparsePdf = (rel: string, size: number): string => {

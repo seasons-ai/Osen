@@ -7,9 +7,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { DOC_LIMITS } from "../documents/limits.ts";
 import { materialsMessages } from "../messages/materials.ts";
 import { makeImage } from "./fixture.ts";
-import { imageReason, OCR_LIMITS, runOcrHelper, setOcrRuntime, type OcrRequest } from "./run.ts";
+import { imageReason, OCR_LIMITS, runOcrHelper, setOcrRuntime, type OcrImageRequest } from "./run.ts";
 
-const REQ: OcrRequest = { mode: "image", ms: 10_000, rssBytes: OCR_LIMITS.rssBytes };
+const REQ: OcrImageRequest = { mode: "image", ms: 10_000, rssBytes: OCR_LIMITS.rssBytes };
 const REAL = join(import.meta.dirname, "bin/osen-ocr");
 const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\n ]/gu, "");
 let dir: string;
@@ -26,7 +26,7 @@ function stub(body: string, mode = 0o755): string {
 }
 const line = (t: string, x = 0, y = 0) => ({ t, x, y, w: 0.5, h: 0.1 });
 const printing = (obj: unknown) => stub(`C=$(/bin/cat)\nprintf '%s\\n' '${JSON.stringify(obj)}'`);
-const run = (helper: string, req: OcrRequest = REQ) => { setOcrRuntime({ helper }); return runOcrHelper(req, Buffer.from("x")); };
+const run = (helper: string, req: OcrImageRequest = REQ) => { setOcrRuntime({ helper }); return runOcrHelper(req, Buffer.from("x")); };
 
 describe("runOcrHelper protocol (stub helpers)", () => {
   it("orders recognized lines into text", () => {
@@ -161,7 +161,7 @@ describe.runIf(process.platform === "darwin")("real helper", () => {
   });
 
   it("rejects an unknown mode with bad_request", () => {
-    const r = runOcrHelper({ ...REQ, mode: "pdf" } as unknown as OcrRequest, Buffer.from("x"));
+    const r = runOcrHelper({ ...REQ, mode: "docx" } as unknown as OcrImageRequest, Buffer.from("x"));
     expect(r).toEqual({ ok: false, code: "failed", detail: "bad_request" });
   });
 
