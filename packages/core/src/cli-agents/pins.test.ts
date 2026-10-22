@@ -404,6 +404,40 @@ describe("Переключение и откат", () => {
     expect(claude()).toMatchObject({ active: "1.1.0", previous: "1.0.0" });
   });
 
+  it("Переключение и откат: a missing or changed file: text names the path for the terminal, textNoPath does not", () => {
+    const inst = (v: string) => claude().installed.find((i: { version: string }) => i.version === v);
+    const file11 = installedPath(dir, "claude", inst("1.1.0"));
+    appendFileSync(file11, "# changed\n");
+    const changed = usePin(dir, "claude", "1.1.0", { record, now });
+    if (changed.ok) throw new Error("expected a refusal");
+    expect(changed.text).toContain(file11);
+    expect(changed.textNoPath).toContain(sha(file11));
+    expect(changed.textNoPath).not.toContain(dir);
+    rmSync(versionDir(dir, "claude", "1.1.0"), { recursive: true });
+    const missing = usePin(dir, "claude", "1.1.0", { record, now });
+    expect(missing).toMatchObject({ ok: false, code: 2, text: expect.stringContaining(file11), textNoPath: "The file of claude 1.1.0 is missing" });
+  });
+
+  it("Переключение и откат: rollback with a missing or changed previous file: textNoPath has no path", () => {
+    usePin(dir, "claude", "1.1.0", { record, now });
+    const file = installedPath(dir, "claude", claude().installed.find((i: { version: string }) => i.version === "1.0.0"));
+    appendFileSync(file, "# changed\n");
+    const changed = rollbackPin(dir, "claude", { now });
+    if (changed.ok) throw new Error("expected a refusal");
+    expect(changed.text).toContain(file);
+    expect(changed.textNoPath).toMatch(/does not match/);
+    expect(changed.textNoPath).not.toContain(dir);
+    rmSync(versionDir(dir, "claude", "1.0.0"), { recursive: true });
+    const missing = rollbackPin(dir, "claude", { now });
+    if (missing.ok) throw new Error("expected a refusal");
+    expect(missing.text).toContain(file);
+    expect(missing.textNoPath).toBe("The file of claude 1.0.0 is missing");
+    setProcessLanguage("ru");
+    const ru = rollbackPin(dir, "claude", { now });
+    if (ru.ok) throw new Error("expected a refusal");
+    expect(ru.textNoPath).toBe("Файл claude 1.0.0 отсутствует");
+  });
+
   it("use and rollback leave sessions/ and config.json byte-identical", () => {
     mkdirSync(join(dir, "sessions", "s1"), { recursive: true });
     writeFileSync(join(dir, "sessions", "s1", "journal.jsonl"), '{"a":1}\n');
