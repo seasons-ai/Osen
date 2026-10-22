@@ -7,7 +7,8 @@
 // Children get a PATH with the stand bin and /usr/bin:/bin only and a fake login shell, so the real claude and codex are never launched.
 import { spawn } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { isInsideRepo } from "../inside-repo.ts";
 import { parseClaudeOutput, parseCodexOutput } from "../../src/cli-agents/output-parse.ts";
 import { BUILTIN_RECORD } from "../../src/cli-agents/verified-record.ts";
 import { listTurnFixtures, missingTurnFixtures } from "../../src/cli-agents/turn-fixtures.ts";
@@ -22,7 +23,7 @@ const repo = resolve(import.meta.dirname, "../../../..");
 const council = join(repo, "packages/core/src/council.ts");
 const scripted = join(repo, "packages/core/scenarios/consensus/p1.json");
 const given = process.env.COUNCIL_HOME ? resolve(process.env.COUNCIL_HOME) : undefined;
-if (given && relative(repo, given).startsWith("..")) {
+if (given && !isInsideRepo(repo, given)) {
   console.error(`COUNCIL_HOME must be inside the repository (${repo}): ${given}`);
   process.exit(2);
 }

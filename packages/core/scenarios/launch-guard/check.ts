@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { isInsideRepo } from "../inside-repo.ts";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { checkPinnedLaunch, pinBinaryState, resetGuardCache } from "../../src/cli-agents/launch-guard.ts";
@@ -27,7 +28,7 @@ const council = join(repo, "packages/core/src/council.ts");
 const mcpMain = join(repo, "packages/mcp/src/main.ts");
 const scenario = join(import.meta.dirname, "scenario.json");
 const given = process.env.COUNCIL_HOME ? resolve(process.env.COUNCIL_HOME) : undefined;
-if (given && relative(repo, given).startsWith("..")) {
+if (given && !isInsideRepo(repo, given)) {
   console.error(`COUNCIL_HOME must be inside the repository (${repo}): ${given}`);
   process.exit(2);
 }
