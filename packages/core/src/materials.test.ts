@@ -376,6 +376,14 @@ describe("collectSessionMaterials", () => {
     expect(r.workspace.map((f) => f.name).sort()).toEqual(["d/README.md", "d/code.ts", "d/deep/more.md", "d/z.md"]);
   });
 
+  it("selectMaterials: .pptx and .pptm are descriptions in a folder over the limit, .xlsx is not", () => {
+    const m = (name: string, chars: number) => ({ id: "m", name, chars, sha256: "", text: "" });
+    const src = [m("d/a.pptx", 10), m("d/b.pptm", 10), m("d/c.xlsx", 10)];
+    const { taken, left } = selectMaterials(src, [join(root, "d")], 25);
+    expect(taken.map((x) => x.name)).toEqual(["d/a.pptx", "d/b.pptm"]);
+    expect(left).toEqual([{ name: "d/c.xlsx", reason: "не описание — из папки больше лимита берутся только описания" }]);
+  });
+
   it("folder over the limit without descriptions: files closer to the root are taken while they fit", () => {
     put("d/a.ts", x(50));
     put("d/sub/b.ts", x(50));

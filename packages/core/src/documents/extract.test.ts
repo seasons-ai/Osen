@@ -27,8 +27,8 @@ afterEach(() => {
 });
 
 describe("Limits and reasons", () => {
-  it("constants and twelve reason wordings", () => {
-    expect(DOC_LIMITS).toMatchObject({ bytes: 104857600, ms: 30000, rssBytes: 536870912, chars: 20000000, parts: 10000, unpackedBytes: 536870912, ratio: 200 });
+  it("constants and thirteen reason wordings", () => {
+    expect(DOC_LIMITS).toMatchObject({ bytes: 104857600, ms: 30000, rssBytes: 536870912, chars: 20000000, parts: 10000, unpackedBytes: 536870912, ratio: 200, cells: 1000000 });
     const reasons: Record<DocFailure, string> = {
       bytes: "документ больше 100 МиБ",
       timeout: "извлечение текста документа дольше 30 секунд",
@@ -37,6 +37,7 @@ describe("Limits and reasons", () => {
       zip_parts: "в документе больше 10000 частей",
       zip_size: "документ распаковывается больше чем в 512 МиБ",
       zip_ratio: "часть документа сжата сильнее чем в 200 раз",
+      cells: "в таблице больше 1000000 ячеек",
       encrypted: "документ зашифрован — пароль не запрашивается",
       damaged: "документ повреждён",
       no_text: "в документе нет текста",

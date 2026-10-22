@@ -100,3 +100,136 @@ export function makeDocx(spec: DocxSpec): Uint8Array {
     ...(spec.extraParts ?? []),
   ]);
 }
+
+// ---- XLSX ----
+
+const attr = (s: string): string => esc(s).replace(/"/g, "&quot;");
+const SML = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+
+// A string is a shared string; the objects pick another encoding.
+export type XlsxCell =
+  | null | string | number | boolean
+  | { inline: string }
+  | { f: string; v?: string | number | boolean; t?: "str" | "b" | "e" }
+  | { error: string }
+  | { raw: string };
+
+export interface XlsxSheet { name: string; hidden?: boolean | "very"; rows?: XlsxCell[][]; noRefs?: boolean; sheetData?: string; chartsheet?: boolean }
+export interface XlsxSpec { sheets: XlsxSheet[]; macro?: boolean; scramble?: boolean; sharedXml?: string; noSharedPart?: boolean; extraParts?: ZipPart[] }
+
+export const colName = (col: number): string => {
+  let s = "";
+  for (let n = col; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+  return s;
+};
+
+export function makeXlsx(spec: XlsxSpec): Uint8Array {
+  const shared: string[] = [];
+  const cell = (c: XlsxCell, ref: string): string => {
+    const r = ref === "" ? "" : ` r="${ref}"`;
+    if (c === null) return "";
+    if (typeof c === "string") { shared.push(c); return `<c${r} t="s"><v>${shared.length - 1}</v></c>`; }
+    if (typeof c === "number") return `<c${r}><v>${c}</v></c>`;
+    if (typeof c === "boolean") return `<c${r} t="b"><v>${c ? 1 : 0}</v></c>`;
+    if ("inline" in c) return `<c${r} t="inlineStr"><is><t xml:space="preserve">${esc(c.inline)}</t></is></c>`;
+    if ("f" in c) {
+      const t = c.t ?? (typeof c.v === "string" ? "str" : typeof c.v === "boolean" ? "b" : undefined);
+      const v = c.v === undefined ? "" : `<v>${esc(typeof c.v === "boolean" ? (c.v ? "1" : "0") : String(c.v))}</v>`;
+      return `<c${r}${t ? ` t="${t}"` : ""}><f>${esc(c.f)}</f>${v}</c>`;
+    }
+    if ("error" in c) return `<c${r} t="e"><v>${esc(c.error)}</v></c>`;
+    return c.raw;
+  };
+  const parts: ZipPart[] = [];
+  const overrides: string[] = [];
+  const sheetRels: string[] = [];
+  const sheetTags: string[] = [];
+  const n = spec.sheets.length;
+  spec.sheets.forEach((sheet, i) => {
+    const file = spec.scramble ? n - i : i + 1;
+    const kind = sheet.chartsheet ? "chartsheet" : "worksheet";
+    const path = sheet.chartsheet ? `xl/chartsheets/sheet${file}.xml` : `xl/worksheets/sheet${file}.xml`;
+    sheetRels.push(`<Relationship Id="rId${i + 1}" Type="${REL}/${kind}" Target="/${path}"/>`);
+    const state = sheet.hidden === "very" ? ' state="veryHidden"' : sheet.hidden ? ' state="hidden"' : "";
+    sheetTags.push(`<sheet name="${attr(sheet.name)}" sheetId="${i + 1}"${state} r:id="rId${i + 1}"/>`);
+    if (sheet.chartsheet) { parts.push({ name: path, data: xml(`<chartsheet xmlns="${SML}"/>`) }); return; }
+    const data = sheet.sheetData ?? (sheet.rows ?? []).map((row, ri) =>
+      `<row r="${ri + 1}">${row.map((c, ci) => cell(c, sheet.noRefs ? "" : `${colName(ci + 1)}${ri + 1}`)).join("")}</row>`).join("");
+    overrides.push(`<Override PartName="/${path}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`);
+    parts.push({ name: path, data: xml(`<worksheet xmlns="${SML}"><sheetData>${data}</sheetData></worksheet>`) });
+  });
+  // the generated sheets are written in file-name order, so scrambled files come out in the reverse of the workbook order
+  parts.sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
+  if (!spec.noSharedPart && (shared.length > 0 || spec.sharedXml !== undefined)) {
+    sheetRels.push(`<Relationship Id="rIdS" Type="${REL}/sharedStrings" Target="sharedStrings.xml"/>`);
+    parts.push({ name: "xl/sharedStrings.xml", data: xml(`<sst xmlns="${SML}">${spec.sharedXml ?? shared.map((s) => `<si><t xml:space="preserve">${esc(s)}</t></si>`).join("")}</sst>`) });
+  }
+  const mainType = spec.macro ? "application/vnd.ms-excel.sheet.macroEnabled.main+xml" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
+  return makeZip([
+    {
+      name: "[Content_Types].xml",
+      data: xml(`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="${mainType}"/>${overrides.join("")}</Types>`),
+    },
+    { name: "_rels/.rels", data: xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`) },
+    { name: "xl/_rels/workbook.xml.rels", data: xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheetRels.join("")}</Relationships>`) },
+    { name: "xl/workbook.xml", data: xml(`<workbook xmlns="${SML}" xmlns:r="${REL}"><sheets>${sheetTags.join("")}</sheets></workbook>`) },
+    ...(spec.macro ? [{ name: "xl/vbaProject.bin", data: "not a real macro" }] : []),
+    ...parts,
+    ...(spec.extraParts ?? []),
+  ]);
+}
+
+// ---- PPTX ----
+
+const PML = "application/vnd.openxmlformats-officedocument.presentationml";
+const P_NS = 'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
+
+// A paragraph; a "\n" inside the text becomes a:br.
+export const para = (text: string): string =>
+  `<a:p>${text.split("\n").map((t) => `<a:r><a:t>${esc(t)}</a:t></a:r>`).join("<a:br/>")}</a:p>`;
+export const sp = (paras: string[], ph?: string): string =>
+  `<p:sp><p:nvSpPr><p:cNvPr id="2" name="s"/><p:cNvSpPr/><p:nvPr>${ph === undefined ? "" : `<p:ph type="${ph}"/>`}</p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/>${paras.map(para).join("")}</p:txBody></p:sp>`;
+export const grp = (inner: string): string => `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="3" name="g"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>${inner}</p:grpSp>`;
+export const pptxTable = (rows: string[][]): string =>
+  `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="4" name="t"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><a:graphic><a:graphicData><a:tbl>${
+    rows.map((r) => `<a:tr>${r.map((c) => `<a:tc><a:txBody><a:bodyPr/>${c.split("\n\n").map(para).join("")}</a:txBody></a:tc>`).join("")}</a:tr>`).join("")
+  }</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+
+export interface PptxSlide { shapes: string; hidden?: boolean; notes?: string }
+// fileOrder[i] is the number of the slide file that holds presentation slide i (default i + 1).
+export interface PptxSpec { slides: PptxSlide[]; fileOrder?: number[]; macro?: boolean; extraParts?: ZipPart[] }
+
+export function makePptx(spec: PptxSpec): Uint8Array {
+  const parts: ZipPart[] = [];
+  const overrides: string[] = [];
+  const presRels: string[] = [];
+  const ids: string[] = [];
+  spec.slides.forEach((slide, i) => {
+    const k = spec.fileOrder?.[i] ?? i + 1;
+    presRels.push(`<Relationship Id="rId${i + 1}" Type="${REL}/slide" Target="slides/slide${k}.xml"/>`);
+    ids.push(`<p:sldId id="${256 + i}" r:id="rId${i + 1}"/>`);
+    overrides.push(`<Override PartName="/ppt/slides/slide${k}.xml" ContentType="${PML}.slide+xml"/>`);
+    parts.push({ name: `ppt/slides/slide${k}.xml`, data: xml(`<p:sld ${P_NS}${slide.hidden ? ' show="0"' : ""}><p:cSld><p:spTree><p:nvGrpSpPr/><p:grpSpPr/>${slide.shapes}</p:spTree></p:cSld></p:sld>`) });
+    const rels = [`<Relationship Id="rId1" Type="${REL}/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>`];
+    if (slide.notes !== undefined) {
+      rels.push(`<Relationship Id="rId2" Type="${REL}/notesSlide" Target="../notesSlides/notesSlide${k}.xml"/>`);
+      overrides.push(`<Override PartName="/ppt/notesSlides/notesSlide${k}.xml" ContentType="${PML}.notesSlide+xml"/>`);
+      parts.push({ name: `ppt/notesSlides/notesSlide${k}.xml`, data: xml(`<p:notes ${P_NS}><p:cSld><p:spTree><p:nvGrpSpPr/><p:grpSpPr/>${slide.notes}</p:spTree></p:cSld></p:notes>`) });
+    }
+    parts.push({ name: `ppt/slides/_rels/slide${k}.xml.rels`, data: xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join("")}</Relationships>`) });
+  });
+  parts.sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
+  const mainType = spec.macro ? "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml" : `${PML}.presentation.main+xml`;
+  return makeZip([
+    {
+      name: "[Content_Types].xml",
+      data: xml(`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/ppt/presentation.xml" ContentType="${mainType}"/>${overrides.join("")}</Types>`),
+    },
+    { name: "_rels/.rels", data: xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="ppt/presentation.xml"/></Relationships>`) },
+    { name: "ppt/_rels/presentation.xml.rels", data: xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${presRels.join("")}</Relationships>`) },
+    { name: "ppt/presentation.xml", data: xml(`<p:presentation ${P_NS}><p:sldIdLst>${ids.join("")}</p:sldIdLst></p:presentation>`) },
+    ...(spec.macro ? [{ name: "ppt/vbaProject.bin", data: "not a real macro" }] : []),
+    ...parts,
+    ...(spec.extraParts ?? []),
+  ]);
+}
