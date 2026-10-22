@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, truncateSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { makeDocx, makeZip, p } from "./documents/fixture.ts";
+import { makeCfb, makeDocx, makeRtf, makeZip, p } from "./documents/fixture.ts";
 import type { ZipPart } from "./documents/fixture.ts";
 import { makePdf } from "./pdf/fixture.ts";
 import { setProcessLanguage } from "./i18n/process-language.ts";
@@ -213,6 +213,19 @@ describe("ZIP archive as a folder", () => {
     const set = collectMaterials([f], opts);
     expect(names(set)).toEqual(["pdf.zip/a.txt", "pdf.zip/doc.pdf"]);
     expect(set.materials[1]!.text).toContain("Hello archive");
+  }, SLOW);
+
+  it("RTF and Compound File Binary entries go to the RTF/DOC readers of change 211", () => {
+    const f = zipAt("legacy.zip", [
+      { name: "note.dat", data: makeRtf(["Первая строка"]) },
+      { name: "secret.docx", data: makeCfb({ streams: ["EncryptedPackage", "EncryptionInfo"] }) },
+      { name: "sheet.xls", data: makeCfb({ streams: ["Workbook"] }) },
+    ]);
+    const set = collectMaterials([f], opts);
+    expect(names(set)).toEqual(["legacy.zip/note.dat"]);
+    expect(set.materials[0]!.text).toContain("Первая строка");
+    expect(reasonOf(set, "legacy.zip/secret.docx")).toBe(m().docEncrypted);
+    expect(reasonOf(set, "legacy.zip/sheet.xls")).toBe(m().notText);
   }, SLOW);
 
   it("a damaged DOCX entry is skipped with the document reason, the rest is collected", () => {

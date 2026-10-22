@@ -4,6 +4,7 @@ import type { Ignore } from "ignore";
 import { listArchiveEntries, readArchiveEntries } from "./documents/archive-run.ts";
 import type { ArchiveEntry } from "./documents/archive.ts";
 import { DOC_LIMITS, documentReason, extractDocumentText, type DocFailure } from "./documents/extract.ts";
+import { CFB_SIGNATURE } from "./documents/cfb.ts";
 import { extractPdfText, pdfReason } from "./pdf/extract.ts";
 import { imageDimensions, imageSignature } from "./ocr/image-header.ts";
 import { imageReason, OCR_LIMITS, runOcrHelper } from "./ocr/run.ts";
@@ -56,8 +57,8 @@ const TRANSIENT: readonly DocFailure[] = ["timeout", "memory", "failed"];
 type Node = { name: string; dir: boolean; idx?: number; children: Map<string, Node> };
 type Out = { rel: string; text?: string; skip?: string; idx?: number };
 
-// ponytail: this mirrors the readers of readText in materials.ts on bytes (PDF, documents, images, text); readers added there later
-// (RTF/DOC of change 211, encodings of change 212) must be wired here too.
+// ponytail: this mirrors the readers of readText in materials.ts on bytes (PDF, documents, RTF/DOC of change 211, images, text); a reader added there later
+// (encodings of change 212) must be wired here too.
 function readEntryBytes(bytes: Uint8Array, state: { recognized: number }): { text: string } | { skip: string } {
   const m = materialsMessages();
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -72,6 +73,13 @@ function readEntryBytes(bytes: Uint8Array, state: { recognized: number }): { tex
     if (r.code === "unsupported") return { skip: m.archiveNested };
     if (r.code === "bytes") return { skip: m.zipTooLarge(DOC_LIMITS.bytes / 2 ** 20) };
     return { skip: documentReason(r) };
+  }
+  // RTF (a UTF-8 BOM before it is allowed) and Compound File Binary (DOC, encrypted Office) go to the same extractor as in readText
+  const bom = head.length >= 3 && head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf ? 3 : 0;
+  if (head.subarray(bom, bom + 5).toString("latin1") === "{\\rtf" || (head.length >= 8 && head.subarray(0, 8).equals(CFB_SIGNATURE))) {
+    const r = extractDocumentText(bytes);
+    if (r.ok) return { text: r.text };
+    return { skip: r.code === "unsupported" ? m.notText : documentReason(r) };
   }
   const format = imageSignature(head, buf.length);
   if (format) {

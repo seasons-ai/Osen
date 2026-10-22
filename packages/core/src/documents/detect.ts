@@ -1,5 +1,6 @@
 import { posix } from "node:path";
 import { docxText, DOCX_TYPES } from "./docx.ts";
+import { CFB_SIGNATURE, cfbStreams } from "./cfb.ts";
 import { xlsxText, XLSX_TYPES } from "./xlsx.ts";
 import { pptxText, PPTX_TYPES } from "./pptx.ts";
 import { DocError, type DocFailure, type DocLimits } from "./limits.ts";
@@ -70,4 +71,20 @@ export function extractDocument(bytes: Uint8Array, limits: Pick<DocLimits, "char
     if (!(e instanceof DocError)) return { ok: false, code: "damaged" };
     return e.detail === undefined ? { ok: false, code: e.code } : { ok: false, code: e.code, detail: e.detail };
   }
+}
+
+// CFB files: the first stream name found decides the kind, in this order. Change 216 appends Workbook/Book and PowerPoint Document here.
+export const CFB_KINDS: { stream: string; kind: "encrypted" | "doc" }[] = [{ stream: "EncryptedPackage", kind: "encrypted" }, { stream: "WordDocument", kind: "doc" }];
+
+/** The kind of a file handled by a system tool: "rtf", "doc", or undefined when the bytes are neither RTF nor CFB (the ZIP path goes on). Throws DocError. */
+export function systemKind(bytes: Uint8Array): "rtf" | "doc" | undefined {
+  const head = Buffer.from(bytes.buffer, bytes.byteOffset, Math.min(bytes.length, 8));
+  const at = head.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) ? 3 : 0;
+  if (head.subarray(at, at + 5).toString("latin1") === "{\\rtf") return "rtf";
+  if (!head.equals(CFB_SIGNATURE)) return undefined;
+  const streams = cfbStreams(bytes);
+  const found = CFB_KINDS.find((k) => streams.includes(k.stream));
+  if (!found) throw new DocError("unsupported");
+  if (found.kind === "encrypted") throw new DocError("encrypted");
+  return found.kind;
 }
