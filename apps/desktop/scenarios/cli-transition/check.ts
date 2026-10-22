@@ -328,6 +328,41 @@ try {
   assert.match(list2.out, /2\.1\.288[^\n]*(active|активн)/i, list2.out);
   ok("step 7 rollbackCli: active 2.1.288 again (real `council cli list` agrees)");
 
+  // ---- change 203: the install file changed while the confirmation is open ----
+  {
+    const fileOf = (version: string): string => {
+      const rp = readPins(s.dir);
+      assert.equal(rp.state, "loaded");
+      if (rp.state !== "loaded") throw new Error("no pins");
+      return installedPath(s.dir, "claude", rp.pins.agents.claude!.installed.find((i) => i.version === version)!);
+    };
+    const tamper = (version: string): (() => void) => {
+      const file = fileOf(version), original = readFileSync(file);
+      writeFileSync(file, Buffer.concat([original, Buffer.from("# changed after installation\n")]));
+      return () => writeFileSync(file, original);
+    };
+    const refused = async (action: string, args: unknown[], version: string, shown: string) => {
+      const kept = pins(s);
+      const bad = await R.call(action, ...args);
+      assert.ok(!bad.ok, `${action}: a changed file must be refused`);
+      assert.ok(bad.error?.includes(version) && bad.error.includes(fileOf(version)), `${action}: ${bad.error}`);
+      assert.equal(pins(s), kept, `${action}: pins.json unchanged`);
+      assert.equal(card(await R.view(), "claude").pin?.version, shown, `${action}: the card keeps the previous version`);
+    };
+    let restore = tamper("2.1.300");
+    await refused("switchCli", ["claude", "2.1.300"], "2.1.300", "2.1.288");
+    restore();
+    r = await R.call("switchCli", "claude", "2.1.300");
+    assert.ok(r.ok, r.error);
+    restore = tamper("2.1.288");
+    await refused("rollbackCli", ["claude"], "2.1.288", "2.1.300");
+    restore();
+    r = await R.call("rollbackCli", "claude");
+    assert.ok(r.ok, r.error);
+    assert.equal(activeOf(s).active, "2.1.288");
+    ok("step 203 switchCli 2.1.300 and rollbackCli with a changed install file: refused with version and path, pins.json byte-identical, the card keeps the previous version; with the bytes restored both actions pass");
+  }
+
   // ---- 8: a running session blocks both actions; a confirmation pressed while a session runs reaches main as switchCli/rollbackCli and is refused ----
   {
     const args = ["--topic", "Pause", "--participant", "scripted:packages/core/scenarios/owner-wait/p1.json", "--participant", "scripted:packages/core/scenarios/owner-wait/p2.json", "--wait-for-owner"];

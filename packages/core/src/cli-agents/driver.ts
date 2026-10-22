@@ -45,6 +45,9 @@ export function createCliDriver(runtime: CliRuntime, deps: {
         if (active.state === "pin") {
           const r = await checkPinnedLaunch({ agent, pin: active, launchPath: runtime.path, record: verifiedRecordFor(runtime.pinDataDir), env: runtime.env }, deps.guard);
           if (!r.ok) throw new ParticipantCallError("call_error", r.reason, false);
+        } else {
+          // pins.json is gone, unreadable or without this agent: the session stays pinned, so no launch of the old path and no PATH fallback
+          throw new ParticipantCallError("call_error", providerMessages().pinGoneMidSession(agent, runtime.path, active.state === "rejected" ? active.reason : ""), false);
         }
       }
       const dir = await mkdtemp(join(tmpdir(), "council-turn-"));

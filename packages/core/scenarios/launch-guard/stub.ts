@@ -2,7 +2,8 @@
 // Every launch (including --version and --help) appends a line to <mark>, so an empty mark file proves the binary never ran.
 // A turn also appends a line to <mark>.turn.
 // Side files (outside the pinned folder, so they do not change the file checksum): <side>.ver replaces the reported version,
-// <side>.help replaces the help text, <side>.swap makes a turn append a byte to the stub itself after answering.
+// <side>.help replaces the help text, <side>.swap makes a turn append a byte to the stub itself after answering,
+// <side>.hook is a shell script a turn runs before answering (the stand uses it to break pins.json in the middle of a session).
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -17,7 +18,7 @@ const CODEX_DONE = JSON.stringify({ type: "turn.completed", usage: { input_token
 const q = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
 export function writeStub(file: string, o: { agent: "claude" | "codex"; version: string; mark: string; side: string }): void {
-  const swap = `echo x >> ${q(`${o.mark}.turn`)}; if [ -e ${q(`${o.side}.swap`)} ]; then printf '#' >> "$0"; fi`;
+  const swap = `echo x >> ${q(`${o.mark}.turn`)}; if [ -e ${q(`${o.side}.swap`)} ]; then printf '#' >> "$0"; fi; if [ -e ${q(`${o.side}.hook`)} ]; then sh ${q(`${o.side}.hook`)}; fi`;
   const body = o.agent === "claude"
     ? `case "$1" in
   --version) echo "$(ver) (Claude Code)" ;;

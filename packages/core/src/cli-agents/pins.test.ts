@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -377,6 +377,31 @@ describe("Переключение и откат", () => {
     const bytes = readFileSync(pinsPath(dir));
     expect(rollbackPin(dir, "claude", { now })).toMatchObject({ ok: false, code: 2 });
     expect(readFileSync(pinsPath(dir)).equals(bytes)).toBe(true);
+  });
+
+  it("Переключение и откат: file changed after install: use is refused with version, path and both sums", () => {
+    const inst = claude().installed.find((i: { version: string }) => i.version === "1.1.0");
+    const file = installedPath(dir, "claude", inst);
+    appendFileSync(file, "# changed\n");
+    const bytes = readFileSync(pinsPath(dir));
+    const r = usePin(dir, "claude", "1.1.0", { record, now });
+    expect(r).toMatchObject({ ok: false, code: 2 });
+    for (const part of ["1.1.0", file, inst.sha256, sha(file)]) expect(r.text).toContain(part);
+    expect(readFileSync(pinsPath(dir)).equals(bytes)).toBe(true);
+    expect(claude()).toMatchObject({ active: "1.0.0", previous: null });
+  });
+
+  it("Переключение и откат: file changed after install: rollback is refused and previous is kept", () => {
+    usePin(dir, "claude", "1.1.0", { record, now });
+    const inst = claude().installed.find((i: { version: string }) => i.version === "1.0.0");
+    const file = installedPath(dir, "claude", inst);
+    appendFileSync(file, "# changed\n");
+    const bytes = readFileSync(pinsPath(dir));
+    const r = rollbackPin(dir, "claude", { now });
+    expect(r).toMatchObject({ ok: false, code: 2 });
+    for (const part of ["1.0.0", file, inst.sha256, sha(file)]) expect(r.text).toContain(part);
+    expect(readFileSync(pinsPath(dir)).equals(bytes)).toBe(true);
+    expect(claude()).toMatchObject({ active: "1.1.0", previous: "1.0.0" });
   });
 
   it("use and rollback leave sessions/ and config.json byte-identical", () => {

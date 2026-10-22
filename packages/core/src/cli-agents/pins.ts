@@ -288,6 +288,18 @@ function missingFile(dataDir: string, agent: CliAgent, i: PinInstall): string | 
   return existsSync(p) ? undefined : p;
 }
 
+/** Failure text when the file of `i` no longer matches its recorded sha256; undefined when it matches. Synchronous: use and rollback stay synchronous. */
+function changedFile(dataDir: string, agent: CliAgent, i: PinInstall): string | undefined {
+  const p = installedPath(dataDir, agent, i);
+  let actual: string;
+  try {
+    actual = createHash("sha256").update(readFileSync(p)).digest("hex");
+  } catch {
+    return pinMessages().useFileMissing(agent, i.version, p);
+  }
+  return actual === i.sha256 ? undefined : pinMessages().useSha256Mismatch(agent, i.version, p, i.sha256, actual);
+}
+
 export function usePin(dataDir: string, agentName: string, version: string, deps: { record: VerifiedRecord; now?: () => Date }): PinResult {
   const m = pinMessages();
   const l = load(dataDir, agentName);
@@ -297,6 +309,8 @@ export function usePin(dataDir: string, agentName: string, version: string, deps
   if (!inst) return fail(2, m.useNotInstalled(agent, version));
   const gone = missingFile(dataDir, agent, inst);
   if (gone) return fail(2, m.useFileMissing(agent, version, gone));
+  const changed = changedFile(dataDir, agent, inst);
+  if (changed) return fail(2, changed);
   const level = lookupVerified(deps.record, agent, version)?.level;
   if (level !== "real") return fail(2, m.notReal(agent, version, level ?? m.levelNone));
   if (cur.active === version) return ok(m.alreadyActive(agent, version));
@@ -314,6 +328,8 @@ export function rollbackPin(dataDir: string, agentName: string, deps: { now?: ()
   if (!inst) return fail(2, m.useNotInstalled(agent, cur.previous));
   const gone = missingFile(dataDir, agent, inst);
   if (gone) return fail(2, m.useFileMissing(agent, inst.version, gone));
+  const changed = changedFile(dataDir, agent, inst);
+  if (changed) return fail(2, changed);
   const next: AgentPins = { ...cur, active: inst.version, previous: null, activatedAt: stamp(deps.now) };
   return commit(dataDir, pins, agent, next, `rollback ${agent} ${inst.version}`, m.rolledBack(agent, inst.version));
 }
