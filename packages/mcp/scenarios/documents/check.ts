@@ -1,6 +1,7 @@
-// The MCP part of the local Word document check: a real server over stdio, participants are scripted only (0 model calls).
+// The MCP part of the local document check (DOCX, XLSX, PPTX): a real server over stdio, participants are scripted only (0 model calls).
 // Started from packages/core/scenarios/documents/check.ts, which prepares the fixtures folder; separately:
-//   COUNCIL_DEV=1 COUNCIL_HOME=<new empty folder inside the project> node packages/mcp/scenarios/documents/check.ts <fixtures folder> <ru|en> <reason text for a damaged document>
+//   COUNCIL_DEV=1 COUNCIL_HOME=<new empty folder inside the project> node packages/mcp/scenarios/documents/check.ts <fixtures folder> <ru|en> <reason text for a damaged document> [<document file name> <expected text file name>]
+// The document defaults to report.docx with expected.txt; the damaged-document refusal runs only for that default document.
 // Writes only to COUNCIL_HOME, does not delete it. The last output line is RESULT {json}.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -9,8 +10,8 @@ import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-const home = process.env.COUNCIL_HOME, [fxArg, lang, damaged] = process.argv.slice(2);
-const usage = "Run: COUNCIL_DEV=1 COUNCIL_HOME=<new empty folder inside the project> node packages/mcp/scenarios/documents/check.ts <fixtures folder> <ru|en> <damaged reason>";
+const home = process.env.COUNCIL_HOME, [fxArg, lang, damaged, docName = "report.docx", expName = "expected.txt"] = process.argv.slice(2);
+const usage = "Run: COUNCIL_DEV=1 COUNCIL_HOME=<new empty folder inside the project> node packages/mcp/scenarios/documents/check.ts <fixtures folder> <ru|en> <damaged reason> [<document file name> <expected text file name>]";
 if (process.env.COUNCIL_DEV !== "1" || !home || !fxArg || !lang || !damaged) { console.error(usage); process.exit(2); }
 if (!existsSync(resolve(home)) || !statSync(resolve(home)).isDirectory() || readdirSync(resolve(home)).length > 0) {
   console.error(`COUNCIL_HOME ${resolve(home)} must exist and be empty. ${usage}`);
@@ -18,7 +19,7 @@ if (!existsSync(resolve(home)) || !statSync(resolve(home)).isDirectory() || read
 }
 const repo = resolve(import.meta.dirname, "../../../..");
 const dir = realpathSync(resolve(home)), fx = realpathSync(resolve(fxArg));
-const EXPECTED = readFileSync(join(fx, "expected.txt"), "utf8");
+const EXPECTED = readFileSync(join(fx, expName), "utf8");
 const baseEnv = { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", COUNCIL_LANG: lang, COUNCIL_HOME: dir, COUNCIL_DEV: "1" };
 let n = 0;
 const ok = (s: string) => { n++; console.log(`ok: ${s}`); };
@@ -48,7 +49,7 @@ const start = (attachments: string[]) => call("council_start", { topic: "Что 
 let result: object | undefined;
 async function main() {
   await client.connect(transport);
-  const s = json(await start([join(fx, "report.docx")]), "council_start");
+  const s = json(await start([join(fx, docName)]), "council_start");
   assert.equal(s.materials.count, 1);
   assert.equal(s.materials.chars, EXPECTED.length);
   const fin = await done(s.sessionId);
@@ -57,13 +58,15 @@ async function main() {
   assert.deepEqual([m.chars, m.sha256], [EXPECTED.length, sha256(EXPECTED)]);
   const snapshot = join(sd, "materials", "m1.txt");
   assert.equal(readFileSync(snapshot, "utf8"), EXPECTED);
-  ok(`MCP: council_start with report.docx — materials.count 1, chars ${EXPECTED.length}; session finished (${fin.status}); the journal has the text sha256; m1.txt equals the text`);
+  ok(`MCP: council_start with ${docName} — materials.count 1, chars ${EXPECTED.length}; session finished (${fin.status}); the journal has the text sha256; m1.txt equals the text`);
 
-  const before = sessions().length;
-  const r = await start([join(fx, "broken.docx")]);
-  assert.ok(r.isError === true && body(r).includes(damaged), `broken.docx: ${r.isError} «${body(r)}»`);
-  assert.equal(sessions().length, before, "a session appeared");
-  ok(`MCP: a damaged .docx gives isError with "${damaged}", no new session`);
+  if (docName === "report.docx") {
+    const before = sessions().length;
+    const r = await start([join(fx, "broken.docx")]);
+    assert.ok(r.isError === true && body(r).includes(damaged), `broken.docx: ${r.isError} «${body(r)}»`);
+    assert.equal(sessions().length, before, "a session appeared");
+    ok(`MCP: a damaged .docx gives isError with "${damaged}", no new session`);
+  }
   assert.deepEqual(errors, [], "client/transport errors");
   result = { checks: n, sha256: m.sha256, chars: m.chars, snapshot };
 }

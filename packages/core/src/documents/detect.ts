@@ -1,12 +1,18 @@
 import { posix } from "node:path";
 import { docxText, DOCX_TYPES } from "./docx.ts";
+import { xlsxText, XLSX_TYPES } from "./xlsx.ts";
+import { pptxText, PPTX_TYPES } from "./pptx.ts";
 import { DocError, type DocFailure, type DocLimits } from "./limits.ts";
 import { decodeXml, parseXml, type XmlElement } from "./xml.ts";
 import { checkZip, openZip, type Zip } from "./zip.ts";
 
 // One entry per format: add a record here and a builder file next to it.
-export interface DocFormat { id: string; test(mainType: string): boolean; build(zip: Zip): string }
-export const FORMATS: DocFormat[] = [{ id: "docx", test: (t) => DOCX_TYPES.includes(t), build: docxText }];
+export interface DocFormat { id: string; test(mainType: string): boolean; build(zip: Zip, limits: Pick<DocLimits, "cells" | "chars">): string }
+export const FORMATS: DocFormat[] = [
+  { id: "docx", test: (t) => DOCX_TYPES.includes(t), build: docxText },
+  { id: "xlsx", test: (t) => XLSX_TYPES.includes(t), build: xlsxText },
+  { id: "pptx", test: (t) => PPTX_TYPES.includes(t), build: pptxText },
+];
 
 export type DocResult = { ok: true; text: string; format: string } | { ok: false; code: DocFailure };
 
@@ -28,7 +34,7 @@ function mainType(zip: Zip): string | undefined {
   return types.find((e) => e.name === "Override" && e.attrs.PartName === main)?.attrs.ContentType;
 }
 
-export function extractDocument(bytes: Uint8Array, limits: Pick<DocLimits, "chars" | "parts" | "unpackedBytes" | "ratio">): DocResult {
+export function extractDocument(bytes: Uint8Array, limits: Pick<DocLimits, "chars" | "parts" | "unpackedBytes" | "ratio" | "cells">): DocResult {
   try {
     const zip = openZip(bytes, limits);
     // A ZIP with [Content_Types].xml is an OPC package (every OOXML format): from here on its trouble is a damaged document.
@@ -43,7 +49,7 @@ export function extractDocument(bytes: Uint8Array, limits: Pick<DocLimits, "char
       const raw = Buffer.from(zip.read(name));
       if (DECLARATIONS.some((d) => raw.includes(d))) throw new DocError("damaged");
     }
-    const text = format.build(zip);
+    const text = format.build(zip, limits);
     if (text.length > limits.chars) throw new DocError("chars");
     if (!/\S/.test(text)) throw new DocError("no_text");
     return { ok: true, text, format: format.id };
