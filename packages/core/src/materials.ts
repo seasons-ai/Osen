@@ -10,6 +10,7 @@ import { documentReason, readDocumentText } from "./documents/extract.ts";
 import { pdfReason, readPdfText } from "./pdf/extract.ts";
 import { imageSignature, type ImageFormat } from "./ocr/image-header.ts";
 import { imageReason, OCR_LIMITS, readImageText } from "./ocr/run.ts";
+import { decodeFileText } from "./text-encoding.ts";
 import { materialsMessages } from "./messages/materials.ts";
 
 export interface CollectedMaterial {
@@ -137,9 +138,8 @@ function readText(abs: string, defer = false): string | { refused: string } | { 
       const r = readImageText(fd, image);
       return r.ok ? r.text : { refused: imageReason(r) };
     }
-    if (head.subarray(0, n).includes(0)) return undefined;
     // ponytail: a large text file is read entirely before the limit check; a streaming count — if folders with gigabyte logs become normal
-    return decodeText(readFileSync(fd));
+    return decodeFileText(head.subarray(0, n), () => readFileSync(fd));
   } finally {
     closeSync(fd);
   }
