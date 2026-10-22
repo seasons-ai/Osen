@@ -21,16 +21,17 @@ extraResources:
   - from: ../../LICENSE
     to: LICENSE
 asar: true
-# The child process that extracts PDF text is started by a path on disk; it cannot be read from the asar
+# The child processes that extract PDF and document text are started by a path on disk; it cannot be read from the asar
 asarUnpack:
   - out/main/pdf-*.mjs
+  - out/main/doc-extract.mjs
   - out/main/html-worker.mjs
   - out/main/osen-mcp.mjs
   - out/main/council.mjs
   - out/main/chunks/*.js
 npmRebuild: false
 # The UI loads over its own app:// protocol, file: rights are not needed. runAsNode is left alone:
-# PDF text extraction runs Electron as Node. The remaining fuses are not set and stay as in Electron.
+# PDF and document text extraction run Electron as Node. The remaining fuses are not set and stay as in Electron.
 electronFuses:
   grantFileProtocolExtraPrivileges: false
 mac:

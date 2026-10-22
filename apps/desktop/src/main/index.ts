@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { delimiter, extname, join } from "node:path";
 import {
   CLI_AGENTS, DataDirError, createLogger, ensureDataDir, ensureRegistry, envFilePath, inspectProviders, loadEnv, locateCli, isValidSessionId, loadTemplates, logRegistryLoaded, readRegistry, readSession,
-  applyProcessLanguage, OwnerReleaseRejectedError, OwnerSelectionRejectedError, readUsageSummary, requestOwnerMessage, setPdfExtractorRuntime, requestOwnerRelease, requestStop, selectOwnerVersion, prepareDataDir, userTemplatesDir, builtinTemplateIds, watchSession,
+  applyProcessLanguage, OwnerReleaseRejectedError, OwnerSelectionRejectedError, readUsageSummary, requestOwnerMessage, setDocumentExtractorRuntime, setPdfExtractorRuntime, requestOwnerRelease, requestStop, selectOwnerVersion, prepareDataDir, userTemplatesDir, builtinTemplateIds, watchSession,
 } from "@model-council/core";
 import { readFile, writeFile } from "node:fs/promises";
 import { app, BrowserWindow, nativeTheme, clipboard, dialog, ipcMain, Notification, protocol, shell } from "electron";
@@ -85,9 +85,10 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function start(): Promise<void> {
-  // Electron as Node runs PDF text extraction; the script lies unpacked next to the asar
+  // Electron as Node runs PDF and document text extraction; the script lies unpacked next to the asar
   const htmlWorker = join(import.meta.dirname, "html-worker.mjs").replace("app.asar", "app.asar.unpacked");
   setPdfExtractorRuntime({ script: join(import.meta.dirname, "pdf-extract.mjs").replace("app.asar", "app.asar.unpacked"), env: { ELECTRON_RUN_AS_NODE: "1" } });
+  setDocumentExtractorRuntime({ script: join(import.meta.dirname, "doc-extract.mjs").replace("app.asar", "app.asar.unpacked"), env: { ELECTRON_RUN_AS_NODE: "1" } });
   const env = loadEnv(process.env, process.cwd());
   applyProcessLanguage(env); // the data folder may not exist yet: language from the variable, the file or the default
   let dataDir: string;

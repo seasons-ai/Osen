@@ -23,15 +23,17 @@ describe("bundlePaths", () => {
       scenarios: "/A b/Osen.app/Contents/Resources/scenarios",
       council: `${dir}/council.mjs`,
       pdfExtract: `${dir}/pdf-extract.mjs`,
+      docExtract: `${dir}/doc-extract.mjs`,
       htmlWorker: `${dir}/html-worker.mjs`,
     });
   });
 });
 
-// Source-level order of calls in an entry: line of the first call to each name, and the source of the setPdfExtractorRuntime call.
-function scan(file: string): { lines: Record<string, number>; runtimeCall: string } {
+// Source-level order of calls in an entry: line of the first call to each name, and the source of the setPdfExtractorRuntime and setDocumentExtractorRuntime calls.
+function scan(file: string): { lines: Record<string, number>; runtimeCall: string; docCall: string } {
   const lines: Record<string, number> = {};
   let runtimeCall = "";
+  let docCall = "";
   const text = readFileSync(join(import.meta.dirname, file), "utf8");
   visitAst(parseSource(text), (n: Node) => {
     const callee = n["callee"] as Node | undefined;
@@ -39,12 +41,13 @@ function scan(file: string): { lines: Record<string, number>; runtimeCall: strin
     const name = callee["name"] as string;
     lines[name] ??= n.loc!.start.line;
     if (name === "setPdfExtractorRuntime") runtimeCall = text.split("\n")[n.loc!.start.line - 1]!;
+    if (name === "setDocumentExtractorRuntime") docCall = text.split("\n")[n.loc!.start.line - 1]!;
   });
-  return { lines, runtimeCall };
+  return { lines, runtimeCall, docCall };
 }
 
 describe.each(["osen-mcp.ts", "council.ts"])("entry %s", (file) => {
-  const { lines, runtimeCall } = scan(file);
+  const { lines, runtimeCall, docCall } = scan(file);
   it("drops ELECTRON_RUN_AS_NODE before the variables are read", () => {
     expect(lines["dropRunAsNode"]).toBeDefined();
     expect(lines["dropRunAsNode"]).toBeLessThan(lines["loadEnv"]!);
@@ -52,5 +55,10 @@ describe.each(["osen-mcp.ts", "council.ts"])("entry %s", (file) => {
   it("passes ELECTRON_RUN_AS_NODE=1 explicitly to the PDF extractor", () => {
     expect(runtimeCall).toContain('env: { ELECTRON_RUN_AS_NODE: "1" }');
     expect(runtimeCall).toContain("command: process.execPath");
+  });
+  it("passes ELECTRON_RUN_AS_NODE=1 explicitly to the document extractor", () => {
+    expect(docCall).toContain('env: { ELECTRON_RUN_AS_NODE: "1" }');
+    expect(docCall).toContain("command: process.execPath");
+    expect(docCall).toContain("paths.docExtract");
   });
 });

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { createRequire } from "node:module";
-import { appIconLine, bundleIdentityLine, fuseLine, htmlWorkerLine, missingTemplateFiles } from "./templates-in-image.ts";
+import { appIconLine, bundleIdentityLine, docExtractLine, fuseLine, htmlWorkerLine, missingTemplateFiles } from "./templates-in-image.ts";
 
 const req = createRequire(import.meta.url);
 const { FuseV1Options: F } = req("@electron/fuses");
@@ -45,6 +45,16 @@ it("HTML text extraction: without html-worker.mjs next to app.asar — refusal w
   expect(htmlWorkerLine(join(dir, "main"))).toEqual({ ok: false, text: "HTML text extraction is unpacked next to app.asar, missing: chunks/guard-x.js, chunks/materials-y.js" });
   fill(join(dir, "main"), ["chunks/guard-x.js", "chunks/materials-y.js"]);
   expect(htmlWorkerLine(join(dir, "main"))).toEqual({ ok: true, text: "HTML text extraction is unpacked next to app.asar" });
+});
+
+it("document extraction: doc-extract.mjs only inside app.asar fails, unpacked (with its chunks) passes", () => {
+  mkdirSync(join(dir, "main"), { recursive: true });
+  const listing = ["/out/main/index.js", "/out/main/doc-extract.mjs"];
+  expect(docExtractLine(join(dir, "main"), listing)).toEqual({ ok: false, text: "Document text extraction is unpacked next to app.asar, missing: doc-extract.mjs (found only inside app.asar)" });
+  writeFileSync(join(dir, "main/doc-extract.mjs"), 'import "./chunks/zip-x.js";\n');
+  expect(docExtractLine(join(dir, "main"), listing)).toEqual({ ok: false, text: "Document text extraction is unpacked next to app.asar, missing: chunks/zip-x.js" });
+  fill(join(dir, "main"), ["chunks/zip-x.js"]);
+  expect(docExtractLine(join(dir, "main"), listing)).toEqual({ ok: true, text: "Document text extraction is unpacked next to app.asar" });
 });
 
 const plist = (id: string, name: string) => `<?xml version="1.0" encoding="UTF-8"?>

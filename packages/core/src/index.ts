@@ -13,6 +13,7 @@ export * from "./participants/scripted.ts";
 export * from "./engine.ts";
 export * from "./materials.ts";
 export * from "./pdf/extract.ts";
+export * from "./documents/extract.ts";
 export * from "./url/address.ts";
 export * from "./url/fetch.ts";
 export * from "./url/extract.ts";
