@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderStatus } from "@model-council/core";
 import { setProcessLanguage } from "@model-council/core/i18n";
-import { installedPath, pinsPath, readPins } from "../../../../packages/core/src/cli-agents/pins.ts";
+import { installedPath, pinsPath, readPins, versionDir } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { CandidatesReport } from "../../../../packages/core/src/cli-agents/candidates.ts";
 import { VERIFIED_FILE } from "../../../../packages/core/src/cli-agents/verified-record.ts";
 import { settings as catalog } from "../shared/messages/settings.ts";
@@ -627,5 +627,111 @@ describe("Requirement: Файл напоминаний о переходе CLI",
     await t.forProvider("claude", status({ source: "path" }));
     await t.maybeCheck();
     expect(names()).toEqual([]);
+  });
+});
+
+describe("Requirement: Срок планового перехода (texts without paths)", () => {
+  const SOURCE_DIR = () => [dir, dir.normalize("NFD")];
+  const noRoot = (text: string) => { for (const r of SOURCE_DIR()) expect(text).not.toContain(r); expect(text).not.toContain(REMINDER_FILE); };
+
+  it("a period write error shows the code without the path, en and ru; the path goes to the log; the file keeps its bytes", () => {
+    const t = make();
+    t.setPeriod(20);
+    const kept = reminderRaw();
+    chmodSync(reminderPath(dir), 0o444);
+    try {
+      for (const lang of ["en", "ru"] as const) {
+        setProcessLanguage(lang);
+        let msg = "";
+        try { t.setPeriod(10); } catch (e) { msg = (e as Error).message; }
+        expect(msg).toContain("EACCES");
+        noRoot(msg);
+        expect(msg).toBe(catalog().reminderSaveFailed("EACCES"));
+        if (lang === "ru") expect(msg).toMatch(/[А-Яа-яЁё]/);
+        expect(reminderRaw()).toBe(kept);
+      }
+      expect(logs.some((l) => l.startsWith("E ") && l.includes(reminderPath(dir)) && l.includes("EACCES"))).toBe(true);
+    } finally {
+      chmodSync(reminderPath(dir), 0o644);
+    }
+  });
+
+  it("the write-failure line of the daily check goes away after a successful setPeriod, which keeps the check result", async () => {
+    await seedPins();
+    ms = T0 + 10 * DAY;
+    const original = `${JSON.stringify({ schemaVersion: 1, periodDays: 30, lastCheck: { at: "2026-09-09T00:00:00Z", candidates: [], failures: [] } }, null, 2)}\n`;
+    writeFileSync(reminderPath(dir), original);
+    chmodSync(reminderPath(dir), 0o444);
+    const t = make();
+    try {
+      await t.maybeCheck();
+      expect((await t.forProvider("claude", status())).check?.notSaved).toEqual({ code: "EACCES" });
+      expect(() => t.setPeriod(14)).toThrow(/EACCES/);
+      expect((await t.forProvider("claude", status())).check?.notSaved).toEqual({ code: "EACCES" }); // a failed save leaves it
+    } finally {
+      chmodSync(reminderPath(dir), 0o644);
+    }
+    const runs = listCalls.length;
+    t.setPeriod(14);
+    const c = (await t.forProvider("claude", status())).check;
+    expect(c).toBeTruthy();
+    expect(c).not.toHaveProperty("notSaved");
+    const file = JSON.parse(reminderRaw());
+    expect(file.periodDays).toBe(14);
+    expect(file.lastCheck.at).toBe("2026-09-11T00:00:00Z");
+    expect(file.lastCheck).toMatchObject({ candidates: [], failures: [] });
+    expect(listCalls).toHaveLength(runs);
+  });
+});
+
+describe("Requirement: Переход и откат из карточки (texts without paths)", () => {
+  const noRoot = (text: string) => { for (const r of [dir, dir.normalize("NFD")]) expect(text).not.toContain(r); };
+  const msgOf = (f: () => void): string => { try { f(); } catch (e) { return (e as Error).message; } throw new Error("expected a refusal"); };
+  const view = async (t: CliTransitionApi) => JSON.stringify([t.settingsView(), await t.forProvider("claude", status())]);
+
+  it("after a normal rollback previous is null in pins.json and in the view", async () => {
+    await seedPins();
+    const t = make();
+    t.switchCli("claude", "7.1.0");
+    t.rollbackCli("claude");
+    expect(JSON.parse(pinsBytes(dir)).agents.claude.previous).toBeNull();
+    expect((await t.forProvider("claude", status())).pin?.previous ?? null).toBeNull();
+  });
+
+  it("rollback to an install whose file was deleted, and switch to a version whose file is missing: no data folder path, pins stay", async () => {
+    await seedPins();
+    const t = make();
+    t.switchCli("claude", "7.1.0");
+    rmSync(versionDir(dir, "claude", "7.0.0"), { recursive: true });
+    let kept = pinsBytes(dir);
+    for (const lang of ["en", "ru"] as const) {
+      setProcessLanguage(lang);
+      const msg = msgOf(() => t.rollbackCli("claude"));
+      noRoot(msg);
+      expect(msg).toContain("7.0.0");
+    }
+    expect(pinsBytes(dir)).toBe(kept);
+    setProcessLanguage("en");
+    expect(msgOf(() => t.switchCli("claude", "7.0.0"))).toBe("The file of claude 7.0.0 is missing");
+    noRoot(await view(t));
+    expect(pinsBytes(dir)).toBe(kept);
+    kept = pinsBytes(dir);
+    expect(logs.every((l) => !l.startsWith("E ") || l.includes("refused by the pin store"))).toBe(true);
+  });
+
+  it("a damaged pins.json: switch and rollback show the neutral text, the path is in the log, the file is unchanged", async () => {
+    await seedPins();
+    writeFileSync(pinsPath(dir), "{ not json");
+    const t = make();
+    for (const lang of ["en", "ru"] as const) {
+      setProcessLanguage(lang);
+      for (const act of [() => t.switchCli("claude", "7.1.0"), () => t.rollbackCli("claude")]) {
+        const msg = msgOf(act);
+        expect(msg).toBe(catalog().cliPinsUnavailable);
+        noRoot(msg);
+      }
+    }
+    expect(readFileSync(pinsPath(dir), "utf8")).toBe("{ not json");
+    expect(logs.some((l) => l.startsWith("E ") && l.includes(pinsPath(dir)))).toBe(true);
   });
 });

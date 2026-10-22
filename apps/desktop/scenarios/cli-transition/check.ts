@@ -328,6 +328,17 @@ try {
   assert.match(list2.out, /2\.1\.288[^\n]*(active|активн)/i, list2.out);
   ok("step 7 rollbackCli: active 2.1.288 again (real `council cli list` agrees)");
 
+  // ---- 205d: after a normal rollback there is no previous version ----
+  {
+    assert.equal(activeOf(s).previous, null, "pins.json: previous is null after a rollback");
+    assert.equal(card(await R.view(), "claude").pin?.previous, null, "the card has no previous version, the rollback button is off");
+    const kept = pins(s);
+    const again = await R.call("rollbackCli", "claude");
+    assert.ok(!again.ok, "a second rollback is refused");
+    assert.equal(pins(s), kept);
+    ok("step 205d after a normal rollback previous is null in pins.json and in the card (no previous version: the rollback button has no target); a second rollbackCli is refused, pins.json unchanged");
+  }
+
   // ---- change 203: the install file changed while the confirmation is open ----
   {
     const fileOf = (version: string): string => {
@@ -345,7 +356,7 @@ try {
       const kept = pins(s);
       const bad = await R.call(action, ...args);
       assert.ok(!bad.ok, `${action}: a changed file must be refused`);
-      assert.ok(bad.error?.includes(version) && bad.error.includes(fileOf(version)), `${action}: ${bad.error}`);
+      assert.ok(bad.error?.includes(version) && !bad.error.includes(fileOf(version)) && !bad.error.includes(s.dir), `${action}: ${bad.error}`); // change 205: the window text has no path
       assert.equal(pins(s), kept, `${action}: pins.json unchanged`);
       assert.equal(card(await R.view(), "claude").pin?.version, shown, `${action}: the card keeps the previous version`);
     };
@@ -360,7 +371,7 @@ try {
     r = await R.call("rollbackCli", "claude");
     assert.ok(r.ok, r.error);
     assert.equal(activeOf(s).active, "2.1.288");
-    ok("step 203 switchCli 2.1.300 and rollbackCli with a changed install file: refused with version and path, pins.json byte-identical, the card keeps the previous version; with the bytes restored both actions pass");
+    ok("step 203 switchCli 2.1.300 and rollbackCli with a changed install file: refused with the version and without a path, pins.json byte-identical, the card keeps the previous version; with the bytes restored both actions pass");
   }
 
   // ---- 8: a running session blocks both actions; a confirmation pressed while a session runs reaches main as switchCli/rollbackCli and is refused ----
@@ -473,6 +484,100 @@ try {
       clock = saved;
     }
     ok("step 190a read-only cli-reminder.json (chmod 444): 1 check in 24 hourly ticks (counter 1), the card carries notSaved {EACCES} with the attempt time, the error line with the path is in logs/app.log and the whole view has no cli-reminder.json, the file bytes are unchanged; after 24 h the check runs again (counter 2)");
+  }
+
+  // ---- 205a, 205b: the period save error has no path; notSaved is cleared by a successful write ----
+  {
+    const saved = clock;
+    const prior = (at: number) => `${JSON.stringify({ schemaVersion: 1, periodDays: 30, lastCheck: { at: stamp(at), candidates: [], failures: [] } }, null, 2)}\n`;
+    const pa = await seed(join(dir, "period-error"), clock);
+    const fileA = reminderPath(pa.dir);
+    writeFileSync(fileA, prior(clock - 2 * DAY));
+    chmodSync(fileA, 0o444);
+    try {
+      const A = rig(pa);
+      const original = rbytes(pa);
+      for (const lang of ["ru", "en"] as const) {
+        setProcessLanguage(lang);
+        const bad = await A.call("setTransitionPeriod", 14);
+        assert.ok(!bad.ok, `${lang}: the period cannot be saved`);
+        assert.ok(bad.error?.includes("EACCES"), `${lang}: ${bad.error}`);
+        assert.ok(!bad.error.includes(pa.dir) && !bad.error.includes(REMINDER_FILE), `${lang}: no path in the window text: ${bad.error}`);
+        assert.equal(rbytes(pa), original, `${lang}: the file bytes are unchanged`);
+      }
+      setProcessLanguage("en");
+      assert.ok(readFileSync(A.logFile, "utf8").includes(fileA), "the path is in logs/app.log");
+    } finally {
+      chmodSync(fileA, 0o644);
+    }
+    ok("step 205a read-only cli-reminder.json, setTransitionPeriod 14 (ru, en): the error has EACCES and neither the data folder nor cli-reminder.json, the path is in logs/app.log, the file bytes are unchanged");
+
+    const pb = await seed(join(dir, "period-clear"), clock);
+    const fileB = reminderPath(pb.dir);
+    writeFileSync(fileB, prior(clock - 2 * DAY));
+    chmodSync(fileB, 0o444);
+    try {
+      const B = rig(pb);
+      const attempt = stamp(clock);
+      await B.t.maybeCheck();
+      assert.equal(B.releaseCalls(), 1);
+      assert.deepEqual(card(await B.view(), "claude").check?.notSaved, { code: "EACCES" });
+      chmodSync(fileB, 0o644);
+      const good = await B.call("setTransitionPeriod", 14);
+      assert.ok(good.ok, good.error);
+      assert.equal(card(good.value as SettingsView, "claude").check?.notSaved, undefined, "notSaved is cleared");
+      assert.equal(card(await B.view(), "claude").check?.notSaved, undefined);
+      const onDisk = JSON.parse(rbytes(pb)!) as { periodDays: number; lastCheck: { at: string } };
+      assert.equal(onDisk.periodDays, 14);
+      assert.equal(onDisk.lastCheck.at, attempt, "the unsaved check result is written with the period");
+      assert.equal(B.releaseCalls(), 1, "no new check");
+    } finally {
+      chmodSync(fileB, 0o644);
+      clock = saved;
+    }
+    ok("step 205b notSaved {EACCES} after a check, then chmod 644 and setTransitionPeriod 14: notSaved gone, the file has periodDays 14 and the attempt time as lastCheck.at, release-check counter still 1");
+  }
+
+  // ---- 205c: pin store refusals have no path in the window ----
+  {
+    const pc = await seed(join(dir, "pin-refusal"), clock);
+    const C = rig(pc);
+    const rp = readPins(pc.dir);
+    assert.equal(rp.state, "loaded");
+    if (rp.state !== "loaded") throw new Error("no pins");
+    const gone = installedPath(pc.dir, "claude", rp.pins.agents.claude!.installed.find((i) => i.version === "2.1.288")!);
+    const sw = await C.call("switchCli", "claude", "2.1.300");
+    assert.ok(sw.ok, sw.error);
+    assert.equal(activeOf(pc).previous, "2.1.288");
+    rmSync(gone);
+    let kept = pins(pc);
+    const refused = await C.call("rollbackCli", "claude");
+    assert.ok(!refused.ok);
+    assert.ok(refused.error?.includes("2.1.288") && !refused.error.includes(pc.dir), `no path: ${refused.error}`);
+    assert.equal(pins(pc), kept, "pins.json unchanged");
+    const term = await runCouncil(pc, ["cli", "rollback", "claude"]);
+    assert.notEqual(term.code, 0, term.out);
+    assert.ok(term.out.includes(gone), `the terminal keeps the path: ${term.out}`);
+    assert.equal(pins(pc), kept);
+    ok("step 205c rollbackCli with the previous install file deleted: the window text has the version and no data folder, pins.json unchanged; real `council cli rollback claude` prints the path");
+
+    kept = pins(pc);
+    writeFileSync(pinsPath(pc.dir), "{not json");
+    const broken = pins(pc);
+    for (const lang of ["ru", "en"] as const) {
+      setProcessLanguage(lang);
+      for (const [action, args] of [["rollbackCli", ["claude"]], ["switchCli", ["claude", "2.1.288"]]] as const) {
+        const bad = await C.call(action, ...args);
+        assert.ok(!bad.ok, `${lang} ${action}`);
+        assert.equal(bad.error, catalog().cliPinsUnavailable, `${lang} ${action}: ${bad.error}`);
+        assert.ok(!bad.error.includes(pc.dir), `${lang} ${action}: no data folder`);
+        assert.equal(pins(pc), broken, `${lang} ${action}: pins.json unchanged`);
+      }
+    }
+    setProcessLanguage("en");
+    assert.ok(readFileSync(C.logFile, "utf8").includes(pinsPath(pc.dir)), "the pins.json path is in logs/app.log");
+    writeFileSync(pinsPath(pc.dir), kept);
+    ok("step 205c damaged pins.json: rollbackCli and switchCli (ru, en) return the cliPinsUnavailable text without a path, the pins.json path is in logs/app.log, the bytes are unchanged");
   }
 
   // ---- 190b: a recorded attempt time in the future ----

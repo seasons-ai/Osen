@@ -82,11 +82,6 @@ function saveReminder(dataDir: string, data: ReminderData): string | null {
   }
 }
 
-function writeReminder(dataDir: string, data: ReminderData): void {
-  const code = saveReminder(dataDir, data);
-  if (code !== null) throw new SettingsError(settings().reminderSaveFailed(reminderPath(dataDir), code));
-}
-
 const stamp = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
 const cmp = (a: string, b: string): number => {
   const [x, y] = [a.split(".").map(Number), b.split(".").map(Number)];
@@ -262,11 +257,20 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
     return out;
   }
 
+  /** The window text carries the code only; the path goes to the log. */
+  function writeReminder(data: ReminderData): void {
+    const code = saveReminder(dataDir, data);
+    if (code === null) return;
+    logger.error(`CLI transition period not saved to ${reminderPath(dataDir)}: ${code}`);
+    throw new SettingsError(settings().reminderSaveFailed(code));
+  }
+
   function setPeriod(days: unknown): void {
     const reason = checkPeriod(days);
     if (reason !== null) throw new SettingsError(reason);
     const prev = loadedData(readReminder(dataDir)); // a damaged file is replaced only here, by the owner's explicit save
-    writeReminder(dataDir, { schemaVersion: 1, periodDays: days as number, lastCheck: prev?.lastCheck ?? null });
+    writeReminder({ schemaVersion: 1, periodDays: days as number, lastCheck: unsaved?.lastCheck ?? prev?.lastCheck ?? null });
+    unsaved = null; // the check result is on disk now
     logger.info(`CLI transition period saved: ${days as number} days`);
   }
 
@@ -280,10 +284,14 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
     const noActive = p.state === "absent" || (p.state === "loaded" && !p.pins.agents[agent]?.active); // a damaged pins.json goes to 176 for its own reason
     if (noActive) throw new SettingsError(settings().cliNoPin(agent));
   }
-  function done(what: string, agent: CliAgent, r: { ok: boolean; code: number; text: string }): void {
+  function done(what: string, agent: CliAgent, r: { ok: boolean; code: number; text: string; textNoPath?: string }): void {
     if (!r.ok) {
       logger.error(`CLI ${what} ${agent} refused by the pin store (code ${r.code})`); // the 176 text is in the process language: the log line stays language independent
-      throw new SettingsError(r.text);
+      if (r.code === 1) { // pins.json rejected or not writable: the text carries the path, so it stays in the log
+        logger.error(r.text);
+        throw new SettingsError(settings().cliPinsUnavailable);
+      }
+      throw new SettingsError(r.textNoPath ?? r.text);
     }
     (deps.resetDiscovery ?? resetDiscoveryCache)();
     logger.info(`CLI ${what} ${agent}: done`);

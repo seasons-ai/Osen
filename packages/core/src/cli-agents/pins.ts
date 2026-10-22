@@ -119,10 +119,10 @@ export interface PinDeps {
   now?: () => Date;
   readVersion?: (path: string, env: Record<string, string | undefined>) => Promise<string>;
 }
-export type PinResult = { ok: true; code: 0; text: string } | { ok: false; code: 1 | 2; text: string };
+export type PinResult = { ok: true; code: 0; text: string } | { ok: false; code: 1 | 2; text: string; /** Same reason without an install path, for the window; set for a missing or changed install file. */ textNoPath?: string };
 
 const ok = (text: string): PinResult => ({ ok: true, code: 0, text });
-const fail = (code: 1 | 2, text: string): PinResult => ({ ok: false, code, text });
+const fail = (code: 1 | 2, text: string, textNoPath?: string): PinResult => ({ ok: false, code, text, ...(textNoPath !== undefined ? { textNoPath } : {}) });
 const stamp = (now?: () => Date) => (now?.() ?? new Date()).toISOString().replace(/\.\d{3}Z$/, "Z");
 const isAgent = (a: string): a is CliAgent => (CLI_AGENTS as readonly string[]).includes(a);
 const cmpVersion = (a: string, b: string) => {
@@ -283,21 +283,17 @@ function commit(dataDir: string, pins: PinsFile, agent: CliAgent, next: AgentPin
   return ok(text);
 }
 
-function missingFile(dataDir: string, agent: CliAgent, i: PinInstall): string | undefined {
-  const p = installedPath(dataDir, agent, i);
-  return existsSync(p) ? undefined : p;
-}
-
-/** Failure text when the file of `i` no longer matches its recorded sha256; undefined when it matches. Synchronous: use and rollback stay synchronous. */
-function changedFile(dataDir: string, agent: CliAgent, i: PinInstall): string | undefined {
+/** Failure of an install file: missing or no longer matching its recorded sha256; undefined when it matches. Synchronous: use and rollback stay synchronous. */
+function changedFile(dataDir: string, agent: CliAgent, i: PinInstall): PinResult | undefined {
+  const m = pinMessages();
   const p = installedPath(dataDir, agent, i);
   let actual: string;
   try {
     actual = createHash("sha256").update(readFileSync(p)).digest("hex");
   } catch {
-    return pinMessages().useFileMissing(agent, i.version, p);
+    return fail(2, m.useFileMissing(agent, i.version, p), m.useFileMissingNoPath(agent, i.version));
   }
-  return actual === i.sha256 ? undefined : pinMessages().useSha256Mismatch(agent, i.version, p, i.sha256, actual);
+  return actual === i.sha256 ? undefined : fail(2, m.useSha256Mismatch(agent, i.version, p, i.sha256, actual), m.useSha256MismatchNoPath(agent, i.version, i.sha256, actual));
 }
 
 export function usePin(dataDir: string, agentName: string, version: string, deps: { record: VerifiedRecord; now?: () => Date }): PinResult {
@@ -307,10 +303,8 @@ export function usePin(dataDir: string, agentName: string, version: string, deps
   const { agent, cur, pins } = l;
   const inst = cur.installed.find((i) => i.version === version);
   if (!inst) return fail(2, m.useNotInstalled(agent, version));
-  const gone = missingFile(dataDir, agent, inst);
-  if (gone) return fail(2, m.useFileMissing(agent, version, gone));
   const changed = changedFile(dataDir, agent, inst);
-  if (changed) return fail(2, changed);
+  if (changed) return changed;
   const level = lookupVerified(deps.record, agent, version)?.level;
   if (level !== "real") return fail(2, m.notReal(agent, version, level ?? m.levelNone));
   if (cur.active === version) return ok(m.alreadyActive(agent, version));
@@ -326,10 +320,8 @@ export function rollbackPin(dataDir: string, agentName: string, deps: { now?: ()
   if (cur.previous === null) return fail(2, m.noPrevious(agent));
   const inst = cur.installed.find((i) => i.version === cur.previous);
   if (!inst) return fail(2, m.useNotInstalled(agent, cur.previous));
-  const gone = missingFile(dataDir, agent, inst);
-  if (gone) return fail(2, m.useFileMissing(agent, inst.version, gone));
   const changed = changedFile(dataDir, agent, inst);
-  if (changed) return fail(2, changed);
+  if (changed) return changed;
   const next: AgentPins = { ...cur, active: inst.version, previous: null, activatedAt: stamp(deps.now) };
   return commit(dataDir, pins, agent, next, `rollback ${agent} ${inst.version}`, m.rolledBack(agent, inst.version));
 }

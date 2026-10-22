@@ -1,14 +1,17 @@
-import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { setProcessLanguage } from "@model-council/core/i18n";
 import type { ProviderStatus } from "@model-council/core";
+import { pinsPath, versionDir } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { AgentPins } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { VerifiedEntry } from "../../../../packages/core/src/cli-agents/verified-record.ts";
-import { computeTransition, createCliTransition, reminderPath } from "./cli-transition.ts";
+import { REMINDER_FILE, computeTransition, createCliTransition, reminderPath } from "./cli-transition.ts";
 import type { LastCheck } from "./cli-transition.ts";
 import { installVersions, pinsBytes, record } from "./cli-transition.testutil.ts";
 import type { CliSource } from "../shared/settings.ts";
+import { SettingsError } from "./settings.ts";
 
 function mulberry32(seed: number) {
   return () => {
@@ -193,3 +196,71 @@ describe("Requirement: Напоминание о плановом переход
 function inertTransitionDeps() {
   return { releases: { list: async () => [] }, source: { fetch: async (): Promise<never> => { throw new Error("none"); } } };
 }
+
+describe("Requirement: Срок планового перехода / Переход и откат из карточки (property)", () => {
+  const ROOTS = ["osen data", "Папка данных", "Ёлка и й".normalize("NFD"), "dir with  spaces ", "данные ё".normalize("NFD"), "plain"];
+  const read = (f: string): string | null => (existsSync(f) ? readFileSync(f, "utf8") : null);
+
+  it("Срок планового перехода / Переход и откат из карточки: no refusal hands the data folder path to the window, and a refusal changes neither pins.json nor cli-reminder.json (seeded, 15 cases)", async () => {
+    for (let seed = 1; seed <= 15; seed++) {
+      const r = mulberry32(seed);
+      const pick = <T>(xs: readonly T[]): T => xs[Math.floor(r() * xs.length)]!;
+      const dir = mkdtempSync(join(tmpdir(), `${pick(ROOTS)}-`));
+      const roots = [dir, dir.normalize("NFD"), dir.normalize("NFC")];
+      const label = `seed ${seed} ${dir}`;
+      const heal = () => {
+        for (const f of [dirname(pinsPath(dir)), reminderPath(dir)]) if (existsSync(f)) chmodSync(f, f === reminderPath(dir) ? 0o644 : 0o755);
+      };
+      try {
+        setProcessLanguage(pick(["en", "ru"] as const));
+        record(dir, "claude", "7.0.0", "real", "2026-08-30");
+        record(dir, "claude", "7.1.0", "real", "2026-10-07");
+        await installVersions(dir, "claude", [{ version: "7.0.0" }, { version: "7.1.0" }], () => new Date(NOW));
+        const t = createCliTransition({
+          dataDir: dir, logger: { info() {}, error() {} }, now: () => new Date(NOW), running: () => false, onChecked() {}, resetDiscovery() {},
+          candidateDeps: () => inertTransitionDeps(),
+        });
+        const status: ProviderStatus = { id: "claude", kind: "cli", label: "c", available: true, models: [], modelsConfirmed: false, source: "pin", verified: { level: "real", checkedAt: "2026-10-07" } };
+        let savedPins: string | null = null;
+        const attempt = async (name: string, fn: () => void): Promise<void> => {
+          const files = [pinsPath(dir), reminderPath(dir)];
+          const before = files.map(read);
+          let msg: string | null = null;
+          try { fn(); } catch (e) {
+            expect(e, `${label} ${name}`).toBeInstanceOf(SettingsError);
+            msg = (e as Error).message;
+          }
+          if (msg !== null) {
+            for (const root of roots) expect(msg, `${label} ${name}`).not.toContain(root);
+            expect(msg, `${label} ${name}`).not.toContain(REMINDER_FILE);
+            expect(files.map(read), `${label} ${name} bytes`).toEqual(before);
+          }
+          const views = JSON.stringify([t.settingsView(), await t.forProvider("claude", status)]);
+          for (const root of roots) expect(views, `${label} ${name} view`).not.toContain(root);
+        };
+        const actions: Array<[string, () => void]> = [
+          ["period-ok", () => t.setPeriod(1 + Math.floor(r() * 300))],
+          ["period-locked", () => { chmodSync(reminderPath(dir), 0o444); try { t.setPeriod(5); } finally { chmodSync(reminderPath(dir), 0o644); } }],
+          ["rollback", () => t.rollbackCli("claude")],
+          ["switch-new", () => t.switchCli("claude", "7.1.0")],
+          ["switch-old", () => t.switchCli("claude", "7.0.0")],
+          ["switch-unknown", () => t.switchCli("claude", "7.9.0")],
+          ["delete-file", () => rmSync(versionDir(dir, "claude", pick(["7.0.0", "7.1.0"])), { recursive: true, force: true })],
+          ["corrupt-pins", () => { savedPins ??= read(pinsPath(dir)); writeFileSync(pinsPath(dir), pick(["{ not json", "", "[]", '{"schemaVersion":99}'])); }],
+          ["restore-pins", () => { if (savedPins !== null) writeFileSync(pinsPath(dir), savedPins); }],
+          ["pins-dir-readonly", () => { chmodSync(dirname(pinsPath(dir)), 0o555); try { t.switchCli("claude", pick(["7.0.0", "7.1.0"])); } finally { chmodSync(dirname(pinsPath(dir)), 0o755); } }],
+        ];
+        t.setPeriod(30); // the reminder file exists for the locked-write action
+        const steps = 4 + Math.floor(r() * 5);
+        for (let i = 0; i < steps; i++) {
+          const [name, fn] = pick(actions);
+          await attempt(name, fn);
+        }
+      } finally {
+        heal();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+    setProcessLanguage("en");
+  }, 120_000);
+});
