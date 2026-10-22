@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { collectMaterials, setDocumentExtractorRuntime, setProcessLanguage } from "../../src/index.ts";
 import { makePptx, makeXlsx, makeDocx, makeZip, p, pptxTable, sp, table } from "../../src/documents/fixture.ts";
+import { odfEpubSuite } from "./odf-epub.ts";
 
 const repo = resolve(import.meta.dirname, "../../../..");
 const home = process.env.COUNCIL_HOME;
@@ -187,9 +188,9 @@ function pair(name: string, mark?: string): string[] {
 const parts = (p2: string[]) => ["--participant", p2[0]!, "--participant", p2[1]!];
 
 /** Child stand: ok lines are forwarded, the RESULT line is parsed. */
-async function subStand(what: string, script: string, dataDir: string, lang: string, extra: string[]) {
+async function subStand(what: string, script: string, dataDir: string, lang: string, extra: string[], fixtures = fx) {
   mkdirSync(dataDir, { recursive: true });
-  const r = proc(process.execPath, [join(repo, script), fx, lang, ...extra], { ...baseEnv, COUNCIL_LANG: lang, COUNCIL_HOME: dataDir });
+  const r = proc(process.execPath, [join(repo, script), fixtures, lang, ...extra], { ...baseEnv, COUNCIL_LANG: lang, COUNCIL_HOME: dataDir });
   const code = await r.exited;
   const lines = r.out.split("\n");
   for (const l of lines) if (l && !l.startsWith("RESULT ")) console.log(l);
@@ -435,6 +436,9 @@ async function suite(lang: "ru" | "en") {
   assert.ok(out8.some((l) => l.includes("broken.xlsx") && l.includes(t.reason.damaged)), `damaged line${dump(r8.r)}`);
   assert.ok(out8.some((l) => l.includes("empty.pptx") && l.includes(t.reason.noText)), `no-text line${dump(r8.r)}`);
   ok(`${tag} X8: a damaged .xlsx ("${t.reason.damaged}") and a text-less .pptx ("${t.reason.noText}") are skipped, README is collected`);
+
+  // Change 210: OpenDocument and EPUB checks with their own fixtures.
+  await odfEpubSuite({ lang, work, t, run, attach, created, sessionId, sdir, journals, promptLines, pair: (n) => pair(n), parts, subStand, dump, ok });
 }
 
 async function inProcess() {
