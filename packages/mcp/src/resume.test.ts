@@ -774,6 +774,26 @@ describe("council_resume: detached executor", () => {
     expect(launchLeft(dir)).toEqual([]);
   });
 
+  // change 199: the executor accepts one poll step after the deadline
+  it("resume accepted one poll step after the deadline: accepted, launch/ empty; not accepted: timeout error, launch/ empty", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "s" });
+    const late = ctxOf(dir, scn, { startTimeoutMs: 300, startPollMs: 200, spawnExecutor: (file) => {
+      setTimeout(() => { writeFileSync(launchAcceptedPath(file), JSON.stringify({ droppedOwnerRequests: [] })); appendFileSync(eventsPath(dir, "s"), "\n"); }, 450);
+      return new Promise<number>(() => {});
+    } });
+    const v = await exec(late, "s", { rounds: 1 });
+    expect(v.accepted).toBe(true);
+    expect(launchLeft(dir)).toEqual([]);
+    const dir2 = tmp(), scn2 = tmp();
+    await prior(dir2, scn2, { id: "s" });
+    const silent = ctxOf(dir2, scn2, { spawnExecutor: () => new Promise<number>(() => {}), startTimeoutMs: 300, startPollMs: 200 });
+    const t = await rejected(exec(silent, "s", { rounds: 1 }));
+    expect(t).toBeInstanceOf(ToolError);
+    expect(t.message).toBe(mcpMessages().startExecutorTimeout(0));
+    expect(launchLeft(dir2)).toEqual([]);
+  });
+
   // change 187: two launches of one session must not share launch files
   const busyLine = JSON.stringify({ code: "busy", message: "held by another executor" }) + "\n";
 

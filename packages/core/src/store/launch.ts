@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { z } from "zod";
 import { cliMessages } from "../messages/cli.ts";
@@ -114,4 +114,23 @@ export function readLaunchFile(path: string, now: Date = new Date()): LaunchFile
   if (!parsed.success) throw new LaunchFileError(t.launchInvalid(path, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")));
   if (now.getTime() > Date.parse(parsed.data.deadline)) throw new LaunchFileError(t.launchExpired(parsed.data.deadline));
   return parsed.data as LaunchFile;
+}
+
+/** Removes launch files, .err, .accepted.json and their temp copies older than maxAgeMs (left by a killed server or executor); returns how many were removed. */
+export function sweepLaunchDir(dataDir: string, maxAgeMs = 60_000, now = Date.now()): number {
+  const dir = launchDir(dataDir);
+  let names: string[];
+  try { names = readdirSync(dir); } catch { return 0; }
+  let removed = 0;
+  for (const name of names) {
+    if (!/\.(json|err|tmp)$/.test(name)) continue;
+    const path = join(dir, name);
+    try {
+      const st = statSync(path);
+      if (!st.isFile() || st.mtimeMs >= now - maxAgeMs) continue;
+      rmSync(path, { force: true });
+      removed++;
+    } catch { /* gone meanwhile */ }
+  }
+  return removed;
 }

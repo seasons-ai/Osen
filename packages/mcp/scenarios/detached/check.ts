@@ -1,17 +1,19 @@
-// Live check of changes 138 and 184: council_start and council_resume run the session in a detached executor that outlives the MCP server.
+// Live check of changes 138, 184 and 199: council_start and council_resume run the session in a detached executor that outlives the MCP server.
 // The server is a real child process over stdio; control goes through the `council` CLI. Scripted participants only, 0 model calls.
 //   COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the project> node packages/mcp/scenarios/detached/check.ts
 // Writes only to COUNCIL_HOME and does not delete it (this is the evidence of the check).
 import "../../../core/scenarios/language-ru.ts";
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createLogger, eventsPath, launchDir, listSessions, readEvents, readSession, requestStop, resumeLockPath, writeLaunchFile } from "@model-council/core";
 import { createServer } from "../../src/server.ts";
+import { mcpMessages } from "../../src/messages.ts";
+import { writeStub } from "../../../core/scenarios/launch-guard/stub.ts";
 import type { ToolContext } from "../../src/context.ts";
 
 if (process.env.COUNCIL_DEV !== "1" || !process.env.COUNCIL_HOME?.trim()) {
@@ -52,8 +54,8 @@ function cli(...args: string[]) {
 }
 interface Srv { client: Client; transport: StdioClientTransport; pid: number }
 const servers: Srv[] = [];
-async function connect(): Promise<Srv> {
-  const transport = new StdioClientTransport({ command: process.execPath, args: [mainTs], cwd: root, stderr: "ignore", env: baseEnv });
+async function connect(env: Record<string, string> = baseEnv): Promise<Srv> {
+  const transport = new StdioClientTransport({ command: process.execPath, args: [mainTs], cwd: root, stderr: "ignore", env });
   const client = new Client({ name: "detached-check", version: "0" });
   await client.connect(transport);
   const pid = transport.pid!;
@@ -171,10 +173,10 @@ async function main() {
   // ---- step 5: start errors, in-process server ----
   console.log("-- step 5: start errors");
   const known = new Set(listSessions(home).map((s) => s.id));
-  const inProc = async (councilLaunch: ToolContext["councilLaunch"]) => {
+  const inProc = async (councilLaunch: ToolContext["councilLaunch"], extra: Partial<ToolContext> = {}) => {
     const ctx: ToolContext = {
       dataDir: home, env: baseEnv, logger: createLogger(home, "mcp", baseEnv), builtinTemplatesDir: join(root, "templates"), scenariosDir,
-      shutdown: new AbortController().signal, councilLaunch,
+      shutdown: new AbortController().signal, councilLaunch, ...extra,
     };
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const server = createServer(ctx);
@@ -362,6 +364,136 @@ async function main() {
   await until("R7 stopped", () => stat(R7) === "stopped", 15000).then(() => ok("R7: status stopped within 15 s"), () => fail(`R7: status ${stat(R7)} after stop`));
   await until("R7 executor exit", () => !alive(pidR7), 5000).then(() => ok("R7: executor process gone"), () => fail("R7: executor still alive"));
   check(!existsSync(resumeLockPath(home, R7)), "R7: resume.lock removed");
+
+  // ---- change 199: an executor that is late for the 15 s deadline must not create a session or write a resume ----
+  // Stub `claude` (stand folder first on PATH, 0 model calls): a wrapper around the launch-guard stub. Its `--help` sleeps
+  // <stub>/helpsleep seconds, and only when the parent process is an executor (`run-prepared`), so the server's own provider
+  // inspection stays fast and only the executor is slow. <stub>/helpfail makes that slow `--help` fail after the sleep.
+  const stubDir = join(home, "stub199");
+  mkdirSync(stubDir, { recursive: true });
+  writeStub(join(stubDir, "claude-real"), { agent: "claude", version: "1.0.0", mark: join(stubDir, "marks"), side: join(stubDir, "side") });
+  writeFileSync(join(stubDir, "claude"), `#!/bin/sh
+if [ "$1" = "--help" ] && [ -s "${stubDir}/helpsleep" ]; then
+  case "$(ps -o command= -p "$PPID")" in
+    *run-prepared*) sleep "$(cat "${stubDir}/helpsleep")"; if [ -e "${stubDir}/helpfail" ]; then exit 1; fi ;;
+  esac
+fi
+exec "${stubDir}/claude-real" "$@"
+`);
+  chmodSync(join(stubDir, "claude"), 0o755);
+  writeFileSync(join(stubDir, "shell"), `#!/bin/sh\nprintf '\\n__COUNCIL_PATH__%s__COUNCIL_PATH__\\n' "$PATH"\n`);
+  chmodSync(join(stubDir, "shell"), 0o755);
+  const stubEnv = { ...baseEnv, PATH: `${stubDir}:${baseEnv.PATH}`, SHELL: join(stubDir, "shell") };
+  const helpSleep = (sec: number | null, fails = false) => {
+    rmSync(join(stubDir, "helpsleep"), { force: true });
+    rmSync(join(stubDir, "helpfail"), { force: true });
+    if (sec !== null) writeFileSync(join(stubDir, "helpsleep"), String(sec));
+    if (fails) writeFileSync(join(stubDir, "helpfail"), "");
+  };
+  const realLaunch = { command: process.execPath, args: [councilTs], env: {} };
+  const sessionDirs = () => (existsSync(join(home, "sessions")) ? readdirSync(join(home, "sessions")).sort() : []);
+  const claudeStart = { topic: "Как назвать кота", participants: [{ providerId: "claude", model: "default" }, { providerId: "scripted", model: "consensus/p1.json" }], maxRounds: 3 };
+  /** Executor processes of this stand's data folder still running (read-only listing, nothing is signalled). */
+  const executorsLeft = () => spawnSync("ps", ["-axo", "command="], { encoding: "utf8" }).stdout.split("\n").filter((l) => l.includes("run-prepared") && l.includes(launchDir(home)));
+  const stubFirst = (r: Res) => body(r).slice(0, 140);
+
+  console.log("-- 199.1: executor slower than the deadline (provider check 3 s, deadline 2 s) creates no session");
+  helpSleep(3);
+  const known1 = new Set(listSessions(home).map((s) => s.id));
+  const dirs1 = sessionDirs();
+  const s1a = await inProc(realLaunch, { env: stubEnv, startTimeoutMs: 2000 });
+  const r1a = await call(s1a.client, "council_start", claudeStart);
+  await s1a.close();
+  check(r1a.isError === true && body(r1a).includes(mcpMessages().startExecutorTimeout(2)), "199.1: council_start -> isError \"did not respond in 2 s\"", stubFirst(r1a));
+  await sleep(12000);
+  check(listSessions(home).every((s) => known1.has(s.id)), "199.1: no new session 12 s later", listSessions(home).filter((s) => !known1.has(s.id)).map((s) => s.id).join(","));
+  check(JSON.stringify(sessionDirs()) === JSON.stringify(dirs1), "199.1: no new session folder");
+  check(launchLeft().length === 0, "199.1: launch/ empty", launchLeft().join(","));
+  check(executorsLeft().length === 0, "199.1: the late executor process has ended");
+
+  // A failed session whose participant p2 crashed: it can take a replacement for p2.
+  const failedWithP2 = (tag: string) => {
+    const p1 = scenFile(`${tag}-p1`, [stepOf("amend", "Версия 1."), stepOf("agree", null), stepOf("agree", null), stepOf("agree", null)]);
+    const p2 = scenFile(`${tag}-p2`, [{ error: "Сценарный сбой", retryable: false }]);
+    const r = cli("--topic", "Как назвать кота", "--participant", `scripted:${p1}`, "--participant", `scripted:${p2}`, "--max-rounds", "2");
+    const id = /^Сессия (\S+) ·/m.exec(r.out)?.[1];
+    if (!id) throw new Error(`${tag}: no session id in the start output: ${r.out.slice(0, 200)}`);
+    return id;
+  };
+  const resumeWithReplacement = async (s: { client: Client }, id: string) => {
+    const args = { sessionId: id, rounds: 2, replacements: [{ participantId: "p2", providerId: "claude", model: "default" }] };
+    const pl = await call(s.client, "council_resume", args);
+    if (pl.isError) throw new Error(`${id} plan: ${body(pl)}`);
+    return call(s.client, "council_resume", { ...args, execute: true, planToken: JSON.parse(body(pl)).planToken });
+  };
+
+  console.log("-- 199.2: resume: the replacement check under the lock overruns the deadline");
+  // Timing: the executor needs ~0.3-0.6 s to start; its first (pre-lock) check takes the stub sleep S, the re-check under the lock another S.
+  // The deadline is 2000 ms from the launch file. S = 1.2 s: the pre-lock check ends at ~1.5-1.8 s (fits), the re-check ends at ~2.7-3.0 s (overruns).
+  helpSleep(1.2);
+  const R8 = failedWithP2("r8");
+  check(stat(R8) === "failed", "199.2: the seed session is failed", `status ${stat(R8)}`);
+  const s2a = await inProc(realLaunch, { env: stubEnv, startTimeoutMs: 2000 });
+  const r2a = await resumeWithReplacement(s2a, R8);
+  await s2a.close();
+  check(r2a.isError === true && body(r2a).length > 0, "199.2: council_resume execute -> isError (server timeout or executor refusal)", stubFirst(r2a));
+  await sleep(12000);
+  check(evCount(R8, "session_resumed") === 0, "199.2: no session_resumed in the journal 12 s later", `count ${evCount(R8, "session_resumed")}`);
+  check(launchLeft().length === 0, "199.2: launch/ empty", launchLeft().join(","));
+  check(!existsSync(resumeLockPath(home, R8)) && executorsLeft().length === 0, "199.2: no resume.lock, executor process has ended");
+
+  console.log("-- 199.3: resume accepted well inside the deadline (fast stub)");
+  helpSleep(null);
+  const s3a = await inProc(realLaunch, { env: stubEnv, startTimeoutMs: 2000 });
+  const r3a = await resumeWithReplacement(s3a, R8);
+  await s3a.close();
+  check(accepted(r3a), "199.3: council_resume execute -> accepted: true", stubFirst(r3a));
+  check(launchLeft().length === 0, "199.3: launch/ empty", launchLeft().join(","));
+  check(evCount(R8, "session_resumed") === 1, "199.3: one session_resumed in the journal", `count ${evCount(R8, "session_resumed")}`);
+  // the stub claude answers at once, so the resumed session may already be over; stop it only while it still runs
+  const pidR8 = existsSync(resumeLockPath(home, R8)) ? (() => { try { return noteLock(R8); } catch { return null; } })() : null;
+  if (pidR8 !== null && !readSession(home, R8)?.state.finish) cli("stop", R8);
+  await until("R8 finished", () => readSession(home, R8)?.state.finish, 30000).then(() => ok("199.3: the resumed session finished"), () => fail(`199.3: status ${stat(R8)}`));
+  await until("R8 executor exit", () => executorsLeft().length === 0 && (pidR8 === null || !alive(pidR8)), 8000).then(() => ok("199.3: executor process gone"), () => fail("199.3: executor still alive"));
+
+  console.log("-- 199.4: the server is closed while it waits for the executor");
+  helpSleep(6, true); // the executor's provider check hangs 6 s and then fails: it ends by itself without a session
+  const known4 = new Set(listSessions(home).map((s) => s.id));
+  const before4 = new Set(launchLeft());
+  const s4 = await connect(stubEnv);
+  const pending4 = call(s4.client, "council_start", claudeStart).catch(() => null);
+  await sleep(500);
+  const during4 = launchLeft().filter((f) => !before4.has(f));
+  check(during4.length > 0, "199.4: the launch file is in launch/ while the server waits", during4.join(","));
+  try { process.kill(s4.pid, "SIGTERM"); } catch { /* already gone */ }
+  await s4.client.close().catch(() => undefined);
+  await pending4;
+  await serverGone(s4, "199.4");
+  const after4 = launchLeft().filter((f) => !before4.has(f));
+  check(after4.length === 0, "199.4: no files of this launch left in launch/ after the server exit", after4.join(","));
+  await sleep(9000);
+  const born4 = listSessions(home).filter((s) => !known4.has(s.id));
+  console.log(`   199.4 observation: ${born4.length} new sessions 9 s later`);
+  for (const s of born4) { if (s.status === "running") cli("stop", s.id); }
+  check(born4.length === 0, "199.4: the orphaned executor created no session", born4.map((s) => `${s.id}:${s.status}`).join(","));
+  check(executorsLeft().length === 0, "199.4: no executor process left");
+  check(launchLeft().filter((f) => !before4.has(f)).length === 0, "199.4: launch/ still has no files of this launch");
+
+  console.log("-- 199.5: a server start sweeps stale files of launch/");
+  helpSleep(null);
+  mkdirSync(launchDir(home), { recursive: true });
+  const old = ["x.old.err", "x.old.accepted.json"], fresh = ["y.new.err", "y.new.accepted.json"];
+  for (const f of [...old, ...fresh]) writeFileSync(join(launchDir(home), f), "{}");
+  const past = new Date(Date.now() - 120_000);
+  for (const f of old) utimesSync(join(launchDir(home), f), past, past);
+  const s5 = await connect(stubEnv);
+  await until("sweep done", () => old.every((f) => !existsSync(join(launchDir(home), f))), 5000).catch(() => undefined);
+  check(old.every((f) => !existsSync(join(launchDir(home), f))), "199.5: files 120 s old are removed at the server start", launchLeft().join(","));
+  check(fresh.every((f) => existsSync(join(launchDir(home), f))), "199.5: files 1 s old stay", launchLeft().join(","));
+  for (const f of fresh) rmSync(join(launchDir(home), f), { force: true });
+  await s5.client.close();
+  await serverGone(s5, "199.5");
+  check(launchLeft().length === 0, "199.5: launch/ empty after the cleanup", launchLeft().join(","));
 
   // ---- step 6 (stand numbering: orphans) ----
   console.log("-- orphans");

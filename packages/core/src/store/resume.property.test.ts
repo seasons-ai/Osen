@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createSession } from "../engine.ts";
@@ -8,7 +8,8 @@ import type { Scenario } from "../participants/scripted.ts";
 import { INSUFFICIENT_ACTIVE_REASON_CODE } from "../protocol/schema.ts";
 import type { Limits, SessionEvent } from "../protocol/schema.ts";
 import { eventsPath } from "./journal.ts";
-import { planResume, ResumeRejectedError, runResumedSession } from "./resume.ts";
+import { resumeRevalidator } from "../cli.ts";
+import { planResume, ResumeRejectedError, resumeDrivers, runResumedSession } from "./resume.ts";
 import type { ReplacementInput } from "./resume.ts";
 
 // Requirement "Owner message on resume" × "Resume admissibility": an invariant over every status and every kind of message.
@@ -117,6 +118,58 @@ describe("property: owner message on resume", () => {
       } else {
         expect(run.events.filter((e) => e.type === "owner_message"), label).toHaveLength(0);
       }
+    }
+  });
+});
+
+describe("property: the launch deadline of a resume with a replacement", () => {
+  it("for any moment of the check relative to the deadline the outcome is accepted (file + session_resumed) or refused (journal and launch/ unchanged); a retry inside the deadline is accepted", async () => {
+    const rnd = mulberry32(199);
+    const deadlineMs = Date.parse("2026-06-01T00:00:00Z");
+    const deadline = new Date(deadlineMs).toISOString();
+    const offsets = [-1, 0, 1];
+    for (let i = 0; i < 40; i++) {
+      // the check happens `offset` ms from the deadline, after a re-check that took `delay` ms
+      const offset = i < offsets.length ? offsets[i]! : Math.floor(rnd() * 201) - 100;
+      const delay = Math.floor(rnd() * 500);
+      const label = `#${i} offset=${offset} delay=${delay}`;
+      const dir = mkdtempSync(join(tmpdir(), "resume-deadline-"));
+      dirs.push(dir);
+      const scenario = join(dir, "scn.json");
+      const agree = { response: { stance: "agree", reasoning: "r", solution: null, answers: [], questions: [] } };
+      writeFileSync(scenario, JSON.stringify({ steps: [agree, agree, agree, agree] }));
+      const path = eventsPath(dir, "s");
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, journal("failed_code", 0).map((b, i2) => JSON.stringify({ ...b, seq: i2 + 1, ts: "2026-01-01T00:00:00Z" })).join("\n") + "\n");
+      const before = readFileSync(path);
+      const launchDir = join(dir, "launch");
+      mkdirSync(launchDir);
+      const accepted = join(launchDir, "s.x.accepted.json");
+      const plan = planResume(dir, "s", { isAlive: () => false, rounds: 1, replacements: [{ participantId: "p2", providerId: "scripted", model: "m" }] });
+      const opts = { registry: { providers: [] }, env: { COUNCIL_DEV: "1" }, dataDir: dir, scenarioPath: () => { clock += delay; return scenario; } } as unknown as Parameters<typeof resumeDrivers>[1];
+      // every resumeDrivers call (also the one under the lock) takes `delay` ms of the injected clock
+      let clock = 0;
+      const attempt = async (startAt: number) => {
+        const { drivers } = await resumeDrivers(plan, opts);
+        clock = startAt;
+        return runResumedSession({
+          dataDir: dir, plan, drivers, isAlive: () => false,
+          revalidate: resumeRevalidator(plan, opts, deadline, () => clock),
+          onAccepted: () => writeFileSync(accepted, "{}"),
+        });
+      };
+      // scenarioPath is asked once per active participant
+      const late = deadlineMs + offset - delay * plan.active.length;
+      if (offset > 0) {
+        await expect(attempt(late), label).rejects.toMatchObject({ reason: "stale_plan" });
+        expect(readFileSync(path).equals(before), `${label}: journal changed`).toBe(true);
+        expect(readdirSync(launchDir), `${label}: launch/ changed`).toEqual([]);
+        await attempt(deadlineMs - delay * plan.active.length - 1000); // the retry inside the deadline
+      } else {
+        await attempt(late);
+      }
+      expect(readdirSync(launchDir), label).toEqual(["s.x.accepted.json"]);
+      expect(readFileSync(path, "utf8"), label).toContain('"type":"session_resumed"');
     }
   });
 });
