@@ -6,6 +6,7 @@ import ignore from "ignore";
 import type { Ignore } from "ignore";
 import { FOLDER_LIMITS, folderStats } from "./protocol/folder.ts";
 import type { FolderFile } from "./protocol/folder.ts";
+import { CFB_SIGNATURE } from "./documents/cfb.ts";
 import { documentReason, readDocumentText } from "./documents/extract.ts";
 import { pdfReason, readPdfText } from "./pdf/extract.ts";
 import { imageSignature, type ImageFormat } from "./ocr/image-header.ts";
@@ -129,6 +130,15 @@ function readText(abs: string, defer = false): string | { refused: string } | { 
       const r = readDocumentText(fd);
       if (r.ok) return r.text;
       if (r.code === "unsupported" || r.code === "bytes") return undefined;
+      return { refused: documentReason(r) };
+    }
+    // RTF is ASCII, so this check comes before the plain-text decode; CFB covers DOC and encrypted Office files
+    const bom = n >= 3 && head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf ? 3 : 0;
+    const rtf = head.subarray(bom, Math.min(n, bom + 5)).toString("latin1") === "{\\rtf";
+    if (rtf || (n >= 8 && head.subarray(0, 8).equals(CFB_SIGNATURE))) {
+      const r = readDocumentText(fd);
+      if (r.ok) return r.text;
+      if (r.code === "unsupported" || (r.code === "bytes" && !rtf)) return undefined;
       return { refused: documentReason(r) };
     }
     const image = imageSignature(head.subarray(0, n), fstatSync(fd).size);
@@ -417,6 +427,7 @@ export function verifyMaterials(materials: readonly CollectedMaterial[], limit: 
 export interface LeftMaterial { name: string; reason: string }
 
 const DOC_EXT = /\.(md|markdown|mdx|txt|rst|adoc|pdf|docx|docm)$/i;
+const LEGACY_DOC_EXT = /\.(rtf|doc)$/i;
 const total = (ms: readonly CollectedMaterial[]) => ms.reduce((s, m) => s + m.chars, 0);
 
 /** "Always included": without "/" in the name — an explicitly attached file; otherwise only if the file path is named and explicit. roots — absolute paths. */
@@ -444,7 +455,7 @@ export function selectMaterials(
   const taken = new Set<CollectedMaterial>(pinned);
   if (total(folder) <= left) folder.forEach((m) => taken.add(m));
   else {
-    const docs = folder.filter((m) => DOC_EXT.test(m.name));
+    const docs = folder.filter((m) => DOC_EXT.test(m.name) || LEGACY_DOC_EXT.test(m.name));
     const candidates = new Set(docs.length > 0 ? docs : folder);
     const byDepth = [...candidates].map((m, i) => ({ m, i, depth: m.name.split("/").length })).sort((x, y) => x.depth - y.depth || x.i - y.i);
     for (const { m } of byDepth) {

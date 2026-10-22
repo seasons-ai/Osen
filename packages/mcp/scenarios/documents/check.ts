@@ -19,6 +19,7 @@ if (!existsSync(resolve(home)) || !statSync(resolve(home)).isDirectory() || read
 const repo = resolve(import.meta.dirname, "../../../..");
 const dir = realpathSync(resolve(home)), fx = realpathSync(resolve(fxArg));
 const EXPECTED = readFileSync(join(fx, "expected.txt"), "utf8");
+const EXPECTED_RTF = readFileSync(join(fx, "expected-rtf.txt"), "utf8");
 const baseEnv = { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", COUNCIL_LANG: lang, COUNCIL_HOME: dir, COUNCIL_DEV: "1" };
 let n = 0;
 const ok = (s: string) => { n++; console.log(`ok: ${s}`); };
@@ -59,13 +60,26 @@ async function main() {
   assert.equal(readFileSync(snapshot, "utf8"), EXPECTED);
   ok(`MCP: council_start with report.docx — materials.count 1, chars ${EXPECTED.length}; session finished (${fin.status}); the journal has the text sha256; m1.txt equals the text`);
 
+  // RTF (change 211): the same checks, the text must equal the one the terminal got
+  const sr = json(await start([join(fx, "note.rtf")]), "council_start rtf");
+  assert.equal(sr.materials.count, 1);
+  assert.equal(sr.materials.chars, EXPECTED_RTF.length);
+  await done(sr.sessionId);
+  const sdr = join(dir, "sessions", sr.sessionId);
+  const mr = readFileSync(join(sdr, "events.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).find((e) => e.type === "session_created").session.materials[0];
+  assert.deepEqual([mr.chars, mr.sha256], [EXPECTED_RTF.length, sha256(EXPECTED_RTF)]);
+  const snapshotRtf = join(sdr, "materials", "m1.txt");
+  assert.equal(readFileSync(snapshotRtf, "utf8"), EXPECTED_RTF);
+  assert.ok(!readFileSync(snapshotRtf, "latin1").includes("{\\rtf"), "RTF bytes in the snapshot");
+  ok(`MCP: council_start with note.rtf — chars ${EXPECTED_RTF.length}, the journal sha256 and m1.txt equal the text, no RTF bytes`);
+
   const before = sessions().length;
   const r = await start([join(fx, "broken.docx")]);
   assert.ok(r.isError === true && body(r).includes(damaged), `broken.docx: ${r.isError} «${body(r)}»`);
   assert.equal(sessions().length, before, "a session appeared");
   ok(`MCP: a damaged .docx gives isError with "${damaged}", no new session`);
   assert.deepEqual(errors, [], "client/transport errors");
-  result = { checks: n, sha256: m.sha256, chars: m.chars, snapshot };
+  result = { checks: n, sha256: m.sha256, chars: m.chars, snapshot, rtf: { sha256: mr.sha256, chars: mr.chars, snapshot: snapshotRtf } };
 }
 
 let failed = false;

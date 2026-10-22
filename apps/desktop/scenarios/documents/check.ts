@@ -25,6 +25,7 @@ if (!existsSync(resolve(home)) || !statSync(resolve(home)).isDirectory() || read
 const dir = realpathSync(resolve(home)), fx = realpathSync(resolve(fxArg)); // the collector rejects paths through symlinks
 const scenDir = resolve(import.meta.dirname, "../../../../packages/core/scenarios/consensus");
 const EXPECTED = readFileSync(join(fx, "expected.txt"), "utf8");
+const EXPECTED_RTF = readFileSync(join(fx, "expected-rtf.txt"), "utf8");
 setProcessLanguage(lang as "ru" | "en");
 const env = { ...process.env, COUNCIL_DEV: "1", COUNCIL_HOME: dir, COUNCIL_LANG: lang };
 let n = 0;
@@ -78,33 +79,39 @@ async function main() {
   const before = tree(fx);
   const views: unknown[] = [];
 
-  // ---- 3. A good document ----
-  await good("clearMaterials");
-  const v = await good<MaterialsView>("attachMaterials", [join(fx, "report.docx")]);
-  views.push(v);
-  assert.equal(v.error, null);
-  assert.equal(v.items.length, 1);
-  assert.ok(v.items[0]!.name.endsWith("report.docx"));
-  assert.equal(v.items[0]!.chars, EXPECTED.length);
-  ok(`app: attachMaterials(report.docx) - one material in the list, chars ${EXPECTED.length}`);
-  const pv = await good<MaterialsPreviewView>("previewMaterials", false);
-  views.push(pv);
-  assert.ok(pv.initial?.includes(EXPECTED), "no document text in \"Owner's materials\"");
-  assert.ok(!pv.initial.includes("PK\x03\x04") && !pv.initial.includes("word/document.xml"));
-  ok("app: the \"Owner's materials\" preview contains the document text and no document bytes");
-  const r = await call("startSession", { templateId: null, topic: "Что в документе?", participants: two, maxRounds: 3, useMaterials: true, preparedHandle: pv.handle });
-  assert.ok(r.ok && (r.value as { id: string | null }).id !== null, `start: ${r.ok ? (r.value as { error?: string }).error : r.error}`);
-  const id = (r.value as { id: string }).id;
-  await Promise.allSettled(runs);
-  const session = readSession(dir, id);
-  assert.ok(session, "session created");
-  assert.ok(prompts.length > 0 && prompts.every((p) => p.includes(EXPECTED)), "not every request to a participant contains the document text");
-  const created = readFileSync(join(sessionsDir, id, "events.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).find((e) => e.type === "session_created").session;
-  const m = created.materials[0];
-  assert.deepEqual([m.chars, m.sha256], [EXPECTED.length, sha256Of(EXPECTED)]);
-  const snapshot = join(sessionsDir, id, "materials", "m1.txt");
-  assert.equal(readFileSync(snapshot, "utf8"), EXPECTED);
-  ok(`app: startSession by the accepted set - all ${prompts.length} requests to participants contain the document text, the journal has the text sha256, m1.txt equals the text`);
+  // ---- 3. A good document, then RTF (change 211) through the same path ----
+  async function accepted(file: string, expected: string, what: string) {
+    await good("clearMaterials");
+    const v = await good<MaterialsView>("attachMaterials", [join(fx, file)]);
+    views.push(v);
+    assert.equal(v.error, null);
+    assert.equal(v.items.length, 1);
+    assert.ok(v.items[0]!.name.endsWith(file));
+    assert.equal(v.items[0]!.chars, expected.length);
+    ok(`app: attachMaterials(${file}) - one material in the list, chars ${expected.length}`);
+    const pv = await good<MaterialsPreviewView>("previewMaterials", false);
+    views.push(pv);
+    assert.ok(pv.initial?.includes(expected), "no document text in \"Owner's materials\"");
+    assert.ok(!pv.initial.includes("PK\x03\x04") && !pv.initial.includes("word/document.xml") && !pv.initial.includes("{\\rtf"));
+    ok(`app: the "Owner's materials" preview contains the ${what} text and no document bytes`);
+    const promptsBefore = prompts.length;
+    const r = await call("startSession", { templateId: null, topic: "Что в документе?", participants: two, maxRounds: 3, useMaterials: true, preparedHandle: pv.handle });
+    assert.ok(r.ok && (r.value as { id: string | null }).id !== null, `start: ${r.ok ? (r.value as { error?: string }).error : r.error}`);
+    const id = (r.value as { id: string }).id;
+    await Promise.allSettled(runs);
+    assert.ok(readSession(dir, id), "session created");
+    const mine = prompts.slice(promptsBefore);
+    assert.ok(mine.length > 0 && mine.every((p) => p.includes(expected)), "not every request to a participant contains the document text");
+    const created = readFileSync(join(sessionsDir, id, "events.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).find((e) => e.type === "session_created").session;
+    const m = created.materials[0];
+    assert.deepEqual([m.chars, m.sha256], [expected.length, sha256Of(expected)]);
+    const snapshot = join(sessionsDir, id, "materials", "m1.txt");
+    assert.equal(readFileSync(snapshot, "utf8"), expected);
+    ok(`app: startSession by the accepted set (${file}) - all ${mine.length} requests to participants contain the text, the journal has the text sha256, m1.txt equals the text`);
+    return { sha256: m.sha256 as string, chars: m.chars as number, snapshot };
+  }
+  const word = await accepted("report.docx", EXPECTED, "document");
+  const rtf = await accepted("note.rtf", EXPECTED_RTF, "RTF");
 
   // ---- Refusal ----
   await good("clearMaterials");
@@ -117,7 +124,7 @@ async function main() {
   // ---- sources ----
   assert.deepEqual(tree(fx), before, "the source files changed");
   ok("the source files are byte-for-byte unchanged");
-  result = { checks: n, sha256: m.sha256, chars: m.chars, snapshot };
+  result = { checks: n, ...word, rtf };
 }
 
 let failed = false;

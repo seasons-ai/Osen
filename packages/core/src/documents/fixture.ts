@@ -100,3 +100,77 @@ export function makeDocx(spec: DocxSpec): Uint8Array {
     ...(spec.extraParts ?? []),
   ]);
 }
+
+// RTF text: \ { } escaped, non-ASCII as \uN? with signed 16-bit UTF-16 code units (a surrogate pair is two \uN)
+export function makeRtf(paragraphs: string[]): string {
+  const esc = (s: string): string => {
+    let out = "";
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c === 0x5c || c === 0x7b || c === 0x7d) out += `\\${s[i]}`;
+      else if (c === 0x0a) out += "\\line ";
+      else if (c < 0x80) out += s[i];
+      else out += `\\u${c > 32767 ? c - 65536 : c}?`;
+    }
+    return out;
+  };
+  return `{\\rtf1\\ansi\\deff0 ${paragraphs.map((t) => `${esc(t)}\\par\n`).join("")}}`;
+}
+
+export interface CfbSpec {
+  /** Names of the empty streams under the root entry, in any order */
+  streams: string[];
+  /** The last directory sector points back at the first one */
+  loop?: boolean;
+  /** The last directory sector points outside the file */
+  outside?: boolean;
+  /** Sector shift in the header (9 when absent) */
+  shift?: number;
+}
+
+// Minimal CFB writer: 512-byte sectors, FAT sectors first, then the directory chain; streams are empty.
+export function makeCfb(spec: CfbSpec): Uint8Array {
+  const entries = 1 + spec.streams.length;
+  const nDir = Math.ceil(entries / 4);
+  let nFat = 1;
+  while (nFat * 128 < nFat + nDir) nFat++;
+  if (nFat > 109) throw new Error("too many streams for the fixture");
+  const out = Buffer.alloc(512 * (1 + nFat + nDir), 0);
+  Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]).copy(out);
+  out.writeUInt16LE(0x3e, 0x18);
+  out.writeUInt16LE(3, 0x1a);
+  out.writeUInt16LE(0xfffe, 0x1c);
+  out.writeUInt16LE(spec.shift ?? 9, 0x1e);
+  out.writeUInt16LE(6, 0x20);
+  out.writeUInt32LE(nFat, 0x2c);
+  out.writeUInt32LE(nFat, 0x30);
+  out.writeUInt32LE(0x1000, 0x38);
+  out.writeUInt32LE(0xfffffffe, 0x3c);
+  out.writeUInt32LE(0xfffffffe, 0x44);
+  for (let i = 0; i < 109; i++) out.writeUInt32LE(i < nFat ? i : 0xffffffff, 0x4c + i * 4);
+  const fat = new Array<number>(nFat * 128).fill(0xffffffff);
+  for (let i = 0; i < nFat; i++) fat[i] = 0xfffffffd;
+  for (let i = 0; i < nDir; i++) fat[nFat + i] = i === nDir - 1 ? (spec.loop ? nFat : spec.outside ? 99_999 : 0xfffffffe) : nFat + i + 1;
+  fat.forEach((v, i) => out.writeUInt32LE(v, 512 + i * 4));
+  const dir = 512 * (1 + nFat);
+  const put = (id: number, name: string, type: number, left: number, right: number, child: number): void => {
+    const e = dir + id * 128;
+    out.write(name, e, "utf16le");
+    out.writeUInt16LE(name === "" ? 0 : name.length * 2 + 2, e + 0x40);
+    out[e + 0x42] = type;
+    out.writeUInt32LE(left, e + 0x44);
+    out.writeUInt32LE(right, e + 0x48);
+    out.writeUInt32LE(child, e + 0x4c);
+    out.writeUInt32LE(0xfffffffe, e + 0x74);
+  };
+  // balanced tree over the stream order; entries beyond the list stay unallocated (no-stream links)
+  const build = (lo: number, hi: number): number => {
+    if (lo >= hi) return 0xffffffff;
+    const mid = (lo + hi) >> 1;
+    put(mid + 1, spec.streams[mid]!, 2, build(lo, mid), build(mid + 1, hi), 0xffffffff);
+    return mid + 1;
+  };
+  put(0, "Root Entry", 5, 0xffffffff, 0xffffffff, build(0, spec.streams.length));
+  for (let id = entries; id < nDir * 4; id++) put(id, "", 0, 0xffffffff, 0xffffffff, 0xffffffff);
+  return out;
+}
