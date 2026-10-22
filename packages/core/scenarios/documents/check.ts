@@ -1,4 +1,4 @@
-// Live check of local document materials (Word DOCX/DOCM, Excel XLSX/XLSM, PowerPoint PPTX/PPTM): terminal (real council), MCP over stdio and the app's main process.
+// Live check of local document materials (Word DOCX/DOCM, Excel XLSX/XLSM, PowerPoint PPTX/PPTM, RTF, Word 97-2003 DOC, encrypted Office files): terminal (real council), MCP over stdio and the app's main process.
 // Participants are scripted only, 0 real model calls. Every step runs twice, on ru and on en (process language, COUNCIL_LANG of the child processes).
 // All files live in COUNCIL_HOME (resolved through realpath: the collector rejects paths through symlinks).
 //   COUNCIL_DEV=1 node packages/core/scenarios/documents/check.ts
@@ -7,14 +7,19 @@
 // The MCP and app parts run as child processes (packages/mcp/scenarios/documents/check.ts, apps/desktop/scenarios/documents/check.ts).
 // Documents are generated in code (packages/core/src/documents/fixture.ts), no binary files.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
-import { collectMaterials, setDocumentExtractorRuntime, setProcessLanguage } from "../../src/index.ts";
-import { makePptx, makeXlsx, makeDocx, makeZip, p, pptxTable, sp, table } from "../../src/documents/fixture.ts";
+import { promisify } from "node:util";
+import { collectMaterials, DOC_LIMITS, documentReason, extractDocumentText, MaterialsError, setDocumentExtractorRuntime, setProcessLanguage } from "../../src/index.ts";
+import { makeCfb, makeDocx, makePptx, makeRtf, makeXlsx, makeZip, p, pptxTable, sp, table } from "../../src/documents/fixture.ts";
+import { SANDBOX_PROFILE } from "../../src/documents/textutil.ts";
+import { odfEpubSuite } from "./odf-epub.ts";
+
+const run1 = promisify(execFile);
 
 const repo = resolve(import.meta.dirname, "../../../..");
 const home = process.env.COUNCIL_HOME;
@@ -32,6 +37,9 @@ const SECRET = "stand-secret-value";
 // ---- Expected texts (the fixtures below are built to give exactly this) ----
 const EXPECTED = "Первый абзац отчёта\nВторой абзац отчёта\nЯчейка А1\tЯчейка Б1\nЯчейка А2\tЯчейка Б2\n\nСноска: источник данных";
 const shaExp = createHash("sha256").update(Buffer.from(EXPECTED, "utf8")).digest("hex");
+const RTF_PARAS = ["Первый абзац", "Второй абзац"];
+const RTF_EXPECTED = RTF_PARAS.join("\n");
+const shaRtf = createHash("sha256").update(Buffer.from(RTF_EXPECTED, "utf8")).digest("hex");
 const REPORT = { body: p("Первый абзац отчёта") + p("Второй абзац отчёта") + table([["Ячейка А1", "Ячейка Б1"], ["Ячейка А2", "Ячейка Б2"]]), footnotes: `<w:footnote w:id="1">${p("Сноска: источник данных")}</w:footnote>` };
 
 // ---- XLSX and PPTX fixtures (the expected texts are written out by hand, not taken from the extractor) ----
@@ -73,9 +81,10 @@ function bigBook(cells: number): Uint8Array {
   return makeXlsx({ sheets: [{ name: "Big", sheetData: rows.join("") }] });
 }
 
-interface Texts { session: RegExp; summary: (n: number, chars: number) => RegExp; rejected: string; skipped: (n: number) => RegExp; leftOut: (n: number) => RegExp; reason: Record<string, string>; nonText: string; nonTextSkipped: string }
+interface Texts { unavailable: string; session: RegExp; summary: (n: number, chars: number) => RegExp; rejected: string; skipped: (n: number) => RegExp; leftOut: (n: number) => RegExp; reason: Record<string, string>; nonText: string; nonTextSkipped: string }
 const T: Record<"ru" | "en", Texts> = {
   ru: {
+    unavailable: "не удалось извлечь текст — системная утилита textutil недоступна",
     session: /^Сессия (\S+) ·/m, summary: (n, c) => new RegExp(`^Материалы: ${n}, объём ${c} символов`, "m"), rejected: "Материалы не приняты:",
     skipped: (n) => new RegExp(`^Пропущено: ${n}$`, "m"), leftOut: (n) => new RegExp(`^Не вошло в исходный набор: ${n} `, "m"),
     reason: {
@@ -86,6 +95,7 @@ const T: Record<"ru" | "en", Texts> = {
     nonText: "нетекстовый файл (не UTF-8 или бинарные данные)", nonTextSkipped: "нетекстовый файл",
   },
   en: {
+    unavailable: "text could not be extracted — the system utility textutil is unavailable",
     session: /^Session (\S+) ·/m, summary: (n, c) => new RegExp(`^Materials: ${n}, size ${c} characters`, "m"), rejected: "Materials not accepted:",
     skipped: (n) => new RegExp(`^Skipped: ${n}$`, "m"), leftOut: (n) => new RegExp(`^Not in the initial set: ${n} `, "m"),
     reason: {
@@ -187,16 +197,16 @@ function pair(name: string, mark?: string): string[] {
 const parts = (p2: string[]) => ["--participant", p2[0]!, "--participant", p2[1]!];
 
 /** Child stand: ok lines are forwarded, the RESULT line is parsed. */
-async function subStand(what: string, script: string, dataDir: string, lang: string, extra: string[]) {
+async function subStand(what: string, script: string, dataDir: string, lang: string, extra: string[], fixtures = fx) {
   mkdirSync(dataDir, { recursive: true });
-  const r = proc(process.execPath, [join(repo, script), fx, lang, ...extra], { ...baseEnv, COUNCIL_LANG: lang, COUNCIL_HOME: dataDir });
+  const r = proc(process.execPath, [join(repo, script), fixtures, lang, ...extra], { ...baseEnv, COUNCIL_LANG: lang, COUNCIL_HOME: dataDir });
   const code = await r.exited;
   const lines = r.out.split("\n");
   for (const l of lines) if (l && !l.startsWith("RESULT ")) console.log(l);
   if (code !== 0) throw new Error(`part "${what}" (${lang}) exited with code ${code}${r.err ? `\n${r.err}` : ""}`);
   const line = lines.find((l) => l.startsWith("RESULT "));
   assert.ok(line, `part "${what}" printed no RESULT`);
-  const res = JSON.parse(line.slice(7)) as { checks: number; sha256: string; chars: number; snapshot: string };
+  const res = JSON.parse(line.slice(7)) as { checks: number; sha256: string; chars: number; snapshot: string; rtf: { sha256: string; chars: number; snapshot: string } };
   checks += res.checks;
   return res;
 }
@@ -259,6 +269,70 @@ async function suite(lang: "ru" | "en") {
     assert.equal(readFileSync(r.snapshot, "utf8"), EXPECTED, `${what}: snapshot`);
   }
   ok(`${tag} 3: parity: chars ${EXPECTED.length} and sha256 are identical in the terminal, MCP council_start and the app main modules`);
+
+  // ---- L1/L2. RTF: terminal, then the same text, chars and sha256 through MCP and the app ----
+  const rtfRun = await attach("l1", join(fx, "note.rtf"), RTF_EXPECTED);
+  assert.equal(rtfRun.code, 0, `code ${rtfRun.code}${dump(rtfRun.r)}`);
+  assert.match(rtfRun.r.out, t.summary(1, RTF_EXPECTED.length), `summary${dump(rtfRun.r)}`);
+  const idRtf = sessionId(rtfRun.r);
+  const mRtf = created(idRtf).materials;
+  assert.equal(mRtf.length, 1);
+  assert.ok(String(mRtf[0].name).endsWith("note.rtf"), mRtf[0].name);
+  assert.deepEqual([mRtf[0].chars, mRtf[0].sha256], [RTF_EXPECTED.length, shaRtf]);
+  const snapRtf = join(sdir(idRtf), "materials", "m1.txt");
+  const snapText = readFileSync(snapRtf, "utf8");
+  assert.equal(snapText, RTF_EXPECTED, "m1.txt");
+  assert.ok(RTF_PARAS.every((q) => snapText.includes(q)) && snapText.indexOf(RTF_PARAS[0]!) < snapText.indexOf(RTF_PARAS[1]!), "paragraphs are missing or out of order");
+  assert.ok(!allFiles(sdir(idRtf)).some((f) => readFileSync(f, "latin1").includes("{\\rtf")), "RTF bytes in the session folder");
+  const rtfPrompts = promptLines().filter((l) => (JSON.parse(l) as { prompt: string }).prompt.includes(RTF_EXPECTED));
+  assert.ok(rtfPrompts.length >= 2, "the turn requests do not carry the RTF text");
+  ok(`${tag} L1: council --attach note.rtf — the summary counts 1 material named note.rtf in the journal, m1.txt = both paragraphs in order, no RTF bytes, ${rtfPrompts.length} turn requests carry the text`);
+  const mcpRtf = await subStand("MCP RTF", "packages/mcp/scenarios/documents/check.ts", join(work, `mcp-RTF-${lang}`), lang, [t.reason.damaged, "note.rtf", "expected-rtf.txt"]);
+  const deskRtf = await subStand("app RTF", "apps/desktop/scenarios/documents/check.ts", join(work, `desktop-RTF-${lang}`), lang, [t.reason.damaged, "note.rtf", "expected-rtf.txt"]);
+  for (const [what, r] of [["MCP", mcpRtf], ["app", deskRtf]] as const) {
+    assert.ok(!readFileSync(r.snapshot, "latin1").includes("{\\rtf"), `${what}: RTF bytes in the snapshot`);
+    assert.deepEqual([r.sha256, r.chars], [shaRtf, RTF_EXPECTED.length], `${what}: rtf sha256/chars`);
+    assert.equal(readFileSync(r.snapshot, "utf8"), RTF_EXPECTED, `${what}: rtf snapshot`);
+  }
+  ok(`${tag} L2: RTF parity: chars ${RTF_EXPECTED.length} and sha256 are identical in the terminal, MCP council_start and the app main modules`);
+
+  // ---- L3. Word 97-2003 DOC built by textutil, saved as legacy.bin; L4. fake.rtf is plain text ----
+  const rLegacy = await attach("l3", join(fx, "legacy.bin"), "Первая строка");
+  assert.equal(rLegacy.code, 0, dump(rLegacy.r));
+  const legacyText = readFileSync(join(sdir(sessionId(rLegacy.r)), "materials", "m1.txt"), "utf8");
+  assert.ok(legacyText.includes("Первая строка") && legacyText.includes("Вторая строка"), `legacy text: ${legacyText}`);
+  assert.ok(!readFileSync(join(sdir(sessionId(rLegacy.r)), "materials", "m1.txt"), "latin1").includes("\xd0\xcf\x11\xe0"), "CFB bytes in the snapshot");
+  ok(`${tag} L3: a .doc made by textutil and named legacy.bin is accepted by content; both fragments are in the text`);
+  const plain = "just notes, not RTF\n";
+  const rFake = await attach("l4", join(fx, "fake.rtf"), "just notes");
+  assert.equal(rFake.code, 0, dump(rFake.r));
+  assert.equal(readFileSync(join(sdir(sessionId(rFake.r)), "materials", "m1.txt"), "utf8"), plain);
+  ok(`${tag} L4: fake.rtf without {\\rtf is accepted as plain text`);
+
+  // ---- L5. Encrypted Office: explicit refusal with the encrypted reason, skipped in a folder; L6. other CFB, damaged CFB ----
+  const refuse = async (name: string, f: string, reason: string, maxMs = Infinity) => {
+    const sessionsBefore = journals().length, calls = promptLines().length, t0 = Date.now();
+    const r = await run(["--topic", "t", "--attach", f, ...parts(okPairL), "--max-rounds", "1"]);
+    assert.equal(r.code, 2, `${name}: code ${r.code}${dump(r.r)}`);
+    assert.equal(r.r.out, "", `${name}: stdout${dump(r.r)}`);
+    assert.equal(r.r.err, `${t.rejected}\n  «${basename(f)}»: ${reason}\n`, `${name}: stderr${dump(r.r)}`);
+    assert.ok(Date.now() - t0 < maxMs, `${name}: took ${Date.now() - t0} ms`);
+    assert.equal(journals().length, sessionsBefore, `${name}: a session appeared`);
+    assert.equal(promptLines().length, calls, `${name}: a participant was called`);
+  };
+  const okPairL = pair(`${lang}-l5`);
+  await refuse("encrypted", join(fx, "secret.docx"), t.reason.encrypted);
+  const rDir = await attach("l5d", join(fx, "encdir"), undefined);
+  assert.equal(rDir.code, 0, dump(rDir.r));
+  const namesDir = (created(sessionId(rDir.r)).materials as { name: string }[]).map((m) => m.name);
+  assert.ok(namesDir.length === 1 && namesDir[0]!.endsWith("README.md"), `collected: ${namesDir}`);
+  assert.match(rDir.r.out, t.skipped(1), dump(rDir.r));
+  assert.ok(rDir.r.out.split("\n").some((l) => l.includes("secret.docx") && l.includes(t.reason.encrypted)), `no skipped line with the reason${dump(rDir.r)}`);
+  assert.ok(!t.nonText.includes(t.reason.encrypted) && !rDir.r.out.includes(t.nonTextSkipped), "the non-text reason is shown for an encrypted file");
+  ok(`${tag} L5: an encrypted CFB named secret.docx — explicit attach: code 2, "${t.rejected}" + "${t.reason.encrypted}", no non-text reason; in a folder it is skipped with that reason, README collected`);
+  await refuse("no-stream", join(fx, "nostream.bin"), t.nonText);
+  await refuse("loop", join(fx, "loop.doc"), t.reason.damaged, 5000);
+  ok(`${tag} L6: a CFB with neither WordDocument nor EncryptedPackage keeps "${t.nonText}"; a CFB with a looping directory chain is "${t.reason.damaged}" in under 5 s`);
 
   // ---- 4. Tracked changes, header, comments ----
   const tracked = makeDocx({
@@ -435,6 +509,83 @@ async function suite(lang: "ru" | "en") {
   assert.ok(out8.some((l) => l.includes("broken.xlsx") && l.includes(t.reason.damaged)), `damaged line${dump(r8.r)}`);
   assert.ok(out8.some((l) => l.includes("empty.pptx") && l.includes(t.reason.noText)), `no-text line${dump(r8.r)}`);
   ok(`${tag} X8: a damaged .xlsx ("${t.reason.damaged}") and a text-less .pptx ("${t.reason.noText}") are skipped, README is collected`);
+
+  // Change 210: OpenDocument and EPUB checks with their own fixtures.
+  await odfEpubSuite({ lang, work, t, run, attach, created, sessionId, sdir, journals, promptLines, pair: (n) => pair(n), parts, subStand, dump, ok });
+}
+
+async function legacyInProcess() {
+  const opts = { materialsChars: 100_000, materialsIgnore: [] as string[] };
+  // ---- L7. textutil or sandbox-exec missing: the reason, and textutil is never started without the sandbox ----
+  const counter = join(work, "textutil-starts.txt");
+  const stub = join(fx, "textutil-stub.sh");
+  writeFileSync(stub, `#!/bin/sh\necho started >> ${JSON.stringify(counter)}\n`, { mode: 0o755 });
+  try {
+    setDocumentExtractorRuntime({ tools: { sandbox: join(work, "no-such-sandbox-exec"), textutil: stub } });
+    for (const lang of ["ru", "en"] as const) {
+      setProcessLanguage(lang);
+      for (const f of ["note.rtf", "legacy.bin"]) {
+        const file = join(fx, f);
+        try { collectMaterials([file], opts); assert.fail(`${f}: expected a refusal`); } catch (e) {
+          assert.ok(e instanceof MaterialsError, String(e));
+          assert.deepEqual(e.reasons, [`«${file}»: ${T[lang].unavailable}`]);
+        }
+      }
+    }
+    assert.ok(!existsSync(counter), "the textutil stub was started without the sandbox");
+    ok("L7: with a missing sandbox-exec, RTF and DOC give \"" + T.ru.unavailable + "\" / \"" + T.en.unavailable + "\"; the textutil stub was never started (counter file absent)");
+  } finally {
+    setDocumentExtractorRuntime();
+  }
+
+  // ---- L8. The sandbox profile: no writes, no connections ----
+  setProcessLanguage("en");
+  let hits = 0;
+  const listener = net.createServer((s) => { hits++; s.destroy(); });
+  await new Promise<void>((r) => listener.listen(0, "127.0.0.1", r));
+  const lport = (listener.address() as net.AddressInfo).port;
+  const sandboxed = (...cmd: string[]) => run1("/usr/bin/sandbox-exec", ["-p", SANDBOX_PROFILE, ...cmd], { env: {} });
+  const outcome = (p2: Promise<unknown>) => p2.then(() => 0, (e: { code?: number }) => e.code ?? -1);
+  const target = join(fx, "touched.txt");
+  assert.notEqual(await outcome(sandboxed("/usr/bin/touch", target)), 0, "touch succeeded under the profile");
+  assert.ok(!existsSync(target), "the sandboxed touch created a file");
+  assert.equal(await outcome(run1("/usr/bin/touch", [target])), 0, "control: touch without the sandbox failed");
+  assert.ok(existsSync(target), "control: no file without the sandbox");
+  const nc = ["-z", "-w", "2", "127.0.0.1", String(lport)];
+  assert.notEqual(await outcome(sandboxed("/usr/bin/nc", ...nc)), 0, "nc connected under the profile");
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(hits, 0, `the listener got ${hits} connections from the sandboxed nc`);
+  assert.equal(await outcome(run1("/usr/bin/nc", nc)), 0, "control: nc without the sandbox did not connect");
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(hits, 1, `control: expected 1 connection, got ${hits}`);
+  ok("L8: SANDBOX_PROFILE refuses a file write (touch, file absent) and a connection (nc, 0 hits); the control runs without the sandbox write the file and connect (1 hit)");
+  hits = 0;
+  const url = `http://127.0.0.1:${lport}`;
+  const linkRtf = `{\\rtf1\\ansi {\\field{\\*\\fldinst HYPERLINK "${url}/link"}{\\fldrslt link text}} {\\field{\\*\\fldinst INCLUDEPICTURE "${url}/pic.png"}{\\fldrslt picture text}}\\par}`;
+  const linkFile = join(fx, "links.rtf");
+  writeFileSync(linkFile, linkRtf);
+  const got = collectMaterials([linkFile], opts).materials[0]!.text;
+  assert.ok(got.includes("link text"), `links.rtf text: ${got}`);
+  await new Promise((r) => setTimeout(r, 500));
+  assert.equal(hits, 0, `the listener got ${hits} connections from an RTF with HYPERLINK and INCLUDEPICTURE`);
+  listener.close();
+  ok("L8: an RTF with HYPERLINK and INCLUDEPICTURE fields pointing at the local listener is converted and makes 0 connections");
+
+  // ---- L9. Reduced limits: the refusal names the limit ----
+  const bigRtf = new Uint8Array(Buffer.from(makeRtf(Array.from({ length: 40_000 }, () => "строка для проверки предела входа"))));
+  const small = new Uint8Array(Buffer.from(makeRtf(["строка", "ещё строка"])));
+  const lim = (over: Partial<typeof DOC_LIMITS>) => ({ ...DOC_LIMITS, ...over });
+  const refused = (bytes: Uint8Array, over: Partial<typeof DOC_LIMITS>, code: string, mention: RegExp) => {
+    const l = lim(over);
+    const r = extractDocumentText(bytes, l);
+    assert.ok(!r.ok && r.code === code, `expected ${code}, got ${JSON.stringify(r)}`);
+    assert.match(documentReason(r, l), mention);
+  };
+  assert.ok(bigRtf.length > 1 << 20, `the big RTF is ${bigRtf.length} bytes`);
+  refused(bigRtf, { bytes: 1 << 20 }, "bytes", /larger than 1 MiB/);
+  refused(small, { chars: 5 }, "chars", /longer than 5/);
+  refused(small, { ms: 1 }, "timeout", /longer than/);
+  ok("L9: reduced limits give refusals that name the limit: input 1 MiB, output 5 characters, time 1 ms (source files are checked unchanged at the end)");
 }
 
 async function inProcess() {
@@ -484,10 +635,23 @@ async function main() {
   writeFileSync(join(fx, "deck.pptx"), makePptx(PPTX_SPEC));
   writeFileSync(join(fx, "deck-expected.txt"), PPTX_EXPECTED);
   writeFileSync(join(fx, "big.xlsx"), bigBook(1_000_001));
+  // RTF and legacy fixtures (change 211)
+  writeFileSync(join(fx, "note.rtf"), makeRtf(RTF_PARAS));
+  writeFileSync(join(fx, "expected-rtf.txt"), RTF_EXPECTED);
+  writeFileSync(join(fx, "x.rtf"), makeRtf(["Первая строка", "Вторая строка"]));
+  await run1("/usr/bin/textutil", ["-convert", "doc", "-output", join(fx, "legacy.bin"), join(fx, "x.rtf")]);
+  writeFileSync(join(fx, "fake.rtf"), "just notes, not RTF\n");
+  writeFileSync(join(fx, "secret.docx"), makeCfb({ streams: ["EncryptedPackage", "EncryptionInfo"] }));
+  mkdirSync(join(fx, "encdir"), { recursive: true });
+  writeFileSync(join(fx, "encdir", "README.md"), "Описание проекта.\n");
+  writeFileSync(join(fx, "encdir", "secret.docx"), makeCfb({ streams: ["EncryptedPackage", "EncryptionInfo"] }));
+  writeFileSync(join(fx, "nostream.bin"), makeCfb({ streams: ["Workbook"] }));
+  writeFileSync(join(fx, "loop.doc"), makeCfb({ streams: ["WordDocument"], loop: true }));
   const srcBefore = Object.fromEntries(allFiles(fx).map((f) => [f, sha(readFileSync(f))]));
-  const keep = ["report.docx", "report-macro.docm", "broken.docx", "sheet.xlsx", "sheet-macro.xlsm", "deck.pptx", "big.xlsx"].map((n) => join(fx, n));
+  const keep = ["report.docx", "report-macro.docm", "broken.docx", "sheet.xlsx", "sheet-macro.xlsm", "deck.pptx", "big.xlsx", "note.rtf", "legacy.bin", "fake.rtf", "secret.docx", "nostream.bin", "loop.doc", "encdir/README.md", "encdir/secret.docx"].map((n) => join(fx, n));
   for (const lang of ["ru", "en"] as const) await suite(lang);
   await inProcess();
+  await legacyInProcess();
   for (const f of keep) assert.equal(sha(readFileSync(f)), srcBefore[f], `${f} changed`);
   ok("source documents are byte-identical after all parts");
   const files = allFiles(work).filter((f) => !f.startsWith(fx));
