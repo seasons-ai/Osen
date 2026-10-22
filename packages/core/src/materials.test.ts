@@ -125,7 +125,7 @@ describe("collectMaterials", () => {
   });
 
   const bad: [string, Buffer][] = [
-    ["невалидный UTF-8", Buffer.from([0x61, 0xff, 0xfe, 0x62])],
+    ["невалидный UTF-8 с управляющим байтом", Buffer.from([0x61, 0xff, 0xfe, 0x62, 0x01])],
     ["NUL", Buffer.from("a\0b")],
   ];
   for (const [label, bytes] of bad) {

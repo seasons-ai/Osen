@@ -7,10 +7,12 @@ import type { Ignore } from "ignore";
 import { FOLDER_LIMITS, folderStats } from "./protocol/folder.ts";
 import type { FolderFile } from "./protocol/folder.ts";
 import { CFB_SIGNATURE } from "./documents/cfb.ts";
-import { documentReason, readDocumentText } from "./documents/extract.ts";
+import { DOC_LIMITS, documentReason, readDocumentText } from "./documents/extract.ts";
+import { expandArchive } from "./materials-archive.ts";
 import { pdfReason, readPdfText } from "./pdf/extract.ts";
 import { imageSignature, type ImageFormat } from "./ocr/image-header.ts";
 import { imageReason, OCR_LIMITS, readImageText } from "./ocr/run.ts";
+import { decodeFileText } from "./text-encoding.ts";
 import { materialsMessages } from "./messages/materials.ts";
 
 export interface CollectedMaterial {
@@ -71,11 +73,13 @@ function readRules(abs: string): string {
 }
 
 // A nested .gitignore rule is rewritten into a path from the attached folder: all rules lie in one list, and the "deeper — later" order gives git's priority.
-function rebaseRule(line: string, base: string): string {
+export function rebaseRule(line: string, base: string): string {
   if (line.trim() === "" || line.startsWith("#")) return line;
   const negative = line.startsWith("!");
   const body = negative ? line.slice(1) : line;
-  const core = body.replace(/\/*\s*$/, "");
+  // linear form of /\/*\s*$/: the old regex is quadratic on a long whitespace run (.gitignore of an archive is third-party input)
+  let core = body.trimEnd();
+  while (core.endsWith("/")) core = core.slice(0, -1);
   if (core === "") return ""; // "!", "/", "!/" match nothing in git, while the parser would take "!" as return-everything
   if (base === "") return line;
   const anchored = core.includes("/");
@@ -83,7 +87,7 @@ function rebaseRule(line: string, base: string): string {
   return `${negative ? "!" : ""}/${prefix}/${anchored ? body.replace(/^\//, "") : `**/${body}`}`;
 }
 
-function isEnvName(name: string): boolean {
+export function isEnvName(name: string): boolean {
   return name === ".env" || name.startsWith(".env.");
 }
 
@@ -91,7 +95,7 @@ export function sha256Of(text: string): string {
   return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 }
 
-function errText(e: unknown): string {
+export function errText(e: unknown): string {
   const err = e as NodeJS.ErrnoException;
   return err.code ?? err.message;
 }
@@ -101,7 +105,7 @@ function isMissing(e: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR";
 }
 
-function compare(a: string, b: string): number {
+export function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -116,7 +120,7 @@ export function decodeText(bytes: Buffer): string | undefined {
 }
 
 // string — text, undefined — non-text, { refused } — the PDF, document or image was refused with a reason, { image } — an image whose recognition is deferred (defer)
-function readText(abs: string, defer = false): string | { refused: string } | { image: ImageFormat } | undefined {
+function readText(abs: string, defer = false): string | { refused: string } | { image: ImageFormat } | { archive: true } | undefined {
   const fd = openSync(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     if (!fstatSync(fd).isFile()) throw new Error(materialsMessages().notRegularFile);
@@ -126,10 +130,13 @@ function readText(abs: string, defer = false): string | { refused: string } | { 
       const r = readPdfText(fd);
       return r.ok ? r.text : { refused: pdfReason(r) };
     }
+    // an empty ZIP is only the end record: it goes to the archive reader, which refuses it as empty
+    if (n === 22 && head.readUInt32LE(0) === 0x06054b50) return defer ? { refused: materialsMessages().archiveInFolder } : { archive: true };
     if (n >= 4 && head.readUInt32LE(0) === 0x04034b50) {
       const r = readDocumentText(fd);
       if (r.ok) return r.text;
-      if (r.code === "unsupported" || r.code === "bytes") return undefined;
+      if (r.code === "bytes") return { refused: materialsMessages().zipTooLarge(DOC_LIMITS.bytes / 2 ** 20) };
+      if (r.code === "unsupported") return defer ? { refused: materialsMessages().archiveInFolder } : { archive: true };
       return { refused: documentReason(r) };
     }
     // RTF is ASCII, so this check comes before the plain-text decode; CFB covers DOC and encrypted Office files
@@ -147,9 +154,8 @@ function readText(abs: string, defer = false): string | { refused: string } | { 
       const r = readImageText(fd, image);
       return r.ok ? r.text : { refused: imageReason(r) };
     }
-    if (head.subarray(0, n).includes(0)) return undefined;
     // ponytail: a large text file is read entirely before the limit check; a streaming count — if folders with gigabyte logs become normal
-    return decodeText(readFileSync(fd));
+    return decodeFileText(head.subarray(0, n), () => readFileSync(fd));
   } finally {
     closeSync(fd);
   }
@@ -176,7 +182,7 @@ function findSymlink(abs: string): string | undefined {
   return undefined;
 }
 
-const nameKey = (s: string) => s.normalize("NFC").toLowerCase();
+export const nameKey = (s: string) => s.normalize("NFC").toLowerCase();
 
 /** Names of the attached folders in materials: same-named ones are told apart by the suffix " (N)". folders — absolute paths in attachment order; result: path → name. */
 export function folderPrefixes(folders: readonly string[]): Map<string, string> {
@@ -222,6 +228,14 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
   const returned = new Set<string>();
   const shownRule = new Map<string, string>();
   const prefixes = attachedFolderPrefixes(paths);
+  const archiveKeys = new Set([...prefixes.values()].map(nameKey));
+  // an archive prefix is the file name; same-named ones are told apart by " (N)" like folders
+  function archivePrefix(base: string): string {
+    let prefix = base;
+    for (let n = 2; archiveKeys.has(nameKey(prefix)); n++) prefix = `${base} (${n})`;
+    archiveKeys.add(nameKey(prefix));
+    return prefix;
+  }
 
   function addRules(parent: Ignore, dir: string, rel: string): Ignore {
     const lines = readRules(join(dir, ".gitignore")).split(/\r?\n/);
@@ -292,7 +306,7 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
             const text = readText(abs, true);
             if (text === undefined) skip(m.notText);
             else if (typeof text === "object" && "image" in text) out.push({ rel: eRel, abs, image: text.image });
-            else if (typeof text === "object") skip(text.refused);
+            else if (typeof text === "object") skip("refused" in text ? text.refused : m.notText);
             else {
               seen.add(abs);
               out.push({ rel: eRel, text });
@@ -357,7 +371,15 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
       } else if (!seen.has(abs)) {
         const text = readText(abs);
         if (text === undefined) reasons.push(m.pathNamed(p, m.notTextExplicit));
-        else if (typeof text === "object") reasons.push(m.pathNamed(p, "refused" in text ? text.refused : m.notTextExplicit));
+        else if (typeof text === "object" && "archive" in text) {
+          const r = expandArchive(abs, archivePrefix(base), options);
+          if ("refused" in r) for (const reason of r.refused) reasons.push(m.pathNamed(p, reason));
+          else {
+            seen.add(abs);
+            found.push(...r.materials);
+            skipped.push(...r.skipped);
+          }
+        } else if (typeof text === "object") reasons.push(m.pathNamed(p, "refused" in text ? text.refused : m.notTextExplicit));
         else addFile(abs, base, text);
       }
     } catch (e) {
