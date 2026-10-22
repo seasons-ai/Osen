@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { cliMessages } from "../../src/messages/cli.ts";
@@ -290,6 +290,84 @@ try {
     assert.deepEqual(calls().slice(mark7a3).map((c) => `${c.agent}@${c.version}`), ["claude@2.1.290", "claude@2.1.291"]);
   }
   ok("step 7a3 claude 2.1.290 recorded, SIGINT during the install of 2.1.291, en and ru: exit 1, empty stdout, the line names claude 2.1.290 and not \"nothing recorded\", 2.1.290 stays in the record, no 2.1.291, nothing left");
+  // 7a4, 7a5: SIGTERM and SIGHUP stop the check like Ctrl+C (change 201); 7a6: with a recorded first candidate
+  const signalRun = async (h: string, signal: NodeJS.Signals, o: RunOpts, waitPrefix: string, recordedFirst = false) => {
+    const c = spawn(process.execPath, [entry, "cli", "candidates", "--agent", "claude", "--json"], { env: childEnv(h, o), cwd: repo, stdio: ["ignore", "pipe", "pipe"] });
+    let so = "", se = "";
+    c.stdout.on("data", (d) => (so += d));
+    c.stderr.on("data", (d) => (se += d));
+    const closed = new Promise<{ code: number | null; sig: string | null }>((res) => c.on("close", (code, sig) => res({ code, sig })));
+    const t0 = Date.now();
+    const dir = join(h, "cli-candidates");
+    while (!((!recordedFirst || readFileSync(recordFile(h), "utf8").includes('"2.1.290"')) && existsSync(dir) && readdirSync(dir).some((x) => x.startsWith(waitPrefix)))) {
+      if (Date.now() - t0 > 20_000) { c.kill("SIGKILL"); throw new Error(`the ${waitPrefix} prefix did not appear\n${se}`); }
+      await sleep(50);
+    }
+    c.kill(signal);
+    const res = await Promise.race([closed, sleep(20_000).then(() => { c.kill("SIGKILL"); return { code: -999, sig: null }; })]);
+    return { ...res, out: so, err: se };
+  };
+  for (const signal of ["SIGTERM", "SIGHUP"] as const) {
+    const S = prepare();
+    const before = readFileSync(recordFile(S));
+    const r = await signalRun(S, signal, { slowInstallMs: 20_000, slowOnly: "claude@2.1.290" }, "claude-2.1.290-");
+    assert.deepEqual({ code: r.code, sig: r.sig }, { code: 1, sig: null }, r.err);
+    assert.equal(r.out, "");
+    assert.equal(r.err.trim(), cliMessages("en").candidatesInterrupted([]));
+    assert.ok(!existsSync(join(S, "cli-candidates")));
+    assert.deepEqual(readFileSync(recordFile(S)), before);
+    ok(`step 7a4 ${signal} during the install of claude 2.1.290: exit 1 (not killed by the signal), empty stdout, the same interruption line as Ctrl+C, <home>/cli-candidates removed, the record unchanged`);
+  }
+  {
+    const S = prepare();
+    const r = await signalRun(S, "SIGTERM", { slowInstallMs: 20_000, slowOnly: "claude@2.1.291" }, "claude-2.1.291-", true);
+    assert.deepEqual({ code: r.code, sig: r.sig }, { code: 1, sig: null }, r.err);
+    assert.equal(r.out, "");
+    assert.equal(r.err.trim(), cliMessages("en").candidatesInterrupted([{ agent: "claude", version: "2.1.290" }]));
+    assert.match(r.err, /claude 2\.1\.290/);
+    assert.ok(readFileSync(recordFile(S), "utf8").includes('"2.1.290"'));
+    assert.ok(!existsSync(join(S, "cli-candidates")));
+    ok("step 7a5 claude 2.1.290 recorded, SIGTERM during the install of 2.1.291: exit 1, the line names claude 2.1.290, the record entry stays, nothing left");
+  }
+  // 7a6: leftovers of killed runs are swept at the start of the next run
+  {
+    const S = prepare();
+    const dir = join(S, "cli-candidates");
+    const mk = (name: string, owner?: string, ageMs = 0) => {
+      const p = join(dir, name);
+      mkdirSync(p, { recursive: true });
+      writeFileSync(join(p, "payload"), "x");
+      if (owner !== undefined) writeFileSync(join(p, "owner.pid"), owner);
+      const t = new Date(Date.now() - ageMs);
+      utimesSync(p, t, t);
+      return p;
+    };
+    const gone = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+    await new Promise((res) => gone.on("close", res));
+    const HOUR = 3_600_000;
+    const dead = mk("claude-2.1.290-dead", String(gone.pid));
+    const stale = mk("claude-2.1.290-stale", undefined, HOUR + 60_000);
+    const staleNum = mk("claude-2.1.290-nan", "not-a-pid", HOUR + 60_000);
+    const live = mk("claude-2.1.290-live", String(process.pid), 5 * HOUR);
+    const fresh = mk("claude-2.1.290-fresh", undefined, 60_000);
+    const freshNum = mk("claude-2.1.290-nanfresh", "not-a-pid", 60_000); // decision: a non-numeric owner.pid is treated exactly like no file, so a fresh one stays
+    const r = await run(S, ["cli", "candidates", "--agent", "claude", "--json"]);
+    assert.equal(r.code, 0, r.err);
+    for (const p of [dead, stale, staleNum]) assert.ok(!existsSync(p), `${p} must be removed`);
+    for (const p of [live, fresh, freshNum]) assert.ok(existsSync(join(p, "payload")), `${p} must stay untouched`);
+    ok("step 7a6 leftovers: the prefix of a finished process, a stale (> 1 h) one without owner.pid and a stale one with a non-numeric owner.pid are removed; the prefix of a live process, a fresh one without owner.pid and a fresh non-numeric one stay with their files");
+    const S2 = prepare();
+    const gone2 = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+    await new Promise((res) => gone2.on("close", res));
+    mkdirSync(join(S2, "cli-candidates", "claude-2.1.290-dead"), { recursive: true });
+    writeFileSync(join(S2, "cli-candidates", "claude-2.1.290-dead", "owner.pid"), String(gone2.pid));
+    setReleases({ claude: ["2.1.288"], codex: ["0.159.2"] });
+    const r2b = await run(S2, ["cli", "candidates", "--json"]);
+    setReleases(RELEASES);
+    assert.equal(r2b.code, 0, r2b.err);
+    assert.ok(!existsSync(join(S2, "cli-candidates")));
+    ok("step 7a7 a killed run's only leftover and no candidates to check: the prefix is removed and the empty cli-candidates folder disappears");
+  }
   const J = prepare(false);
   writeFileSync(recordFile(J), "{not json");
   const corrupted = readFileSync(recordFile(J));

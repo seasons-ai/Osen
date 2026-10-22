@@ -440,7 +440,18 @@ async function start(): Promise<void> {
   });
   void transition.maybeCheck();
   const transitionTimer = setInterval(() => void transition.maybeCheck(), 3_600_000);
+  // will-quit (windows already closed, quit is certain) is deferred once so a running candidate check can stop and remove its install prefix (at most 5 s).
+  let transitionStopped = false;
+  app.on("will-quit", (event) => {
+    if (transitionStopped) return;
+    event.preventDefault();
+    void transition.stop().finally(() => {
+      transitionStopped = true;
+      setImmediate(() => app.quit()); // after the cancelled will-quit has fully returned: a quit inside it is ignored
+    });
+  });
   app.on("will-quit", () => {
+    if (!transitionStopped) return; // the deferred pass: cleanup runs on the repeated quit
     clearInterval(transitionTimer);
     polling.stop();
     bridge.dispose();

@@ -689,7 +689,18 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         if (rest[0] === "candidates") {
           const pm = providerMessages();
           const agents = values.agent ? [values.agent as (typeof CLI_AGENTS)[number]] : CLI_AGENTS;
-          const report = await checkCandidates(dataDir, agents, { releases: io.cliPin?.releases ?? npmReleases(io.env), source: io.cliPin?.source ?? npmSource(io.env), builtin: io.cliPin?.builtin, env: io.env, signal: io.signal, osenVersion: io.appVersion });
+          // SIGTERM and SIGHUP stop the check like Ctrl+C, so the install is killed and its prefix removed.
+          const ctl = new AbortController();
+          const stop = () => ctl.abort();
+          process.on("SIGTERM", stop);
+          process.on("SIGHUP", stop);
+          let report;
+          try {
+            report = await checkCandidates(dataDir, agents, { releases: io.cliPin?.releases ?? npmReleases(io.env), source: io.cliPin?.source ?? npmSource(io.env), builtin: io.cliPin?.builtin, env: io.env, signal: io.signal ? AbortSignal.any([io.signal, ctl.signal]) : ctl.signal, osenVersion: io.appVersion });
+          } finally {
+            process.off("SIGTERM", stop);
+            process.off("SIGHUP", stop);
+          }
           if (report.interrupted) {
             io.stderr(t.candidatesInterrupted(report.candidates.filter((c) => c.recorded)));
             return EXIT.internal;

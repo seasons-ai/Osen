@@ -19,6 +19,7 @@ const DAY_MS = 86_400_000;
 const CHECK_INTERVAL_MS = 24 * 3_600_000;
 const STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const VERSION = /^\d+\.\d+\.\d+$/;
+const STOP_WAIT_MS = 5_000;
 
 type Candidate = ReturnType<typeof candidatesJson>["candidates"][number];
 type Failure = { agent: CliAgent; code: Exclude<CliCheckOutcome, "ok"> };
@@ -156,6 +157,8 @@ export interface CliTransitionDeps {
 
 export interface CliTransitionApi {
   maybeCheck(): Promise<void>;
+  /** Aborts the running check and resolves when it has finished, but not later than 5 s; no new check starts afterwards. */
+  stop(): Promise<void>;
   settingsView(): CliTransitionSettings;
   forProvider(agent: CliAgent, status: ProviderStatus): Promise<CliTransition>;
   setPeriod(days: unknown): void;
@@ -168,6 +171,9 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
   const now = deps.now ?? (() => new Date());
   const mono = deps.monotonic ?? (() => performance.now());
   let checking = false;
+  let stopped = false;
+  let abort: AbortController | null = null;
+  let finished: Promise<void> = Promise.resolve();
   let lastRunMono: number | null = null;
   let unsaved: { lastCheck: LastCheck; code: string } | null = null;
 
@@ -177,13 +183,20 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
     return p.state === "loaded" ? CLI_AGENTS.filter((a) => p.pins.agents[a]?.active != null) : [];
   };
 
-  async function runCheck(agents: CliAgent[], at: string): Promise<LastCheck> {
+  /** null: the check was interrupted by quit, its partial result is not a completed check. */
+  async function runCheck(agents: CliAgent[], at: string, ctl: AbortController): Promise<LastCheck | null> {
     const check = deps.check ?? checkCandidates;
     let report: CandidatesReport | null = null;
     try {
-      report = await check(dataDir, agents, { ...deps.candidateDeps(), now, ...(deps.osenVersion ? { osenVersion: deps.osenVersion } : {}), ...(deps.env ? { env: deps.env } : {}) });
+      const base = deps.candidateDeps();
+      const signal = base.signal ? AbortSignal.any([base.signal, ctl.signal]) : ctl.signal;
+      report = await check(dataDir, agents, { ...base, signal, now, ...(deps.osenVersion ? { osenVersion: deps.osenVersion } : {}), ...(deps.env ? { env: deps.env } : {}) });
     } catch (e) {
       logger.error("CLI candidate check threw", e);
+    }
+    if (report?.interrupted) {
+      logger.info("CLI candidate check stopped at quit");
+      return null;
     }
     if (!report) return { at, candidates: [], failures: agents.map((agent) => ({ agent, code: "check_failed" as const })) };
     const json = candidatesJson(report);
@@ -193,7 +206,7 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
   }
 
   async function maybeCheck(): Promise<void> {
-    if (checking) return;
+    if (checking || stopped) return;
     if (lastRunMono !== null && mono() - lastRunMono < CHECK_INTERVAL_MS) return;
     try {
       const first = readReminder(dataDir);
@@ -208,7 +221,12 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
       }
       checking = true;
       lastRunMono = mono(); // the attempt counts even if anything below fails
-      const lastCheck = await runCheck(agents, stamp(now()));
+      const ctl = new AbortController();
+      abort = ctl;
+      let settle!: () => void;
+      finished = new Promise<void>((r) => { settle = r; });
+      const lastCheck = await runCheck(agents, stamp(now()), ctl).finally(settle);
+      if (lastCheck === null) return;
       const fresh = readReminder(dataDir); // the period may have changed, the file may have broken, while npm worked
       if (fresh.state === "broken") {
         logger.error("CLI candidate check result not saved: the reminder file is damaged");
@@ -224,7 +242,18 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
       logger.error("CLI candidate check could not be recorded", e);
     } finally {
       checking = false;
+      abort = null;
     }
+  }
+
+  async function stop(): Promise<void> {
+    stopped = true;
+    if (!abort) return;
+    abort.abort();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<void>((r) => { timer = setTimeout(r, STOP_WAIT_MS); });
+    await Promise.race([finished, late]);
+    clearTimeout(timer);
   }
 
   function settingsView(): CliTransitionSettings {
@@ -298,7 +327,7 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
   }
 
   return {
-    maybeCheck, settingsView, forProvider, setPeriod,
+    maybeCheck, stop, settingsView, forProvider, setPeriod,
     switchCli(agentRaw, version) {
       const agent = agentOf(agentRaw);
       if (typeof version !== "string" || !VERSION.test(version)) throw new SettingsError(settings().badRequest(settings().reqVersion));

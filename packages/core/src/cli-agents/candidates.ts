@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { accessSync, constants, createReadStream, mkdirSync, mkdtempSync, rmSync, rmdirSync } from "node:fs";
+import { accessSync, constants, createReadStream, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { getProcessLanguage } from "../i18n/process-language.ts";
 import { pinMessages } from "../messages/pins.ts";
@@ -17,6 +17,37 @@ import type { VerifiedEntry } from "./verified-record.ts";
 
 export const CANDIDATES_DIR = "cli-candidates";
 export const CANDIDATE_LIMIT = 5;
+export const OWNER_FILE = "owner.pid";
+const STALE_MS = 3_600_000;
+
+function pidAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== "ESRCH"; } // EPERM and anything else: assume alive
+}
+
+/**
+ * Removes prefixes left by killed runs: owner pid gone, or no readable pid and untouched for over an hour.
+ * Never throws: a failure on one prefix leaves it for the next run.
+ */
+export function sweepCandidateLeftovers(dataDir: string, opts: { now?: () => number; alive?: (pid: number) => boolean; remove?: (path: string) => void } = {}): void {
+  const { now = Date.now, alive = pidAlive, remove = (p: string) => rmSync(p, { recursive: true, force: true }) } = opts;
+  const root = join(dataDir, CANDIDATES_DIR);
+  try {
+    for (const entry of readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const prefix = join(root, entry.name);
+      try {
+        let pid = 0;
+        try {
+          const text = readFileSync(join(prefix, OWNER_FILE), "utf8").trim();
+          if (/^\d+$/.test(text)) pid = Number(text);
+        } catch {}
+        const dead = pid > 0 ? pid !== process.pid && !alive(pid) : now() - statSync(prefix).mtimeMs > STALE_MS;
+        if (dead) remove(prefix);
+      } catch {}
+    }
+  } catch {}
+  try { rmdirSync(root); } catch {}
+}
 export type ViolationCode = "missing_flag" | "missing_feature" | "features_unread" | "help_unread" | "version_unparsed";
 export interface Violation { code: ViolationCode; name: string }
 export interface ReleaseSource { list(agent: CliAgent, signal?: AbortSignal): Promise<string[]> }
@@ -110,6 +141,7 @@ export async function checkCandidates(dataDir: string, agents: readonly CliAgent
     }
   };
 
+  sweepCandidateLeftovers(dataDir);
   const local = readLocalRecord(dataDir);
   if (local.state === "rejected") {
     for (const agent of agents) report.failures.push({ agent, code: "record_failed", reason: m.candidatesRecordRejected(join(dataDir, VERIFIED_FILE), local.reason) });
@@ -166,6 +198,7 @@ export async function checkCandidates(dataDir: string, agents: readonly CliAgent
     try {
       mkdirSync(join(dataDir, CANDIDATES_DIR), { recursive: true });
       prefix = mkdtempSync(join(dataDir, CANDIDATES_DIR, `${agent}-${version}-`));
+      writeFileSync(join(prefix, OWNER_FILE), String(process.pid));
       const got = await step(deps.source.fetch(agent, version, prefix, signal));
       const exe = resolve(got.executable);
       if (!exe.startsWith(resolve(prefix) + sep)) throw new Error(pinMessages().executableOutside(got.executable));

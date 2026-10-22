@@ -1,8 +1,10 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { main } from "./cli.ts";
+import { OWNER_FILE, sweepCandidateLeftovers } from "./cli-agents/candidates.ts";
 import type { ReleaseSource } from "./cli-agents/candidates.ts";
 import type { PackageSource } from "./cli-agents/pins.ts";
 import type { VerifiedEntry } from "./cli-agents/verified-record.ts";
@@ -169,4 +171,180 @@ describe("council cli candidates", () => {
     expect(r.out).toContain("0.160.0  fits");
     expect(r.out).not.toContain("claude");
   });
+});
+
+// ---- signals and leftovers (change 201) ----
+const STAND_ENTRY = join(import.meta.dirname, "..", "scenarios", "cli-candidates", "council-test.ts");
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Real council process on the stand entry; the install of `slowOnly` takes 20 s; `signal` is sent once its prefix exists. */
+async function standSignal(signal: NodeJS.Signals, releasesList: string[], slowOnly: string, waitPrefix: string, h: string) {
+  const w = home();
+  const releasesFile = join(w, "releases.json");
+  writeFileSync(releasesFile, JSON.stringify({ claude: releasesList, codex: [] }));
+  const log = join(w, "source.jsonl");
+  writeFileSync(log, "");
+  const env = {
+    PATH: "/usr/bin:/bin", HOME: w, COUNCIL_HOME: h, COUNCIL_DEV: "1", COUNCIL_LANG: "en",
+    CLI_CANDIDATES_STAND: JSON.stringify({ releases: releasesFile, counter: join(w, "counters"), log, slowInstallMs: 20_000, slowOnly }),
+  };
+  const child = spawn(process.execPath, [STAND_ENTRY, "cli", "candidates", "--agent", "claude", "--json"], { env, stdio: ["ignore", "pipe", "pipe"] });
+  let out = "", err = "";
+  child.stdout.on("data", (c) => (out += c));
+  child.stderr.on("data", (c) => (err += c));
+  const exited = new Promise<{ code: number | null; sig: string | null }>((res) => child.on("close", (code, sig) => res({ code, sig })));
+  const t0 = Date.now();
+  const dir = join(h, "cli-candidates");
+  while (!(existsSync(dir) && readdirSync(dir).some((x) => x.startsWith(`${waitPrefix}-`)))) {
+    if (Date.now() - t0 > 20_000) { child.kill("SIGKILL"); throw new Error(`prefix did not appear: ${err}`); }
+    await sleep(50);
+  }
+  child.kill(signal);
+  const res = await Promise.race([exited, sleep(15_000).then(() => { child.kill("SIGKILL"); return { code: -999, sig: null }; })]);
+  return { ...res, out, err };
+}
+
+describe("council cli candidates: SIGTERM and SIGHUP", () => {
+  for (const signal of ["SIGTERM", "SIGHUP"] as const) {
+    it(`${signal} during the install: exit 1, empty stdout, interruption line, no cli-candidates`, async () => {
+      const h = home();
+      const r = await standSignal(signal, ["2.1.288", "2.1.290"], "claude@2.1.290", "claude-2.1.290", h);
+      expect({ code: r.code, sig: r.sig }).toEqual({ code: 1, sig: null });
+      expect(r.out).toBe("");
+      expect(r.err).toContain("The check was interrupted; temporary installs were removed, nothing was recorded.");
+      expect(existsSync(join(h, "cli-candidates"))).toBe(false);
+    }, 40_000);
+  }
+
+  it("SIGTERM after a recorded candidate: the line names claude 2.1.290, the record entry stays", async () => {
+    const h = home();
+    const r = await standSignal("SIGTERM", ["2.1.288", "2.1.290", "2.1.291"], "claude@2.1.291", "claude-2.1.291", h);
+    expect({ code: r.code, sig: r.sig }).toEqual({ code: 1, sig: null });
+    expect(r.out).toBe("");
+    expect(r.err).toContain("claude 2.1.290");
+    expect(r.err).not.toContain("nothing was recorded");
+    expect(readFileSync(join(h, "cli-verified.json"), "utf8")).toContain('"2.1.290"');
+    expect(existsSync(join(h, "cli-candidates"))).toBe(false);
+  }, 40_000);
+});
+
+describe("council cli candidates: leftovers of a killed run", () => {
+  const prefix = (h: string, name: string, owner?: string, ageMs = 0) => {
+    const p = join(h, "cli-candidates", name);
+    mkdirSync(p, { recursive: true });
+    writeFileSync(join(p, "payload"), "x");
+    if (owner !== undefined) writeFileSync(join(p, OWNER_FILE), owner);
+    const t = new Date(Date.now() - ageMs);
+    utimesSync(p, t, t);
+    return p;
+  };
+  const deadPid = () => new Promise<number>((res) => {
+    const c = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+    c.on("close", () => res(c.pid!));
+  });
+  const HOUR = 3_600_000;
+
+  it("removes dead-owner and stale no-owner prefixes, keeps live-owner and fresh ones, the folder goes when emptied", async () => {
+    const h = home();
+    const dead = prefix(h, "claude-2.1.290-dead", String(await deadPid()));
+    const stale = prefix(h, "claude-2.1.290-stale", undefined, HOUR + 60_000);
+    const staleNum = prefix(h, "claude-2.1.290-nan", "abc", HOUR + 60_000);
+    const live = prefix(h, "claude-2.1.290-live", String(process.pid), 5 * HOUR);
+    const fresh = prefix(h, "claude-2.1.290-fresh", undefined, 60_000);
+    const freshNum = prefix(h, "claude-2.1.290-nanfresh", "abc", 60_000);
+    const r = await run(["cli", "candidates", "--agent", "claude", "--json"], h, { releases: releases({ claude: ["2.1.288"] }) });
+    expect(r.code).toBe(0);
+    for (const p of [dead, stale, staleNum]) expect(existsSync(p), p).toBe(false);
+    for (const p of [live, fresh, freshNum]) expect(existsSync(join(p, "payload")), p).toBe(true);
+  });
+
+  it("an emptied cli-candidates folder disappears even with no candidate checked", async () => {
+    const h = home();
+    prefix(h, "claude-2.1.290-dead", String(await deadPid()));
+    const r = await run(["cli", "candidates", "--agent", "claude", "--json"], h, { releases: releases({ claude: ["2.1.288"] }) });
+    expect(r.code).toBe(0);
+    expect(existsSync(join(h, "cli-candidates"))).toBe(false);
+  });
+
+  it("each prefix holds owner.pid with the pid of the running process before the install starts", async () => {
+    const h = home();
+    const base = source();
+    const seen: string[] = [];
+    const spy: PackageSource = { fetch: async (agent, version, dir, signal) => { seen.push(readFileSync(join(dir, OWNER_FILE), "utf8")); return base.fetch(agent, version, dir, signal); } };
+    const r = await run(["cli", "candidates", "--agent", "claude", "--json"], h, { source: spy });
+    expect(r.code).toBe(0);
+    expect(seen).toEqual([String(process.pid), String(process.pid)]);
+  });
+
+  it.skipIf(process.getuid?.() === 0)("an owner pid that answers EPERM (pid 1, another user) counts as alive: the stale prefix stays", async () => {
+    const h = home();
+    const p = prefix(h, "claude-2.1.290-root", "1", 5 * HOUR);
+    await run(["cli", "candidates", "--agent", "claude", "--json"], h, { releases: releases({ claude: ["2.1.288"] }) });
+    expect(existsSync(join(p, "payload"))).toBe(true);
+  });
+
+  it("a file in place of cli-candidates stays byte-identical", async () => {
+    const h = home();
+    writeFileSync(join(h, "cli-candidates"), "keep");
+    await run(["cli", "candidates", "--agent", "claude", "--json"], h, { releases: releases({ claude: ["2.1.288"] }) });
+    expect(readFileSync(join(h, "cli-candidates"), "utf8")).toBe("keep");
+  });
+});
+
+// Own seeded generator: fast-check is not wired in.
+function mulberry32(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+describe("sweepCandidateLeftovers: property", () => {
+  const HOUR = 3_600_000;
+  const NOW = 1_800_000_000_000;
+  const DEAD = 424242, LIVE = 31337;
+  type Kind = "dead" | "live" | "own" | "none" | "nan" | "zero";
+  const KINDS: Kind[] = ["dead", "live", "own", "none", "nan", "zero"];
+  const AGES = [0, 1000, HOUR - 1, HOUR, HOUR + 1, 2 * HOUR];
+
+  for (let seed = 1; seed <= 60; seed++) {
+    it(`seed ${seed}`, () => {
+      const rnd = mulberry32(seed);
+      const int = (n: number) => Math.floor(rnd() * n);
+      const dataDir = home();
+      const dir = join(dataDir, "cli-candidates");
+      if (int(8) !== 0) mkdirSync(dir, { recursive: true });
+      const count = existsSync(dir) ? int(9) : 0;
+      const items: { path: string; kind: Kind; age: number }[] = [];
+      for (let i = 0; i < count; i++) {
+        const kind = KINDS[int(KINDS.length)]!, age = AGES[int(AGES.length)]!;
+        const path = join(dir, `claude-2.1.${i}-s${i}`);
+        mkdirSync(path);
+        const content = kind === "dead" ? String(DEAD) : kind === "live" ? String(LIVE) : kind === "own" ? String(process.pid) : kind === "nan" ? "abc" : kind === "zero" ? "0" : undefined;
+        if (content !== undefined) writeFileSync(join(path, OWNER_FILE), `${content}\n`);
+        const t = new Date(NOW - age);
+        utimesSync(path, t, t);
+        items.push({ path, kind, age });
+      }
+      if (existsSync(dir) && rnd() < 0.3) writeFileSync(join(dir, "stray-file"), "x"); // non-directory entries are left alone
+      const throwing = items.length && rnd() < 0.5 ? items[int(items.length)]!.path : undefined;
+      const removed: string[] = [];
+      const opts = {
+        now: () => NOW,
+        alive: (pid: number) => pid !== DEAD,
+        remove: (p: string) => { if (p === throwing) throw new Error("EBUSY"); removed.push(p); rmSync(p, { recursive: true, force: true }); },
+      };
+      const shouldGo = (x: { kind: Kind; age: number }) => x.kind === "dead" || ((x.kind === "none" || x.kind === "nan" || x.kind === "zero") && x.age > HOUR);
+      const expected = items.filter((x) => shouldGo(x) && x.path !== throwing).map((x) => x.path).sort();
+      expect(() => sweepCandidateLeftovers(dataDir, opts)).not.toThrow();
+      expect(removed.sort()).toEqual(expected);
+      for (const x of items) if (!shouldGo(x)) expect(existsSync(x.path), `${x.kind} age ${x.age}`).toBe(true);
+      const after = existsSync(dir) ? readdirSync(dir).sort() : [];
+      sweepCandidateLeftovers(dataDir, { ...opts, remove: (p) => { if (p !== throwing) removed.push(`again:${p}`); } });
+      expect(removed.filter((p) => p.startsWith("again:"))).toEqual([]);
+      expect(existsSync(dir) ? readdirSync(dir).sort() : []).toEqual(after);
+    });
+  }
 });
