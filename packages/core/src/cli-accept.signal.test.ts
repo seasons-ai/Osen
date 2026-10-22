@@ -15,6 +15,8 @@ const until = async (f: () => boolean, ms: number) => { const end = Date.now() +
 afterEach(() => {
   for (const d of tmps.splice(0)) {
     for (const pid of stubPids(join(d, "stub.log"))) { try { process.kill(-pid, "SIGKILL"); } catch { /* already gone */ } }
+    const pidFile = join(d, "child.pid");
+    if (existsSync(pidFile)) { try { process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL"); } catch { /* already gone */ } }
     rmSync(d, { recursive: true, force: true });
   }
 });
@@ -50,6 +52,37 @@ describe.each(["SIGTERM", "SIGHUP"] as const)("council cli accept stopped by %s"
     expect(accept.stderr().toLowerCase()).toContain("interrupted");
     expect(await until(() => !alive(pid), 5000)).toBe(true);
     expect(stubPids(log)).toHaveLength(1);
+    const record = join(home, "cli-verified.json");
+    const entries = existsSync(record) ? JSON.parse(readFileSync(record, "utf8")).entries : [];
+    expect(entries.filter((e: { level: string }) => e.level === "real")).toEqual([]);
+  }, 60_000);
+});
+
+// The stub hangs while the CLI reads its help (or feature list) before the first probe, with a non-detached child `sleep 30`.
+describe.each([
+  ["SIGTERM", "help_hang"], ["SIGHUP", "help_hang"], ["SIGTERM", "features_hang"], ["SIGHUP", "features_hang"],
+] as const)("council cli accept stopped by %s while the CLI reads its help or features (%s)", (sig, mode) => {
+  it("stops the reading process with its group, runs no probe, says interrupted, records nothing, exits 1", async () => {
+    const home = mkdtempSync(join(tmpdir(), "cli-accept-sig-"));
+    tmps.push(home);
+    const log = join(home, "stub.log");
+    const pidFile = join(home, "child.pid");
+    const install = council(["cli", "install", "codex", "--version", "9.9.9", "--candidate"], home);
+    expect((await install.done).code, install.stderr()).toBe(0);
+
+    const accept = council(["cli", "accept", "codex", "9.9.9", "--candidate", "--max-calls", "7"], home, { STUB_MODE: mode, STUB_LOG: log, STUB_PIDFILE: pidFile });
+    expect(await until(() => existsSync(pidFile) && readFileSync(pidFile, "utf8") !== "", 30_000)).toBe(true);
+    const child = Number(readFileSync(pidFile, "utf8"));
+    const childAlive = () => { try { process.kill(child, 0); return true; } catch { return false; } };
+    expect(childAlive()).toBe(true);
+    accept.child.kill(sig);
+    const { code, signal } = await accept.done;
+
+    expect(signal).toBeNull();
+    expect(code).toBe(1);
+    expect(accept.stderr().toLowerCase()).toContain("interrupted");
+    expect(await until(() => !childAlive(), 5000)).toBe(true);
+    expect(stubPids(log)).toEqual([]);
     const record = join(home, "cli-verified.json");
     const entries = existsSync(record) ? JSON.parse(readFileSync(record, "utf8")).entries : [];
     expect(entries.filter((e: { level: string }) => e.level === "real")).toEqual([]);
