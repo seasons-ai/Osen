@@ -14,6 +14,7 @@ export function bundlePaths(dir: string) {
     scenarios: join(resources, "scenarios"),
     council: join(dir, "council.mjs"),
     pdfExtract: join(dir, "pdf-extract.mjs"),
+    ocrHelper: join(resources, "ocr", "osen-ocr"),
     docExtract: join(dir, "doc-extract.mjs"),
     htmlWorker: join(dir, "html-worker.mjs"),
   };

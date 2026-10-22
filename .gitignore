@@ -10,6 +10,7 @@ dist/
 out/
 release/
 release.noindex/
+packages/core/src/ocr/bin/
 
 # App and stand data
 .council-data*/

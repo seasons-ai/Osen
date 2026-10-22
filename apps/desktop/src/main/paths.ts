@@ -12,3 +12,8 @@ export function profileDir(hasSwitch: boolean, isPackaged: boolean, appData: str
   if (hasSwitch) return null;
   return join(appData, isPackaged ? "osen-electron" : "osen-electron-dev");
 }
+
+// The OCR helper binary: next to the other resources in the build, in the core source tree in development
+export function ocrHelperPath(o: { packaged: boolean; appPath: string; resourcesPath: string }): string {
+  return o.packaged ? join(o.resourcesPath, "ocr", "osen-ocr") : join(o.appPath, "../../packages/core/src/ocr/bin/osen-ocr");
+}

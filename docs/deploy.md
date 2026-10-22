@@ -14,6 +14,7 @@ A `.dmg` installer image and the `Osen` app in `/Applications`. The window title
 npm install
 ```
 
+- Xcode Command Line Tools (`swiftc`): `npm run dist` first builds the text recognition helper `osen-ocr` (`npm run build:ocr`) and fails without it.
 - Network access for the first build: a helper package of the image builder is downloaded once.
 
 The version comes from the `version` field in `apps/desktop/package.json` (currently `0.9.0`). It ends up in the image name, in the app properties, in the interface and in the log.
@@ -38,7 +39,7 @@ npm run dist:check
 
 The check looks for the newest `osen-*.dmg` in `apps/desktop/release.noindex/`. To check a different image, pass its path: `npm run dist:check -- <path to .dmg>`.
 
-2. Each check prints an `OK` or `FAIL` line: the image contains `Osen.app`, its `Info.plist` has the identifier `com.osen.desktop` and the display name `Osen`; `Contents/Resources` contains `icon.icns` and `CFBundleIconFile` points to it; the `GrantFileProtocolExtraPrivileges` fuse is off and `RunAsNode` is on (it runs PDF text extraction); the built-in templates are present; there are no `.env*` files; there is no `.council-data` and no `sessions`; there are no `*.pem`, `*.key`, `*.p12`; there is no `node_modules` inside the app; the secret values from the environment and from the repository `.env` do not appear in the image.
+2. Each check prints an `OK` or `FAIL` line: the image contains `Osen.app`, its `Info.plist` has the identifier `com.osen.desktop` and the display name `Osen`; `Contents/Resources` contains `icon.icns` and `CFBundleIconFile` points to it; the `GrantFileProtocolExtraPrivileges` fuse is off and `RunAsNode` is on (it runs PDF text extraction); the built-in templates are present; there are no `.env*` files; there is no `.council-data` and no `sessions`; there are no `*.pem`, `*.key`, `*.p12`; there is no `node_modules` inside the app; `Contents/Resources/ocr/osen-ocr` (copied by electron-builder `extraResources`; the app, the `council` and `osen-mcp` entries pass this path) is present, executable and `--version` prints `osen-ocr 1` (the signature is the ad-hoc one from `swiftc`, nothing extra); the secret values from the environment and from the repository `.env` do not appear in the image.
 3. Exit code 0 means everything passed. On `FAIL`, do not install the image.
 
 ### Build-only `sprintf-js` (Dependabot alert #1)

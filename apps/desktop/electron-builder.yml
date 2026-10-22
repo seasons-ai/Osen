@@ -17,6 +17,9 @@ extraResources:
   # wrappers that start the headless entries with the app binary as Node
   - from: resources/bin
     to: bin
+  # the OCR helper stays outside the asar so it can be executed; the exec bit is kept
+  - from: ../../packages/core/src/ocr/bin/osen-ocr
+    to: ocr/osen-ocr
   # MIT requires the licence text in every copy of the program
   - from: ../../LICENSE
     to: LICENSE

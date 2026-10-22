@@ -1,5 +1,5 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { DataDirError, applyProcessLanguage, createLogger, ensureDataDir, loadEnv, prepareDataDir, setDocumentExtractorRuntime, setPdfExtractorRuntime } from "@model-council/core";
+import { DataDirError, applyProcessLanguage, createLogger, ensureDataDir, loadEnv, prepareDataDir, setDocumentExtractorRuntime, setOcrRuntime, setPdfExtractorRuntime } from "@model-council/core";
 import { createServer } from "../../../../packages/mcp/src/server.ts";
 import { bundlePaths, dropRunAsNode } from "./runtime.ts";
 
@@ -8,6 +8,7 @@ dropRunAsNode(process.env);
 const paths = bundlePaths(import.meta.dirname);
 setPdfExtractorRuntime({ command: process.execPath, script: paths.pdfExtract, env: { ELECTRON_RUN_AS_NODE: "1" } });
 setDocumentExtractorRuntime({ command: process.execPath, script: paths.docExtract, env: { ELECTRON_RUN_AS_NODE: "1" } });
+setOcrRuntime({ helper: paths.ocrHelper });
 const env = loadEnv(process.env, process.cwd());
 applyProcessLanguage(env);
 let dataDir: string;
