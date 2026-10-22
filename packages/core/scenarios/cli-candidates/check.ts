@@ -9,6 +9,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve } from "node:path";
+import { cliMessages } from "../../src/messages/cli.ts";
 
 if (process.env.COUNCIL_DEV !== "1") {
   console.error("Run: COUNCIL_DEV=1 node packages/core/scenarios/cli-candidates/check.ts");
@@ -54,7 +55,7 @@ function treeHash(dir: string): string {
 let n = 0;
 const ok = (s: string) => console.log(`ok ${++n}: ${s}`);
 interface Result { code: number; out: string; err: string }
-interface RunOpts { lang?: "en" | "ru"; builtin?: "claude-only"; slowInstallMs?: number }
+interface RunOpts { lang?: "en" | "ru"; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number }
 const childEnv = (home: string, o: RunOpts): Record<string, string> => ({
   PATH: `${bin}:/usr/bin:/bin`, HOME: homedir(), SHELL: fakeShell, COUNCIL_HOME: home, COUNCIL_DEV: "1", COUNCIL_LANG: o.lang ?? "en",
   CLI_CANDIDATES_STAND: JSON.stringify({ releases: releasesFile, counter: counters, log: sourceLog, ...(o.builtin ? { builtin: o.builtin } : {}), ...(o.slowInstallMs ? { slowInstallMs: o.slowInstallMs } : {}) }),
@@ -229,11 +230,36 @@ try {
   const code7 = await Promise.race([exited, sleep(20_000).then(() => { child.kill("SIGKILL"); return -999; })]);
   assert.equal(code7, 1, err7);
   assert.equal(out7, "");
-  assert.notEqual(err7.trim(), "");
+  assert.equal(err7.trim(), cliMessages("en").candidatesInterrupted);
+  assert.match(err7, /interrupted/);
   assert.ok(!existsSync(join(I, "cli-candidates")));
   assert.deepEqual(readFileSync(recordFile(I)), before7);
   assert.equal(calls().slice(mark7).length, 1);
-  ok("step 7a SIGINT during the install of claude 2.1.290: stderr line, empty stdout, exit 1, <home>/cli-candidates removed, the record unchanged, nothing further fetched");
+  ok("step 7a SIGINT during the install of claude 2.1.290: exact en interruption line, empty stdout, exit 1, <home>/cli-candidates removed, the record unchanged, nothing further fetched");
+  // 7a2: an interruption is exit 1 whatever was refused before it (claude has no base, codex is interrupted), en and ru
+  for (const lang of ["en", "ru"] as const) {
+    const I2 = prepare(false);
+    const mark7a2 = calls().length;
+    const c2 = spawn(process.execPath, [entry, "cli", "candidates", "--json"], { env: childEnv(I2, { lang, builtin: "codex-only", slowInstallMs: 30_000 }), cwd: repo, stdio: ["ignore", "pipe", "pipe"] });
+    let o2 = "", e2 = "";
+    c2.stdout.on("data", (c) => (o2 += c));
+    c2.stderr.on("data", (c) => (e2 += c));
+    const x2 = new Promise<number>((res) => c2.on("close", (c) => res(c ?? -1)));
+    const t2 = Date.now();
+    while (!(existsSync(join(I2, "cli-candidates")) && readdirSync(join(I2, "cli-candidates")).some((x) => x.startsWith("codex-0.160.0-")))) {
+      if (Date.now() - t2 > 20_000) { c2.kill("SIGKILL"); throw new Error(`the install prefix did not appear\n${e2}`); }
+      await sleep(50);
+    }
+    c2.kill("SIGINT");
+    const k2 = await Promise.race([x2, sleep(20_000).then(() => { c2.kill("SIGKILL"); return -999; })]);
+    assert.equal(k2, 1, e2);
+    assert.equal(o2, "");
+    assert.equal(e2.trim(), cliMessages(lang).candidatesInterrupted);
+    assert.match(e2, lang === "en" ? /interrupted/ : /прервана/);
+    assert.ok(!existsSync(join(I2, "cli-candidates")));
+    assert.deepEqual(calls().slice(mark7a2).map((c) => c.agent), ["codex"]);
+  }
+  ok("step 7a2 claude has no base (no_base), SIGINT during the install of codex 0.160.0, en and ru: exit 1 (not 2), empty stdout under --json, exact interruption line, nothing left");
   const J = prepare(false);
   writeFileSync(recordFile(J), "{not json");
   const corrupted = readFileSync(recordFile(J));

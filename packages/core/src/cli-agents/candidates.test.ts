@@ -339,6 +339,14 @@ describe("Команда cli candidates / Прерывание", () => {
     expect(existsSync(recordFile())).toBe(false);
     expect(leftovers()).toEqual([false, false]);
   });
+  it("abort after a no_base refusal of another agent: code 1, not 2", async () => {
+    const ac = new AbortController();
+    const h = harness({ signal: ac.signal, builtin: [base("codex", "0.159.2")], onFetch: () => ac.abort() });
+    const r = await checkCandidates(dir, ["claude", "codex"], h.deps);
+    expect(r.interrupted).toBe(true);
+    expect(r.failures).toMatchObject([{ agent: "claude", code: "no_base" }]);
+    expect(r.code).toBe(1);
+  });
   it("a rejection while aborted is an interruption, not a failure", async () => {
     const ac = new AbortController();
     const h = harness({ signal: ac.signal });

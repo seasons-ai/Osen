@@ -128,6 +128,17 @@ describe("council cli candidates", () => {
     expect(existsSync(join(h, "cli-candidates"))).toBe(false);
   });
 
+  it("interruption after a no_base refusal of another agent: exit 1, interruption line, empty stdout (--json)", async () => {
+    // claude is checked first, so the refused agent is claude (no built-in entry) and the interrupted one is codex
+    const h = home();
+    const ac = new AbortController();
+    const r = await run(["cli", "candidates", "--json"], h, { builtin: [real("codex", "0.159.2")], releases: releases({ claude: ["2.1.300"], codex: ["0.159.2", "0.160.0"] }), source: source([], () => ac.abort()) }, { signal: ac.signal });
+    expect(r.code).toBe(1);
+    expect(r.out).toBe("");
+    expect(r.err).toContain("The check was interrupted; temporary installs were removed, nothing was recorded.");
+    expect(existsSync(join(h, "cli-candidates"))).toBe(false);
+  });
+
   it("no base version: exit 2 and nothing installed", async () => {
     const h = home();
     const r = await run(["cli", "candidates", "--agent", "claude"], h, { builtin: [] });

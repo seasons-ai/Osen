@@ -1,9 +1,11 @@
-import { accessSync, constants, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { describeIssue } from "../messages/zod.ts";
 import { providerMessages } from "../messages/providers.ts";
 import builtin from "./verified-record.json" with { type: "json" };
+import { tryPidLock } from "../store/pid-lock.ts";
+import { isProcessAlive } from "../store/sessions.ts";
 import { CLI_AGENTS } from "./types.ts";
 import type { CliAgent } from "./types.ts";
 
@@ -129,6 +131,11 @@ export function lookupVerified(record: VerifiedRecord, agent: CliAgent, version:
   return record.entries.find((e) => e.agent === agent && e.version === version);
 }
 
+const LOCK_WAIT_MS = 5000;
+
+/** Test seam: runs between reading the record and writing it (widens the race window in tests). */
+export const recordTestHooks: { beforeWrite?: () => void } = {};
+
 export type AddResult = { ok: true; changed: boolean } | { ok: false; reason: string };
 
 // A higher level is never replaced; the same level only with replaceSameLevel (re-acceptance).
@@ -138,12 +145,35 @@ export function addLocalEntry(dataDir: string, entry: VerifiedEntry, opts: { rep
     const i = checked.error.issues[0]!;
     return reject(VERIFIED_FILE, ["entries", ...i.path].join("."), describeIssue(i));
   }
+  // Read-modify-write under an inter-process lock: concurrent adds must not lose each other's entries.
+  const lock = join(dataDir, `${VERIFIED_FILE}.lock`);
+  const fail = (code: string): AddResult => ({ ok: false, reason: providerMessages().recordWriteFailed(VERIFIED_FILE, code) });
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      if (tryPidLock(lock, isProcessAlive)) break;
+    } catch (e) {
+      return fail((e as NodeJS.ErrnoException).code ?? "unknown");
+    }
+    if (Date.now() >= deadline) return fail("EBUSY");
+    // ponytail: a sync wait blocks the caller (also the app's main process) for up to LOCK_WAIT_MS under contention; make addLocalEntry async if that ever shows.
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+  }
+  try {
+    return addUnderLock(dataDir, checked.data, entry, opts);
+  } finally {
+    try { unlinkSync(lock); } catch { /* already gone */ }
+  }
+}
+
+function addUnderLock(dataDir: string, data: VerifiedEntry, entry: VerifiedEntry, opts: { replaceSameLevel?: boolean }): AddResult {
   const local = readLocalRecord(dataDir);
   if (local.state === "rejected") return { ok: false, reason: local.reason };
   const existing = local.state === "loaded" ? local.entries : [];
   const cur = existing.find((e) => keyOf(e) === keyOf(entry));
   if (cur && (RANK[cur.level] > RANK[entry.level] || (RANK[cur.level] === RANK[entry.level] && !opts.replaceSameLevel))) return { ok: true, changed: false };
-  const entries = cur ? existing.map((e) => (e === cur ? checked.data : e)) : [...existing, checked.data];
+  const entries = cur ? existing.map((e) => (e === cur ? data : e)) : [...existing, data];
+  recordTestHooks.beforeWrite?.();
   const file = join(dataDir, VERIFIED_FILE);
   const tmp = `${file}.${process.pid}.tmp`;
   try {
