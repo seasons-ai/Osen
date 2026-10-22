@@ -320,6 +320,57 @@ describe("ensureRegistry", () => {
   });
 });
 
+describe("first registry with a failed pin", () => {
+  it("first registry: a pin that failed its check is kept, an unfound CLI without a pin is not", async () => {
+    const locate = vi.fn(async (agent: "claude" | "codex"): Promise<CliLocation> => agent === "claude"
+      ? { agent, found: false, source: "pin", searchPath: "", reason: "pin check failed" }
+      : { agent, found: false, searchPath: "", reason: "not found" });
+    expect(await ensureRegistry(dir, { env: {}, deps: { locate } })).toBe("created");
+    const r = JSON.parse(readFileSync(configPath(dir), "utf8")) as Registry;
+    expect(r.providers.map((p) => p.id)).toEqual(["claude"]);
+  });
+  it("first registry: claude without a pin and not found is not added", async () => {
+    const locate = vi.fn(async (agent: "claude" | "codex"): Promise<CliLocation> => ({ agent, found: false, searchPath: "", reason: "not found" }));
+    expect(await ensureRegistry(dir, { env: {}, deps: { locate } })).toBe("created");
+    expect((JSON.parse(readFileSync(configPath(dir), "utf8")) as Registry).providers).toEqual([]);
+  });
+});
+
+describe("pinned codex inspection args", () => {
+  const UPDATE_OFF = ["-c", "check_for_update_on_startup=false"];
+  function mulberry32(seed: number) {
+    return () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  it("pinned codex help and features list get -c check_for_update_on_startup=false; other sources and claude are unchanged", async () => {
+    const cases = (["claude", "codex"] as const).flatMap((agent) => (["explicit", "pin", "path"] as const).flatMap((source) => [true, false].map((found) => ({ agent, source, found }))));
+    const rand = mulberry32(204);
+    cases.sort(() => rand() - 0.5);
+    for (const { agent, source, found } of cases) {
+      const helpArgs: string[][] = [];
+      const featureArgs: string[][] = [];
+      const locate = async (): Promise<CliLocation> => ({
+        agent, found, searchPath: dir, source, ...(found ? { path: join(dir, agent), version: "1.0.0" } : {}),
+        ...(source === "pin" ? { pin: { version: "x", configDir: "/cfg" } } : {}),
+      });
+      await inspectProvider(agent === "claude" ? claude : codex, {
+        env: env(),
+        deps: { locate, listModels: noModels.listModels, readHelp: async (_p, a) => { helpArgs.push([...a]); return ""; }, readFeatures: async (_p, a) => { featureArgs.push([...a]); return ""; } },
+      });
+      const label = `${agent}/${source}/found=${found}`;
+      if (!found) { expect(helpArgs, label).toEqual([]); expect(featureArgs, label).toEqual([]); continue; }
+      if (agent === "claude") { expect(helpArgs, label).toEqual([["--help"]]); expect(featureArgs, label).toEqual([]); continue; }
+      const extra = source === "pin" ? UPDATE_OFF : [];
+      expect(helpArgs, label).toEqual([["exec", "--help", ...extra]]);
+      expect(featureArgs, label).toEqual([["features", "list", ...extra]]);
+    }
+  });
+});
+
 // The attack runs only in a child with a finite watchdog: a vitest timeout cannot interrupt synchronous regex work.
 describe("Bounded provider base URL normalization", () => {
   it("child probe: 1,048,576 slashes before 'x' have median <= 1,000 ms and finish before the 5,000 ms watchdog", async () => {

@@ -57,7 +57,7 @@ Pinned base version of Osen is 0.159.2 (verified: code read, Osen c02ffe6, 2026-
 
 | Item | Value |
 |---|---|
-| Launch by Osen | verified: code read, Osen c02ffe6, 2026-10-20, `discovery.ts:103-128`: the same search order as for Claude. Help is read with `codex exec --help` (`args.ts:8`) and `codex features list` (`registry/providers.ts:55`, parsed by `flags.ts:15-22`) |
+| Launch by Osen | verified: code read, Osen c02ffe6, 2026-10-20, `discovery.ts:103-128`: the same search order as for Claude. Help is read with `codex exec --help` (`args.ts:8`) and `codex features list` (`registry/providers.ts:55`, parsed by `flags.ts:15-22`); for a pinned codex both reads also get `-c check_for_update_on_startup=false` |
 | Turn command line | verified: code read, Osen c02ffe6, 2026-10-20, `args.ts:55-59`: `exec --sandbox read-only --skip-git-repo-check --ephemeral --ignore-user-config --ignore-rules --json`, then `--disable <feature>` for 13 features (`args.ts:13`), `--model`, `--output-schema`, and `-` (request through stdin) |
 | Environment | verified: code read, Osen c02ffe6, 2026-10-20, `driver.ts:111`: the whole inherited environment plus `COUNCIL_PARTICIPANT=1`. `CODEX_HOME` is not set for the child, but it is read by Osen for the model list (`models.ts:125-128`) |
 | Config and login dir | verified: codex-cli 0.159.2, 2026-10-20, `CODEX_HOME=<empty dir> codex login status` creates only a `tmp/arg0/...` helper folder there (no `config.toml`, no `auth.json`). Default is `~/.codex`; the login is `~/.codex/auth.json` (4216 bytes; only key names were looked at) |

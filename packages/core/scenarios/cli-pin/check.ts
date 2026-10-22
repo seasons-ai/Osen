@@ -1,6 +1,7 @@
 // Check of pinned CLI installs with the real council CLI (substitute package source and verified-versions record,
 // `claude` stubs in the stand folder, 0 model calls, no network):
 //   COUNCIL_DEV=1 node packages/core/scenarios/cli-pin/check.ts
+// Every data folder gets the substitute record in cli-verified.json; also checked: a failed pin in the first registry and the return through `use`, the Codex help and features calls of a pin.
 // Data lives in COUNCIL_HOME (must be inside the repository) or in <repository>/.council-data/cli-pin-*;
 // deleted on success, kept on failure. The real `claude` and `codex` are never launched: children get a PATH with the stand bin only.
 import assert from "node:assert/strict";
@@ -9,7 +10,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { writeStub } from "./stub.ts";
+import { writeCodexStub, writeStandRecord, writeStub } from "./stub.ts";
 
 if (process.env.COUNCIL_DEV !== "1") {
   console.error("Run: COUNCIL_DEV=1 node packages/core/scenarios/cli-pin/check.ts");
@@ -26,6 +27,8 @@ const work = given ?? join(repo, ".council-data", `cli-pin-${Date.now()}-${rando
 const bin = join(work, "bin"), explicitDir = join(work, "explicit"), counters = join(work, "counters");
 const homes = { a: join(work, "home-a"), b: join(work, "home-b"), c: join(work, "home-c"), e: join(work, "home-e") };
 for (const d of [bin, explicitDir, counters, ...Object.values(homes)]) mkdirSync(d, { recursive: true });
+// discovery and the pre-turn check read <data>/cli-verified.json: every data folder gets the same record `cli` commands get
+for (const d of Object.values(homes)) writeStandRecord(d);
 const sourceLog = join(work, "source.jsonl");
 writeFileSync(sourceLog, "");
 
@@ -363,6 +366,63 @@ try {
   assert.match(en.err, /not installed/);
   assert.match(ru.err, /не установлена/);
   ok("7c cli use claude 9.9.9 under en and ru: texts differ, exit codes equal (2)");
+
+  // ---- 8: a pin that fails the check in the first registry, then a return through `use` ----
+  const noStubPath = { PATH: "/usr/bin:/bin" };
+  const pathBefore = launches(pathCounter);
+  const F = join(work, "home-f");
+  writeStandRecord(F);
+  assert.equal((await run(F, ["cli", "install", "claude"])).code, 0);
+  assert.equal((await run(F, ["cli", "install", "claude", "--version", "1.0.0"])).code, 0);
+  const active = (claudePins(F).installed as { version: string; path: string; sha256: string }[]).find((i) => i.version === "1.1.0")!;
+  const activeFile = join(F, "cli", "claude", "1.1.0", active.path);
+  writeFileSync(activeFile, Buffer.concat([readFileSync(activeFile), Buffer.from("# changed after installation\n")]));
+  const r8a = await run(F, ["providers", "--json"], { env: noStubPath });
+  assert.equal(r8a.code, 0, r8a.err);
+  const s8a = claudeStatus(r8a);
+  assert.equal(s8a.available, false);
+  assert.equal(s8a.source, "pin");
+  assert.ok(String(s8a.reason).includes(activeFile) && String(s8a.reason).includes(active.sha256), String(s8a.reason));
+  const cfg8 = JSON.parse(readFileSync(join(F, "config.json"), "utf8"));
+  assert.ok(cfg8.providers.some((p: { id: string }) => p.id === "claude"), "claude provider in config.json");
+  assert.equal(launches(pathCounter), pathBefore);
+  ok("8a pin that fails the check (changed install file) in the first registry: claude listed, unavailable, source pin, reason names the install file; config.json has claude; PATH stub 0 launches");
+  const cfgBytes = readFileSync(join(F, "config.json"));
+  const r8u = await run(F, ["cli", "use", "claude", "1.0.0"]);
+  assert.equal(r8u.code, 0, r8u.err);
+  const r8b = await run(F, ["providers", "--json"], { env: noStubPath });
+  const s8b = claudeStatus(r8b);
+  const intact = (claudePins(F).installed as { version: string; path: string }[]).find((i) => i.version === "1.0.0")!;
+  assert.equal(s8b.available, true, r8b.out);
+  assert.equal(s8b.source, "pin");
+  assert.equal(s8b.path, join(F, "cli", "claude", "1.0.0", intact.path));
+  assert.deepEqual(readFileSync(join(F, "config.json")), cfgBytes);
+  assert.equal(launches(pathCounter), pathBefore);
+  ok("8b use claude 1.0.0 (intact install): providers shows claude available from the pin without editing config.json (bytes identical)");
+
+  // ---- 9: help and features list of a pinned Codex ----
+  const G = join(work, "home-g");
+  writeStandRecord(G);
+  assert.equal((await run(G, ["cli", "install", "codex"])).code, 0);
+  const r9a = await run(G, ["providers", "--json"], { env: noStubPath });
+  assert.equal(r9a.code, 0, r9a.err);
+  const pinArgs = readFileSync(`${pinCounter("codex", "1.1.0")}.args`, "utf8").split("\n").filter(Boolean);
+  const upd = "-c check_for_update_on_startup=false";
+  assert.ok(pinArgs.some((l) => l.startsWith("exec --help") && l.includes(upd)), pinArgs.join(" | "));
+  assert.ok(pinArgs.some((l) => l.startsWith("features list") && l.includes(upd)), pinArgs.join(" | "));
+  const codexDir = join(work, "codex-path");
+  mkdirSync(codexDir, { recursive: true });
+  const codexLog = join(counters, "path-codex.args");
+  writeCodexStub(join(codexDir, "codex"), { version: "5.0.0", counter: join(counters, "path-codex"), argsLog: codexLog });
+  const H = join(work, "home-h");
+  writeStandRecord(H);
+  const r9b = await run(H, ["providers", "--json"], { env: { PATH: `${codexDir}:/usr/bin:/bin` } });
+  assert.equal(r9b.code, 0, r9b.err);
+  const pathArgs = readFileSync(codexLog, "utf8").split("\n").filter(Boolean);
+  assert.ok(pathArgs.some((l) => l.startsWith("exec --help")), pathArgs.join(" | "));
+  assert.ok(pathArgs.some((l) => l.startsWith("features list")), pathArgs.join(" | "));
+  assert.ok(pathArgs.every((l) => !l.includes("check_for_update_on_startup")), pathArgs.join(" | "));
+  ok("9 pinned codex: exec --help and features list carry -c check_for_update_on_startup=false; codex from PATH: the same calls without -c");
 
   // ---- safety ----
   assert.deepEqual(names(), namesBefore);
