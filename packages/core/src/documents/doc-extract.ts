@@ -1,12 +1,13 @@
 import "../pdf/guard.ts";
 import { isMainThread, parentPort, Worker, workerData } from "node:worker_threads";
+import { listArchive, readArchive } from "./archive.ts";
 import { extractDocument } from "./detect.ts";
 
 // ponytail: the supervisor below is copied from pdf/pdf-extract.ts; extract a shared module when a third consumer appears.
 // One file is both the child process (main thread) and its extraction thread, so the app ships exactly one doc-extract.mjs.
 if (isMainThread) {
-  const { ms, rssBytes, chars, parts, unpackedBytes, ratio, cells, worker } = JSON.parse(process.argv[2]!) as {
-    ms: number; rssBytes: number; chars: number; parts: number; unpackedBytes: number; ratio: number; cells: number; worker?: string;
+  const { ms, rssBytes, chars, parts, unpackedBytes, ratio, cells, worker, mode, indices } = JSON.parse(process.argv[2]!) as {
+    ms: number; rssBytes: number; chars: number; parts: number; unpackedBytes: number; ratio: number; cells: number; worker?: string; mode?: "list" | "read"; indices?: number[];
   };
   let done = false;
   let thread: Worker | undefined;
@@ -30,7 +31,7 @@ if (isMainThread) {
 
   if (!done) {
     thread = new Worker(worker ?? import.meta.filename, {
-      workerData: { bytes, limits: { chars, parts, unpackedBytes, ratio, cells } }, transferList: [bytes.buffer], stdout: true, stderr: true,
+      workerData: { bytes, mode, indices, limits: { chars, parts, unpackedBytes, ratio, cells } }, transferList: [bytes.buffer], stdout: true, stderr: true,
       resourceLimits: { maxOldGenerationSizeMb: Math.ceil(rssBytes / 2 ** 20) },
     });
     thread.on("message", (result) => finish(result));
@@ -39,5 +40,6 @@ if (isMainThread) {
     thread.on("exit", () => finish({ ok: false, code: "failed", detail: "worker exit" }));
   }
 } else {
-  parentPort!.postMessage(extractDocument(workerData.bytes, workerData.limits));
+  const { bytes, mode, indices, limits } = workerData;
+  parentPort!.postMessage(mode === "list" ? listArchive(bytes, limits) : mode === "read" ? readArchive(bytes, indices ?? [], limits) : extractDocument(bytes, limits));
 }

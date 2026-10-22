@@ -15,6 +15,8 @@ export function setDocumentExtractorRuntime(next?: Partial<DocumentExtractorRunt
   runtime = { ...defaultRuntime(), ...next };
 }
 
+export function documentExtractorRuntime(): DocumentExtractorRuntime { return runtime; }
+
 export function extractDocumentText(bytes: Uint8Array, limits: DocLimits = DOC_LIMITS): DocumentResult {
   if (bytes.length > limits.bytes) return { ok: false, code: "bytes" };
   const { ms, rssBytes, chars, parts, unpackedBytes, ratio, cells } = limits;
