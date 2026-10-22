@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { ocrHelperLine } from "./ocr-in-image.ts";
 import { reportHeadlessLines } from "./headless-in-image.ts";
-import { appIconLine, bundleIdentityLine, FONT_FILES, docExtractLine, fuseLine, htmlWorkerLine, missingFontFiles, missingTemplateFiles } from "./templates-in-image.ts";
+import { appIconLine, bundleIdentityLine, FONT_FILES, docExtractLine, fuseLine, htmlWorkerLine, missingFontFiles, missingTemplateFiles, parse5Line } from "./templates-in-image.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const releaseDir = join(root, "apps/desktop/release.noindex");
@@ -105,6 +105,8 @@ try {
   report(doc.ok, doc.text);
   const html = htmlWorkerLine(unpackedMain);
   report(html.ok, html.text);
+  const parse5 = parse5Line(unpackedMain);
+  report(parse5.ok, parse5.text);
   // run on the mounted (read-only) image: --version reads nothing and writes nothing
   const ocr = ocrHelperLine(res);
   report(ocr.ok, ocr.text);

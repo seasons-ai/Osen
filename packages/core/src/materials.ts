@@ -416,7 +416,7 @@ export function verifyMaterials(materials: readonly CollectedMaterial[], limit: 
 
 export interface LeftMaterial { name: string; reason: string }
 
-const DOC_EXT = /\.(md|markdown|mdx|txt|rst|adoc|pdf|docx|docm)$/i;
+const DOC_EXT = /\.(md|markdown|mdx|txt|rst|adoc|pdf|docx|docm|odt|odp|epub)$/i;
 const total = (ms: readonly CollectedMaterial[]) => ms.reduce((s, m) => s + m.chars, 0);
 
 /** "Always included": without "/" in the name — an explicitly attached file; otherwise only if the file path is named and explicit. roots — absolute paths. */

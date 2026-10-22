@@ -12,6 +12,7 @@ import net from "node:net";
 import { basename, join, resolve } from "node:path";
 import { collectMaterials, setDocumentExtractorRuntime, setProcessLanguage } from "../../src/index.ts";
 import { makeDocx, makeZip, p, table } from "../../src/documents/fixture.ts";
+import { odfEpubSuite } from "./odf-epub.ts";
 
 const repo = resolve(import.meta.dirname, "../../../..");
 const home = process.env.COUNCIL_HOME;
@@ -145,9 +146,9 @@ function pair(name: string, mark?: string): string[] {
 const parts = (p2: string[]) => ["--participant", p2[0]!, "--participant", p2[1]!];
 
 /** Child stand: ok lines are forwarded, the RESULT line is parsed. */
-async function subStand(what: string, script: string, dataDir: string, lang: string, extra: string[]) {
+async function subStand(what: string, script: string, dataDir: string, lang: string, extra: string[], fixtures = fx) {
   mkdirSync(dataDir, { recursive: true });
-  const r = proc(process.execPath, [join(repo, script), fx, lang, ...extra], { ...baseEnv, COUNCIL_LANG: lang, COUNCIL_HOME: dataDir });
+  const r = proc(process.execPath, [join(repo, script), fixtures, lang, ...extra], { ...baseEnv, COUNCIL_LANG: lang, COUNCIL_HOME: dataDir });
   const code = await r.exited;
   const lines = r.out.split("\n");
   for (const l of lines) if (l && !l.startsWith("RESULT ")) console.log(l);
@@ -284,6 +285,9 @@ async function suite(lang: "ru" | "en") {
   assert.equal(r7.r.err, `${t.rejected}\n  «${basename(zipF)}»: ${t.nonText}\n`, dump(r7.r));
   assert.ok(!r7.r.err.includes(t.reason.damaged));
   ok(`${tag} 7: a plain ZIP is refused as a non-text file ("${t.nonText}"), not as damaged`);
+
+  // Change 210: OpenDocument and EPUB checks with their own fixtures.
+  await odfEpubSuite({ lang, work, t, run, attach, created, sessionId, sdir, journals, promptLines, pair: (n) => pair(n), parts, subStand, dump, ok });
 }
 
 async function inProcess() {

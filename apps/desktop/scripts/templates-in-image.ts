@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { join, normalize } from "node:path";
 
 /** Files of the source templates folder (including language subfolders) that are missing from the image folder: paths like `en/neutral.md`. */
 export function missingTemplateFiles(source: string, installed: string, sub = ""): string[] {
@@ -30,6 +30,28 @@ export function docExtractLine(unpackedMain: string, asarListing: string[]): { o
   const missing = [...(onDisk ? [] : [name]), ...imports.filter((f) => !existsSync(join(unpackedMain, f)))];
   const where = !onDisk && inArchive ? " (found only inside app.asar)" : "";
   return { ok: missing.length === 0, text: `Document text extraction is unpacked next to app.asar${missing.length ? `, missing: ${missing.join(", ")}${where}` : ""}` };
+}
+
+/** Files reachable from an entry through static relative imports (resolved against the importing file). */
+function importClosure(dir: string, entry: string): Set<string> {
+  const seen = new Set<string>();
+  const todo = [entry];
+  while (todo.length > 0) {
+    const f = todo.pop()!;
+    if (seen.has(f) || !existsSync(join(dir, f))) continue;
+    seen.add(f);
+    const base = f.includes("/") ? f.slice(0, f.lastIndexOf("/") + 1) : "";
+    for (const m of readFileSync(join(dir, f), "utf8").matchAll(/(?:from|import)\s*"(\.\.?\/[^"]+)"/g)) todo.push(normalize(base + m[1]!).replace(/\\/g, "/"));
+  }
+  return seen;
+}
+
+/** Report line of the parse5 boundary: parse5 (marker: one of its error codes) is bundled with doc-extract.mjs only. */
+export function parse5Line(outMain: string): { ok: boolean; text: string } {
+  const marker = "abrupt-closing-of-empty-comment";
+  const has = (entry: string) => [...importClosure(outMain, entry)].some((f) => readFileSync(join(outMain, f), "utf8").includes(marker));
+  const wrong = [...(has("doc-extract.mjs") ? [] : ["missing from doc-extract.mjs"]), ...["index.js", "council.mjs", "osen-mcp.mjs"].filter(has).map((e) => `reachable from ${e}`)];
+  return { ok: wrong.length === 0, text: `parse5 is bundled with doc-extract.mjs only (not in index.js, council.mjs, osen-mcp.mjs)${wrong.length ? `, wrong: ${wrong.join(", ")}` : ""}` };
 }
 
 /** Report line of the package Info.plist check: identifier com.osen.desktop and display name Osen. */

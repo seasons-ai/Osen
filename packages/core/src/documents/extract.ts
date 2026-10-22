@@ -66,9 +66,11 @@ export function documentReason(failure: { code: DocFailure; detail?: string }, l
     case "zip_size": return m.docUnpacked(limits.unpackedBytes / 2 ** 20);
     case "zip_ratio": return m.docRatio(limits.ratio);
     case "encrypted": return m.docEncrypted;
-    case "damaged": return m.docDamaged;
+    case "damaged": return failure.detail === undefined ? m.docDamaged : m.docDamagedPart(failure.detail);
     case "no_text": return m.docNoText;
     case "unsupported": return m.docUnsupported;
     case "failed": return m.docFailed(failure.detail ?? m.docStartError);
+    case "odf_kind": return m.docOdfKind(failure.detail ?? "");
+    case "drm": return m.docDrm;
   }
 }
