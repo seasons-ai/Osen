@@ -1,9 +1,9 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { setProcessLanguage } from "../i18n/process-language.ts";
-import { installPin, rollbackPin, usePin, readPins, type PackageSource } from "./pins.ts";
+import { installPin, installedPath, pinsPath, rollbackPin, usePin, readPins, type PackageSource } from "./pins.ts";
 import type { VerifiedEntry, VerifiedRecord } from "./verified-record.ts";
 
 // Own seeded generator: fast-check is not connected.
@@ -22,6 +22,11 @@ const iface = (version: string): VerifiedEntry => ({ agent: "claude", version, l
 const record: VerifiedRecord = { entries: [real("1.0.0"), real("1.1.0"), real("1.2.0"), iface("2.0.0"), iface("2.1.0")] };
 const VERSIONS = ["1.0.0", "1.1.0", "1.2.0", "2.0.0", "2.1.0", "9.9.9"]; // 9.9.9 is not recorded
 
+const rawPins = (dir: string): string | null => (existsSync(pinsPath(dir)) ? readFileSync(pinsPath(dir), "utf8") : null);
+const activeOf = (dir: string): string | null => {
+  const st = readPins(dir);
+  return st.state === "loaded" ? (st.pins.agents.claude?.active ?? null) : null;
+};
 const pick = <T>(r: () => number, xs: readonly T[]): T => xs[Math.floor(r() * xs.length)]!;
 
 describe("Переключение и откат / Установка закреплённой версии: random command sequences", () => {
@@ -47,16 +52,30 @@ describe("Переключение и откат / Установка закре
         };
         const deps = { source, record, readVersion: async (p: string) => readFileSync(p, "utf8").split("\n")[1]!.replace("echo ", "") };
         const successes = new Set<string>();
+        const modified = new Set<string>();
         const trace: string[] = [];
         for (let step = 0, n = 1 + Math.floor(r() * 30); step < n; step++) {
-          const op = pick(r, ["install", "candidate", "use", "rollback"] as const);
+          const op = pick(r, ["install", "candidate", "use", "rollback", "modify"] as const);
           const v = pick(r, VERSIONS);
           trace.push(op === "rollback" ? op : `${op} ${v}`);
+          const before = rawPins(dir);
+          const activeBefore = activeOf(dir);
           if (op === "install" || op === "candidate") {
             const res = await installPin(dir, "claude", { version: v, candidate: op === "candidate" }, deps);
             if (res.ok && !res.text.includes("already installed")) successes.add(v);
-          } else if (op === "use") usePin(dir, "claude", v, { record });
-          else rollbackPin(dir, "claude", {});
+          } else if (op === "modify") {
+            const st = readPins(dir);
+            const inst = st.state === "loaded" ? st.pins.agents.claude?.installed.find((i) => i.version === v) : undefined;
+            if (inst) {
+              appendFileSync(installedPath(dir, "claude", inst), "# changed\n");
+              modified.add(v);
+            }
+          } else {
+            const res = op === "use" ? usePin(dir, "claude", v, { record }) : rollbackPin(dir, "claude", {});
+            if (!res.ok) expect(rawPins(dir), `${op} refused but pins.json changed; seed ${seed}: ${trace.join("; ")}`).toBe(before);
+            const now = activeOf(dir);
+            if (now !== activeBefore && now !== null) expect(modified.has(now), `modified ${now} became active; seed ${seed}: ${trace.join("; ")}`).toBe(false);
+          }
 
           const ctx = `seed ${seed}: ${trace.join("; ")}`;
           const s = readPins(dir);

@@ -8,7 +8,7 @@ export type Host = "claude" | "codex";
 export type HostState = "connected" | "not connected" | "mismatch" | "not checked";
 export interface HostResult { host: Host; state: HostState; detail: string }
 
-interface Entry { command: string; args: string[]; status?: string }
+interface Entry { command: string; args: string[]; status?: string; disabled?: string }
 
 const real = (p: string): string => {
   try { return realpathSync(p); } catch { return p; }
@@ -28,10 +28,13 @@ function parseClaude(text: string): Entry | null {
 
 function parseCodex(text: string): Entry | null {
   try {
-    const t = (JSON.parse(text) as { transport?: { command?: unknown; args?: unknown } }).transport;
+    const j = JSON.parse(text) as { enabled?: unknown; disabled_reason?: unknown; transport?: { command?: unknown; args?: unknown } };
+    const t = j.transport;
     if (typeof t?.command !== "string") return null;
     const args = Array.isArray(t.args) && t.args.every((a) => typeof a === "string") ? (t.args as string[]) : [];
-    return { command: t.command, args };
+    // only a boolean false disables; the reason is shown only when it is a non-empty string
+    const disabled = j.enabled === false ? (typeof j.disabled_reason === "string" ? j.disabled_reason.trim() : "") : undefined;
+    return { command: t.command, args, disabled };
   } catch {
     return null;
   }
@@ -63,8 +66,9 @@ export function checkHost(host: Host, root: string, opts: { env?: NodeJS.Process
   // node (by name or absolute path) runs the file; the installer and .mcp.json write exactly this form
   const runner = entry.args.length === 0 || basename(entry.command) === "node";
   if (runner && real(resolve(root, serverFile)) === real(expected)) {
-    // the entry is ours, but Claude has not approved it or could not start it
+    // the entry is ours, but Claude has not approved it or could not start it, or Codex has it disabled
     if (entry.status && /pending approval|failed/i.test(entry.status)) return { host, state: "not connected", detail: `${line} (${entry.status})` };
+    if (entry.disabled !== undefined) return { host, state: "not connected", detail: `${line} (disabled${entry.disabled ? `: ${entry.disabled}` : ""})` };
     return { host, state: "connected", detail: line };
   }
   return { host, state: "mismatch", detail: `entry runs ${line}, expected ${expected}` };

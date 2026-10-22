@@ -9,11 +9,11 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { checkPinnedLaunch, resetGuardCache } from "../../src/cli-agents/launch-guard.ts";
+import { checkPinnedLaunch, pinBinaryState, resetGuardCache } from "../../src/cli-agents/launch-guard.ts";
 import type { VerifiedRecord } from "../../src/cli-agents/verified-record.ts";
 import { CODEX_HELP, launches, writeStub } from "./stub.ts";
 
@@ -379,6 +379,64 @@ await step("11. Cost: an unchanged file is hashed once, a changed file (size, th
   assert.equal((await check(original)).ok, true);
   assert.equal(hashes, 4, "only the mtime changed: hashed again");
 });
+
+// 12
+await step("12. Same-size rewrite in place with the old mtime restored (one process): the second check and pinBinaryState see the change, the stub is not run again", async () => {
+  const h = await fresh("s12");
+  const file = pinPath(h, "claude");
+  const pin = { path: file, version: "1.0.0", sha256: pinSha(h, "claude") };
+  const record: VerifiedRecord = { entries: [{ agent: "claude", version: "1.0.0", level: "real", checkedAt: "2026-10-20", os: "darwin-arm64", osenVersion: "1.0.0", modelCalls: 2 }] };
+  const whole = new Date(Math.floor(Date.now() / 1000 - 3600) * 1000); // whole seconds: a sub-millisecond mtime would not survive utimes
+  utimesSync(file, whole, whole);
+  resetGuardCache();
+  const check = () => checkPinnedLaunch({ agent: "claude", pin, launchPath: file, record, env: {} });
+  const stateBefore = pinBinaryState(data(h), "claude");
+  assert.equal((await check()).ok, true);
+  const runs = launches(pinMark(h, "claude"));
+  assert.ok(runs > 0, "the first check read the version");
+  const inode = statSync(file).ino, size = statSync(file).size;
+  const text = readFileSync(file, "utf8");
+  assert.ok(text.endsWith("exit 0\n"));
+  writeFileSync(file, `${text.slice(0, -2)}1\n`); // exit 0 -> exit 1: same size, same inode
+  utimesSync(file, whole, whole);
+  assert.equal(statSync(file).ino, inode);
+  assert.equal(statSync(file).size, size);
+  assert.equal(statSync(file).mtimeMs, whole.getTime());
+  assert.notEqual(pinBinaryState(data(h), "claude"), stateBefore, "pinBinaryState must change when the content changed under the same size, inode and mtime");
+  const second = await check();
+  assert.equal(second.ok, false, "the rewritten file must not pass");
+  assert.ok(!second.ok && second.reason.includes(T.en.sum), JSON.stringify(second));
+  assert.equal(launches(pinMark(h, "claude")), runs, "the rewritten stub was not run");
+});
+
+// 13
+const breakers = ["pins.json is not JSON", "pins.json is deleted", "pins.json has no active install of the agent"] as const;
+for (const what of breakers) {
+  await step(`13. Pinned session, ${what} in the middle of a session: the next turn is call_error before any process, the reason names the agent and the pin path, no PATH fallback, no usage for it`, async () => {
+    const h = await fresh(`s13-${what.replace(/\W+/g, "-")}`);
+    const pinsFile = join(data(h), "cli", "pins.json");
+    const hook = join(h.side, "claude.hook");
+    // the first turn of the pinned stub runs this script before it answers: pins.json breaks while the session is running
+    const alt = join(h.side, "pins.alt");
+    if (what === breakers[0]) writeFileSync(alt, "{ not json");
+    if (what === breakers[2]) { const pins = JSON.parse(readFileSync(pinsFile, "utf8")) as { agents: Record<string, unknown> }; delete pins.agents.claude; writeFileSync(alt, JSON.stringify(pins, null, 2)); }
+    writeFileSync(hook, what === breakers[1] ? `rm -f '${pinsFile}'\n` : `cp '${alt}' '${pinsFile}'\n`);
+    const r = await discuss(h, "claude");
+    assert.equal(r.code, EXIT_FAILED, r.all);
+    const [id] = sessionIds(h);
+    assert.ok(id);
+    assert.equal(launches(`${pinMark(h, "claude")}.turn`), 1, "claude took exactly one turn: the second was rejected before a process started");
+    assert.equal(launches(pathMark("claude")), 0, "the PATH claude must not run in place of the pin");
+    const ev = events(h, id);
+    const failedTurns = ev.filter((e) => e.type === "turn_failed");
+    assert.equal(failedTurns.length, 1, "no retry of the rejected turn");
+    const message = String(failedTurns[0]!.message);
+    assert.ok(message.includes("claude") && message.includes(pinPath(h, "claude")), message);
+    assert.equal(ev.filter((e) => e.type === "turn_completed" && e.participantId === "p1").length, 1, "p1 has exactly one completed turn, so exactly one usage entry");
+    const failedAt = ev.findIndex((e) => e.type === "turn_failed");
+    assert.deepEqual(ev.slice(failedAt + 1).map((e) => e.type), ["participant_dropped", "session_finished"], "no turn and no usage after the rejection");
+  });
+}
 
 console.log(`\n${n - failed} of ${n} steps passed`);
 if (failed === 0) rmSync(work, { recursive: true, force: true });
