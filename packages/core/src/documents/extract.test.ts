@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe("Limits and reasons", () => {
-  it("constants and sixteen reason wordings", () => {
+  it("constants and seventeen reason wordings", () => {
     expect(DOC_LIMITS).toMatchObject({ bytes: 104857600, ms: 30000, rssBytes: 536870912, chars: 20000000, parts: 10000, unpackedBytes: 536870912, ratio: 200, cells: 1000000 });
     const reasons: Record<DocFailure, string> = {
       bytes: "документ больше 100 МиБ",
@@ -43,6 +43,7 @@ describe("Limits and reasons", () => {
       no_text: "в документе нет текста",
       unsupported: "формат документа не поддерживается",
       failed: "не удалось извлечь текст документа — ошибка запуска",
+      textutil_unavailable: "не удалось извлечь текст — системная утилита textutil недоступна",
       odf_kind: "формат не поддерживается — OpenDocument",
       drm: "книга защищена DRM — содержимое недоступно",
     };

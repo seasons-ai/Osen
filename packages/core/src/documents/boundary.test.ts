@@ -8,7 +8,8 @@ function walk(dir: string, out: string[]): void {
   let names: import("node:fs").Dirent[];
   try { names = readdirSync(dir, { withFileTypes: true }); } catch { return; }
   for (const e of names) {
-    if (e.name === "node_modules") continue;
+    // testdata holds test-only workers (never shipped), e.g. the CFB property worker that calls detect.ts
+    if (e.name === "node_modules" || e.name === "testdata") continue;
     const p = join(dir, e.name);
     if (e.isDirectory()) walk(p, out);
     else if (e.name.endsWith(".ts") && !e.name.endsWith(".test.ts")) out.push(p);
