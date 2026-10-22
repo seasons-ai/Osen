@@ -11,7 +11,7 @@ import type { VerifiedRecord } from "./verified-record.ts";
 type Env = Record<string, string | undefined>;
 
 export interface GuardDeps {
-  /** `${size}:${mtimeMs}:${ino}` of a regular executable file (symlinks followed); undefined when it is missing or not runnable. */
+  /** `${size}:${mtimeMs}:${ctimeMs}:${ino}` of a regular executable file (symlinks followed); undefined when it is missing or not runnable. */
   fileId(path: string): string | undefined;
   /** Full-content sha256, hex. */
   hash(path: string): Promise<string>;
@@ -27,7 +27,7 @@ const realGuardDeps: GuardDeps = {
       const st = statSync(path);
       if (!st.isFile()) return undefined;
       accessSync(path, constants.X_OK);
-      return `${st.size}:${st.mtimeMs}:${st.ino}`;
+      return `${st.size}:${st.mtimeMs}:${st.ctimeMs}:${st.ino}`;
     } catch {
       return undefined;
     }
@@ -44,7 +44,6 @@ const realGuardDeps: GuardDeps = {
 };
 
 // path -> last hashed file identity and its sha256; an unchanged identity is not hashed again.
-// ponytail: size+mtime+inode can miss a same-size rewrite that restores mtime; hash every time if that matters
 const shaCache = new Map<string, { id: string; sha: string }>();
 export const resetGuardCache = (): void => shaCache.clear();
 
