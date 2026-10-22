@@ -233,6 +233,31 @@ try {
   assert.equal(existsSync(join(A, "config.json")), false, "use/rollback must not create config.json");
   ok("4d sessions/ identical before and after use and rollback; config.json untouched (not created)");
 
+  // ---- 4e: install file changed after installation ----
+  const fileOf = (v: string) => { const i = (claudePins(A).installed as { version: string; path: string; sha256: string }[]).find((x) => x.version === v)!; return { file: join(A, "cli", "claude", v, i.path), sha: i.sha256 }; };
+  const tampered = async (v: string, args: string[]) => {
+    const { file, sha } = fileOf(v);
+    const original = readFileSync(file);
+    const pinsBytes = readFileSync(pinsFile(A));
+    writeFileSync(file, Buffer.concat([original, Buffer.from("# changed after installation\n")]));
+    try {
+      const r = await run(A, ["cli", ...args]);
+      assert.equal(r.code, 2, `${args.join(" ")}: ${r.out}${r.err}`);
+      for (const part of [v, file, sha, hash(readFileSync(file))]) assert.ok(r.err.includes(part), `${args.join(" ")}: stderr must contain ${part}: ${r.err}`);
+      assert.deepEqual(readFileSync(pinsFile(A)), pinsBytes);
+    } finally { writeFileSync(file, original); }
+  };
+  await tampered("1.0.0", ["use", "claude", "1.0.0"]);
+  ok("4e use claude 1.0.0 with a changed install file: exit 2, reason names version, path, expected and actual sums, pins.json byte-identical");
+  assert.equal((await run(A, ["cli", "use", "claude", "1.0.0"])).code, 0);
+  assert.equal(claudePins(A).previous, "1.1.0");
+  await tampered("1.1.0", ["rollback", "claude"]);
+  assert.equal(claudePins(A).active, "1.0.0");
+  ok("4f rollback claude with a changed file of the previous version: exit 2, same reason, pins.json byte-identical, active stays 1.0.0");
+  assert.equal((await run(A, ["cli", "rollback", "claude"])).code, 0);
+  assert.equal(claudePins(A).active, "1.1.0");
+  ok("4g the restored file passes: rollback to 1.1.0 succeeds");
+
   // ---- 5 ----
   const pinPath = join(A, "cli", "claude", "1.1.0", claudePins(A).installed.find((i: { version: string }) => i.version === "1.1.0").path as string);
   const r5a = await run(A, ["providers", "--json"]);
