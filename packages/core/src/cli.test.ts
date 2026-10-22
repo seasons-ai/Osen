@@ -18,7 +18,8 @@ import { runStoredSession } from "./store/run.ts";
 import { planResume, runResumedSession } from "./store/resume.ts";
 import { getProcessLanguage, setProcessLanguage } from "./i18n/process-language.ts";
 import { listSessions } from "./store/sessions.ts";
-import { appendEvent, createSessionJournal, eventsPath, materialPath, readEvents } from "./store/journal.ts";
+import { appendEvent, createSessionJournal, eventsPath, materialPath, readEvents, resumeLockPath, stopRequestPath } from "./store/journal.ts";
+import { launchAcceptedPath, launchDir, writeLaunchFile } from "./store/launch.ts";
 import { openOwnerQueue, ownerMessagesDir } from "./store/owner-messages.ts";
 import type { SessionEvent } from "./protocol/schema.ts";
 
@@ -2576,5 +2577,90 @@ describe("Отказ хода из-за несовпадения закрепл�
     expect(r.outLines.filter((l) => l.startsWith("✗ Ход 1 · p1"))).toEqual([`✗ Ход 1 · p1 «n1» · попытка 1 · call_error: ${reason}`]);
     expect(r.out).toContain("✗ p1 «n1» выбыл: Ошибка вызова без повтора: Закреплённый claude 9.1.0: контрольная сумма не совпала");
     expect(r.out).not.toContain("попытка 2");
+  });
+});
+
+describe("run-prepared: the launch deadline is rechecked after slow provider checks", () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const untilPast = (deadline: string) => sleep(Math.max(0, Date.parse(deadline) + 30 - Date.now()));
+  const step = (stance: string, solution: string | null) => ({ response: { stance, reasoning: "r", solution, answers: [], questions: [] } });
+
+  it("start: provider checks outlast the launch deadline → non-zero exit, 'expired' reason on stderr, no session folder", async () => {
+    const home = tmp();
+    const stub = cliStub("claude");
+    const deadline = new Date(Date.now() + 400).toISOString();
+    const session = createSession({
+      topic: "Тема", framing: "", origin: "mcp", limits: { maxRounds: 1, turnTimeoutSec: 30, contextChars: 20000 },
+      participants: [1, 2].map((n) => ({ name: `N${n}`, providerId: "claude", model: "default", role: null })),
+    }, { maxParticipants: 8 });
+    const file = writeLaunchFile(home, { session, scenarios: {}, deadline });
+    const r = await run(["run-prepared", file], {
+      env: dev(home),
+      inspectDeps: { locate: async (a) => { await untilPast(deadline); return stub.loc()(a); } },
+    });
+    expect(r.code).not.toBe(0);
+    expect(r.err).toContain(cliMessages().launchExpired(deadline));
+    expect(listSessions(home, () => false)).toHaveLength(0);
+  });
+
+  describe("resume with a replacement: provider re-check under the lock", () => {
+    // p2 fails in round 1 (session failed), then the owner replaces it with the claude stub
+    async function seed(home: string) {
+      const scenario = join(tmp(), "p1.json");
+      writeFileSync(scenario, JSON.stringify({ steps: [step("amend", "v1"), step("agree", null), step("agree", null), step("agree", null)] }));
+      const session = createSession({
+        topic: "Тема", framing: "", origin: "cli", limits: { maxRounds: 3, turnTimeoutSec: 30, contextChars: 20000 },
+        participants: [1, 2].map((n) => ({ name: `N${n}`, providerId: "scripted", model: "m", role: null })),
+      }, { maxParticipants: 8, id: "f1" });
+      await runStoredSession({
+        session, dataDir: home,
+        drivers: {
+          p1: createScriptedDriver({ steps: [step("amend", "v1")] }, { COUNCIL_DEV: "1" }),
+          p2: createScriptedDriver({ steps: [{ error: "fatal", retryable: false }] }, { COUNCIL_DEV: "1" }),
+        },
+      });
+      return scenario;
+    }
+    const launch = (home: string, scenario: string, deadline: string) => writeLaunchFile(home, {
+      kind: "resume", sessionId: "f1", rounds: 1, replacements: [{ participantId: "p2", providerId: "claude", model: "sonnet" }],
+      journalBytes: statSync(eventsPath(home, "f1")).size, scenarios: { m: scenario }, deadline,
+    });
+    // fast before the lock, slow (past the deadline) under it
+    const slept = { under: false };
+    const deps = (stub: ReturnType<typeof cliStub>, home: string, deadline: string, slow: boolean): CliIo["inspectDeps"] => ({
+      locate: async (a) => { if (slow && existsSync(resumeLockPath(home, "f1"))) { slept.under = true; await untilPast(deadline); } return stub.loc()(a); },
+    });
+    const leftovers = (home: string, file: string) => readdirSync(launchDir(home)).filter((n) => n.includes(".accepted") || n.endsWith(".tmp")).concat(existsSync(launchAcceptedPath(file)) ? ["accepted"] : []);
+
+    it("the re-check under the lock outlasts the deadline → refused: journal, stop request and owner requests untouched, no accepted file", async () => {
+      const home = tmp();
+      const scenario = await seed(home);
+      const ownerFile = join(ownerMessagesDir(home, "f1"), "r1.json");
+      mkdirSync(ownerMessagesDir(home, "f1"), { recursive: true });
+      writeFileSync(ownerFile, JSON.stringify({ text: "old" }));
+      writeFileSync(stopRequestPath(home, "f1"), "x\n");
+      const before = readFileSync(eventsPath(home, "f1"));
+      const deadline = new Date(Date.now() + 5000).toISOString();
+      const file = launch(home, scenario, deadline);
+      const r = await run(["run-prepared", file], { env: dev(home), inspectDeps: deps(cliStub("claude"), home, deadline, true) });
+      expect(slept.under, "the slow check under the lock was reached before the deadline").toBe(true);
+      expect(r.code).not.toBe(0);
+      expect(JSON.parse(r.err.split("\n")[0]!)).toEqual({ code: "stale_plan", message: cliMessages().launchExpired(deadline) });
+      expect(readFileSync(eventsPath(home, "f1")).equals(before)).toBe(true);
+      expect(existsSync(stopRequestPath(home, "f1"))).toBe(true);
+      expect(existsSync(ownerFile)).toBe(true);
+      expect(leftovers(home, file)).toEqual([]);
+    });
+
+    it("everything inside the deadline → accepted file written, session_resumed in the journal", async () => {
+      const home = tmp();
+      const scenario = await seed(home);
+      const deadline = new Date(Date.now() + 60_000).toISOString();
+      const file = launch(home, scenario, deadline);
+      const r = await run(["run-prepared", file], { env: dev(home), inspectDeps: deps(cliStub("claude"), home, deadline, false) });
+      expect(r.err).toBe("");
+      expect(existsSync(launchAcceptedPath(file))).toBe(true);
+      expect(readEvents(home, "f1")!.events.some((e) => e.type === "session_resumed")).toBe(true);
+    });
   });
 });
