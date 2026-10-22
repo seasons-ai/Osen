@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeCfb, makeRtf } from "./documents/fixture.ts";
 import { setDocumentExtractorRuntime } from "./documents/extract.ts";
-import { collectMaterials, collectSessionMaterials, MaterialsError, type CollectOptions } from "./materials.ts";
+import { collectMaterials, collectSessionMaterials, MaterialsError, sha256Of, type CollectOptions } from "./materials.ts";
 import { getProcessLanguage, setProcessLanguage } from "./i18n/process-language.ts";
 import { materialsMessages } from "./messages/materials.ts";
 
@@ -40,7 +40,7 @@ describe("Материалы RTF и DOC", () => {
     const rtf = put("a.txt", makeRtf(["Первая строка", "Вторая строка"]));
     const doc = put("b.bin", docBytes(["Первая строка", "Вторая строка"]));
     expect(collectMaterials([rtf], opts).materials[0]).toMatchObject({ text: TEXT });
-    expect(collectMaterials([doc], opts).materials[0]).toMatchObject({ text: TEXT });
+    expect(collectMaterials([doc], opts).materials[0]).toMatchObject({ text: TEXT, chars: TEXT.length, sha256: sha256Of(TEXT) });
   }, 30_000);
 
   it("fake.rtf with plain text stays plain text", () => {
@@ -95,6 +95,8 @@ describe("Материалы RTF и DOC", () => {
     } finally {
       setDocumentExtractorRuntime();
     }
+    const broken = join(root, "d", "broken.rtf");
+    expect(refusal(() => collectMaterials([broken], opts)).reasons).toEqual([`«${broken}»: документ повреждён`]);
     const set = collectMaterials([join(root, "d")], opts);
     expect(set.materials.map((m) => m.name)).toEqual(["d/README.md", "d/note.rtf"]);
     expect(set.skipped).toEqual([{ name: "d/broken.rtf", reason: "документ повреждён" }]);
