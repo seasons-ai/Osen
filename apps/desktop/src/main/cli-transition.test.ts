@@ -1,4 +1,4 @@
-import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -301,6 +301,65 @@ describe("Requirement: Ежесуточная проверка кандидат�
     expect(JSON.parse(reminderRaw()).lastCheck.candidates[0]).toMatchObject({ version: "7.5.0", status: "ok", recorded: true });
     expect(pinsBytes(dir)).toBe(pinsBefore);
     expect(readPins(dir)).toMatchObject({ state: "loaded" });
+  });
+});
+
+describe("Requirement: Выход из приложения посреди проверки", () => {
+  const prefixes = () => (existsSync(join(dir, "cli-candidates")) ? readdirSync(join(dir, "cli-candidates")) : []);
+
+  it("quit mid-check aborts the install and removes its prefix; the partial result is not written", async () => {
+    await seedPins();
+    releases = { claude: ["7.5.0"] };
+    let aborted = false;
+    const t = make({
+      candidateDeps: () => ({
+        releases: { list: async () => ["7.5.0"] },
+        source: {
+          fetch: (_agent, _version, _dir, signal) => new Promise((_, reject) => {
+            signal?.addEventListener("abort", () => { aborted = true; reject(new Error("aborted")); });
+          }),
+        },
+      }),
+    });
+    const run = t.maybeCheck();
+    await vi.waitFor(() => expect(prefixes()).toHaveLength(1));
+    await t.stop();
+    expect(aborted).toBe(true);
+    expect(existsSync(join(dir, "cli-candidates"))).toBe(false);
+    await run;
+    expect(existsSync(reminderPath(dir))).toBe(false);
+    expect(checked).toBe(0);
+    expect(logs).toContain("I CLI candidate check stopped at quit");
+    await t.maybeCheck(); // no new check after stop
+    expect(prefixes()).toEqual([]);
+  });
+
+  it("a check that ignores the signal holds quit for 5 s at most; its prefix stays", async () => {
+    await seedPins();
+    vi.useFakeTimers();
+    try {
+      const t = make({
+        check: async (data) => {
+          mkdirSync(join(data, "cli-candidates", "claude-7.5.0-x"), { recursive: true });
+          return new Promise<CandidatesReport>(() => {});
+        },
+      });
+      void t.maybeCheck();
+      await vi.waitFor(() => expect(prefixes()).toHaveLength(1));
+      let done = false;
+      void t.stop().then(() => { done = true; });
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(done).toBe(true);
+      expect(prefixes()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stop with no check running resolves at once", async () => {
+    await make().stop();
   });
 });
 
