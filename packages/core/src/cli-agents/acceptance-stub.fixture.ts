@@ -14,6 +14,7 @@ import { join } from "node:path";
 //   err: exits with code 1 and a message on stderr
 //   resume_fail: the stop turn writes a flag to STUB_STATE; the next turn after it exits with code 1
 //   slow: every turn hangs without output (the first probe stays running until it is stopped)
+//   help_fail: on --help writes "boom" to stderr and exits with code 3.
 //   help_hang, features_hang: on --help (or `features list`) starts a child `sleep 30` in its own group (not detached),
 //     writes the child's pid to STUB_PIDFILE and hangs; nothing is written to STUB_LOG (no turn is launched)
 //   term_ignorer: every turn starts a child that ignores SIGTERM (in its group, no pipes; it writes its own pid to STUB_PIDFILE
@@ -83,7 +84,7 @@ export interface StubInspection { version?: string; help?: string; features?: st
 /** Writes the stub into dir and returns its path; the shebang is the running node, so PATH is not needed. */
 export function writeAcceptanceStub(dir: string, inspection: StubInspection = {}): string {
   const file = join(dir, "cli-stub.js");
-  const head = `const INSPECTION = ${JSON.stringify(inspection)};\nconst argv = process.argv.slice(2);\nconst HANG = { help_hang: argv.includes("--help"), features_hang: argv[0] === "features" }[process.env.STUB_MODE];\nif (HANG) { const c = require("node:child_process").spawn("sleep", ["30"], { stdio: "ignore" }); require("node:fs").writeFileSync(process.env.STUB_PIDFILE, String(c.pid)); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0); }\nif (argv.includes("--version") && INSPECTION.version !== undefined) { process.stdout.write(INSPECTION.version + "\\n"); process.exit(0); }\nif (argv.includes("--help") && INSPECTION.help !== undefined) { process.stdout.write(INSPECTION.help); process.exit(0); }\nif (argv[0] === "features" && INSPECTION.features !== undefined) { process.stdout.write(INSPECTION.features); process.exit(0); }\n`;
+  const head = `const INSPECTION = ${JSON.stringify(inspection)};\nconst argv = process.argv.slice(2);\nconst HANG = { help_hang: argv.includes("--help"), features_hang: argv[0] === "features" }[process.env.STUB_MODE];\nif (process.env.STUB_MODE === "help_fail" && argv.includes("--help")) { process.stderr.write("boom"); process.exit(3); }\nif (HANG) { const c = require("node:child_process").spawn("sleep", ["30"], { stdio: "ignore" }); require("node:fs").writeFileSync(process.env.STUB_PIDFILE, String(c.pid)); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0); }\nif (argv.includes("--version") && INSPECTION.version !== undefined) { process.stdout.write(INSPECTION.version + "\\n"); process.exit(0); }\nif (argv.includes("--help") && INSPECTION.help !== undefined) { process.stdout.write(INSPECTION.help); process.exit(0); }\nif (argv[0] === "features" && INSPECTION.features !== undefined) { process.stdout.write(INSPECTION.features); process.exit(0); }\n`;
   writeFileSync(file, `#!${process.execPath}\n${head}${SCRIPT}`);
   chmodSync(file, 0o755);
   return file;

@@ -15,7 +15,7 @@ import { pinnedEnv } from "./discovery.ts";
 import { classifyFailure } from "./errors.ts";
 import { declaredFlags, parseCodexFeatures } from "./flags.ts";
 import { installedPath, pinConfigDir, readPins } from "./pins.ts";
-import { readOutput, runProcess } from "./process.ts";
+import { describeOutputError, readOutput, runProcess } from "./process.ts";
 import type { RunResult } from "./process.ts";
 import { parseClaudeOutput, parseCodexOutput } from "./output-parse.ts";
 import { CLI_AGENTS, DEFAULT_MODEL } from "./types.ts";
@@ -318,19 +318,22 @@ export const runProbe: ProbeRunner = async (probe, ctx) => {
 export interface ProbeOutcome { probe: ProbeId; ok: boolean; reason?: string }
 export interface AcceptanceOutcome { code: 0 | 1 | 5; outcomes: ProbeOutcome[]; calls: number; recorded: boolean; interrupted: boolean; fixture?: string; fixtureError?: string; text: string }
 
-async function inspectPinned(plan: AcceptancePlan, env: Record<string, string | undefined>, signal?: AbortSignal): Promise<{ flags: ReadonlySet<string>; features?: ReadonlySet<string> }> {
+type InspectLimits = { timeoutMs?: number; maxBytes?: number };
+
+async function inspectPinned(plan: AcceptancePlan, env: Record<string, string | undefined>, signal?: AbortSignal, limits: InspectLimits = {}): Promise<{ flags: ReadonlySet<string>; features?: ReadonlySet<string> }> {
   const childEnv = { ...env, ...pinnedEnv(plan.agent, plan.configDir) };
-  const flags = declaredFlags(await readOutput(plan.path, HELP_ARGS[plan.agent], childEnv, signal));
+  const flags = declaredFlags(await readOutput(plan.path, HELP_ARGS[plan.agent], childEnv, signal, limits.timeoutMs, limits.maxBytes));
   if (plan.agent === "claude") return { flags };
-  return { flags, features: parseCodexFeatures(await readOutput(plan.path, ["features", "list"], childEnv, signal)) };
+  return { flags, features: parseCodexFeatures(await readOutput(plan.path, ["features", "list"], childEnv, signal, limits.timeoutMs, limits.maxBytes)) };
 }
 
 export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts: {
   env: Record<string, string | undefined>; language: Language; signal?: AbortSignal; saveFixture?: string; osenVersion?: string; now?: () => Date;
   onProbe?: (o: ProbeOutcome) => void;
+  inspectLimits?: InspectLimits;                   // stands and tests only: shorter time limit or output cap for the help and capability reads
 }, deps: {
   runProbe?: ProbeRunner;
-  inspect?: (plan: AcceptancePlan, env: Record<string, string | undefined>, signal?: AbortSignal) => Promise<{ flags: ReadonlySet<string>; features?: ReadonlySet<string> }>;
+  inspect?: (plan: AcceptancePlan, env: Record<string, string | undefined>, signal?: AbortSignal, limits?: InspectLimits) => Promise<{ flags: ReadonlySet<string>; features?: ReadonlySet<string> }>;
 } = {}): Promise<AcceptanceOutcome> {
   const m = acceptanceMessages(opts.language);
   const { signal } = opts;
@@ -356,12 +359,12 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
   let flags: ReadonlySet<string> = new Set();
   let features: ReadonlySet<string> | undefined;
   try {
-    const ins = await (deps.inspect ?? inspectPinned)(plan, opts.env, signal);
+    const ins = await (deps.inspect ?? inspectPinned)(plan, opts.env, signal, opts.inspectLimits);
     flags = ins.flags;
     features = ins.features;
   } catch (e) {
     if (signal?.aborted) return interrupted();
-    failure = { probe: "valid_turn", reason: m.inspectFailed(errorText(e)) };
+    failure = { probe: "valid_turn", reason: m.inspectFailed(describeOutputError(e, opts.language)) };
     record({ probe: "valid_turn", ok: false, reason: failure.reason });
   }
 
@@ -377,7 +380,7 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
         r = await (deps.runProbe ?? runProbe)(probe, ctx);
       } catch (e) {
         if (signal?.aborted) return interrupted();
-        r = { ok: false, reason: m.probeError(errorText(e)), calls: 0 };
+        r = { ok: false, reason: m.probeError(describeOutputError(e, opts.language)), calls: 0 };
       }
       if (signal?.aborted) return interrupted();
       // a probe that spends past the bound is a failure: the record never claims more calls than agreed

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setProcessLanguage } from "../i18n/process-language.ts";
-import { CANDIDATES_DIR, CANDIDATE_LIMIT, candidatesJson, checkCandidate, checkCandidates } from "./candidates.ts";
+import { ReleaseListError, CANDIDATES_DIR, CANDIDATE_LIMIT, candidatesJson, checkCandidate, checkCandidates } from "./candidates.ts";
 import type { CandidateDeps } from "./candidates.ts";
 import { HELP_ARGS } from "./args.ts";
 import type { VerifiedEntry } from "./verified-record.ts";
@@ -177,6 +177,17 @@ describe("Команда cli candidates / Источник релизов нед
     const r = await checkCandidates(dir, ["claude"], h.deps);
     expect(r.failures[0]!.code).toBe("source_unavailable");
     expect(h.fetched).toEqual([]);
+  });
+  it("Сообщения ядра на выбранном языке: a non-list answer reason is in the process language", async () => {
+    for (const [lang, has] of [["ru", "ответ не является списком строк версий"], ["en", "the answer is not a list of version strings"]] as const) {
+      setProcessLanguage(lang);
+      const h = harness();
+      h.deps.releases = { list: async () => ({}) as unknown as string[] };
+      const r = await checkCandidates(dir, ["claude"], h.deps);
+      expect(r.failures[0]!.reason).toContain(has);
+      if (lang === "ru") expect(r.failures[0]!.reason).not.toContain("not a list of version strings");
+    }
+    expect(new ReleaseListError().message).toBe("not a list of version strings");
   });
 });
 

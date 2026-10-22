@@ -30,7 +30,7 @@ const sourceLog = join(work, "source.jsonl");
 writeFileSync(sourceLog, "");
 const releasesFile = join(work, "releases.json");
 const RELEASES = { claude: ["2.1.288", "2.1.290", "2.1.291"], codex: ["0.159.2", "0.160.0", "0.161.0"] };
-const setReleases = (r: Record<string, string[] | "error">) => writeFileSync(releasesFile, JSON.stringify(r));
+const setReleases = (r: Record<string, string[] | "error" | object>) => writeFileSync(releasesFile, JSON.stringify(r));
 setReleases(RELEASES);
 
 // the login-shell lookup must not run the owner's shell: a stub shell that prints PATH only
@@ -55,10 +55,10 @@ function treeHash(dir: string): string {
 let n = 0;
 const ok = (s: string) => console.log(`ok ${++n}: ${s}`);
 interface Result { code: number; out: string; err: string }
-interface RunOpts { lang?: "en" | "ru"; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number; slowOnly?: string; hangHelp?: string; hangPid?: string; npm?: boolean; extraEnv?: Record<string, string> }
+interface RunOpts { lang?: "en" | "ru"; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number; slowOnly?: string; hangHelp?: string; hangPid?: string; npm?: boolean; npmReleases?: boolean; extraEnv?: Record<string, string> }
 const childEnv = (home: string, o: RunOpts): Record<string, string> => ({
   PATH: `${bin}:/usr/bin:/bin`, HOME: homedir(), SHELL: fakeShell, COUNCIL_HOME: home, COUNCIL_DEV: "1", COUNCIL_LANG: o.lang ?? "en",
-  CLI_CANDIDATES_STAND: JSON.stringify({ releases: releasesFile, counter: counters, log: sourceLog, ...(o.builtin ? { builtin: o.builtin } : {}), ...(o.slowInstallMs ? { slowInstallMs: o.slowInstallMs } : {}), ...(o.slowOnly ? { slowOnly: o.slowOnly } : {}), ...(o.hangHelp ? { hangHelp: o.hangHelp, hangPid: o.hangPid } : {}), ...(o.npm ? { npm: true } : {}) }),
+  CLI_CANDIDATES_STAND: JSON.stringify({ releases: releasesFile, counter: counters, log: sourceLog, ...(o.builtin ? { builtin: o.builtin } : {}), ...(o.slowInstallMs ? { slowInstallMs: o.slowInstallMs } : {}), ...(o.slowOnly ? { slowOnly: o.slowOnly } : {}), ...(o.hangHelp ? { hangHelp: o.hangHelp, hangPid: o.hangPid } : {}), ...(o.npm ? { npm: true } : {}), ...(o.npmReleases ? { npmReleases: true } : {}) }),
   ...o.extraEnv,
 });
 function run(home: string, args: string[], o: RunOpts = {}): Promise<Result> {
@@ -479,6 +479,36 @@ try {
   const npmPid = join(work, "hang-npm.pid");
   await hungInterrupt("step 7g SIGINT while a stand `npm install` (the real npm package source) hangs", { npm: true, extraEnv: { NPM_HANG_PID: npmPid } }, npmPid);
   rmSync(fakeNpm);
+
+  // ---- 7h: a release answer that is not a list: the reason is in the session language (change 207) ----
+  const NOT_LIST = { ru: "ответ не является списком строк версий", en: "the answer is not a list of version strings" } as const;
+  const notListSteps: { label: string; o: (lang: "en" | "ru") => RunOpts; prepareSource: () => void }[] = [
+    { label: "release source answers an object", o: (lang) => ({ lang }), prepareSource: () => setReleases({ claude: { not: "a list" }, codex: RELEASES.codex }) },
+    { label: "npm view prints a JSON object", o: (lang) => ({ lang, npmReleases: true }), prepareSource: () => writeNpmView(`echo '{"not":"a list"}'`) },
+    { label: "npm view prints non-JSON text", o: (lang) => ({ lang, npmReleases: true }), prepareSource: () => writeNpmView(`echo 'npm notice not json at all'`) },
+  ];
+  const writeNpmView = (body: string): void => {
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\n[ "$1" = view ] || exit 1\n${body}\n`);
+    chmodSync(join(bin, "npm"), 0o755);
+  };
+  const FOREIGN_NOT_LIST = ["npm view did not return", "Unexpected token", "SyntaxError", "is not valid JSON", "not a list of version strings"];
+  for (const st of notListSteps) {
+    st.prepareSource();
+    for (const lang of ["ru", "en"] as const) {
+      const h = prepare();
+      const mark = calls().length;
+      const r = await run(h, ["cli", "candidates", "--agent", "claude"], st.o(lang));
+      assert.equal(r.code, 1, `${st.label} ${lang}: ${r.out}${r.err}`);
+      assert.ok(r.err.includes(NOT_LIST[lang]), `${st.label} ${lang}: ${r.err}`);
+      if (lang === "ru") for (const f of FOREIGN_NOT_LIST) assert.ok(!r.err.includes(f), `${st.label} ru: foreign text "${f}" in ${r.err}`);
+      else for (const f of FOREIGN_NOT_LIST.slice(0, 4)) assert.ok(!r.err.includes(f), `${st.label} en: unexpected "${f}" in ${r.err}`);
+      assert.equal(calls().length, mark);
+      assert.ok(!existsSync(join(h, "cli-candidates")));
+      ok(`step 7h ${st.label}, ${lang}: exit 1, reason "${NOT_LIST[lang]}"${lang === "ru" ? ", no English or parser text" : ""}, nothing installed`);
+    }
+  }
+  setReleases(RELEASES);
+  rmSync(join(bin, "npm"), { force: true });
 
   // ---- 8 ----
   const files = readdirSync(counters);

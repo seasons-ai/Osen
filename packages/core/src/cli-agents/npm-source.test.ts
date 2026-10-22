@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setProcessLanguage } from "../i18n/process-language.ts";
+import { checkCandidates, ReleaseListError } from "./candidates.ts";
 import { npmReleases, npmSource } from "./npm-source.ts";
 
 let root: string;
@@ -97,4 +98,25 @@ describe("Шов источника пакета: npm / прерывание", (
   it("view: the npm group is killed", async () => {
     await interrupt((signal) => npmReleases(env()).list("claude", signal));
   }, 20_000);
+});
+
+describe("Сообщения ядра на выбранном языке: npm view", () => {
+  for (const [name, body] of [["a JSON object", `echo '{"a":1}'`], ["non-JSON text", "echo 'not json {'"], ["an array of numbers", "echo '[1,2]'"]] as const) {
+    it(`${name}: rejects with ReleaseListError and the ru reason has no English parser text`, async () => {
+      fakeNpm(body);
+      await expect(npmReleases(env()).list("claude")).rejects.toBeInstanceOf(ReleaseListError);
+      setProcessLanguage("ru");
+      const r = await checkCandidates(work, ["claude"], { releases: npmReleases(env()), source: npmSource(env()), env: env() });
+      const reason = r.failures[0]!.reason;
+      expect(reason).toContain("ответ не является списком строк версий");
+      expect(reason).not.toMatch(/npm view did not return|Unexpected token|SyntaxError|JSON/);
+    });
+  }
+  it("npm exits silently: the ru reason has the Russian exit text", async () => {
+    fakeNpm("exit 4");
+    setProcessLanguage("ru");
+    const r = await checkCandidates(work, ["claude"], { releases: npmReleases(env()), source: npmSource(env()), env: env() });
+    expect(r.failures[0]!.reason).toContain("завершился с кодом 4");
+    expect(r.failures[0]!.reason).not.toContain("exited with");
+  });
 });

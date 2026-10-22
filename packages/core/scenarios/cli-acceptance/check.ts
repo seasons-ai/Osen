@@ -84,7 +84,7 @@ const isAlive = (pid: number): boolean => {
 };
 
 interface Result { code: number; out: string; err: string; tag: string }
-interface RunOpts { lang?: "en" | "ru"; mode?: string; onSpawn?: (child: ChildProcess, tag: string) => void }
+interface RunOpts { lang?: "en" | "ru"; mode?: string; limits?: { timeoutMs?: number; maxBytes?: number }; onSpawn?: (child: ChildProcess, tag: string) => void }
 let runNo = 0;
 function run(home: string, args: string[], o: RunOpts = {}): Promise<Result> {
   const tag = `run-${String(++runNo).padStart(3, "0")}`;
@@ -93,6 +93,7 @@ function run(home: string, args: string[], o: RunOpts = {}): Promise<Result> {
   const env: Record<string, string> = {
     PATH: `${bin}:/usr/bin:/bin`, HOME: homedir(), SHELL: fakeShell, COUNCIL_HOME: home, COUNCIL_DEV: "1", COUNCIL_LANG: o.lang ?? "en",
     STUB_MODE: o.mode ?? "good", STUB_LOG: join(logs, `${tag}.log`), STUB_STATE: state, STUB_PIDFILE: join(pidDir, `${tag}.pid`),
+    ...(o.limits ? { CLI_ACCEPT_STAND_LIMITS: JSON.stringify(o.limits) } : {}),
   };
   return new Promise((res, rej) => {
     const child = spawn(process.execPath, [entry, ...args], { env, cwd: repo, stdio: ["ignore", "pipe", "pipe"] });
@@ -417,6 +418,58 @@ try {
     assert.ok(gone, `the stop turn's SIGTERM-ignoring child ${pid} outlived the turn`);
     assert.equal(realOf(h).length, 1);
     ok("the stop probe's turn leaves a SIGTERM-ignoring child: the turn stop kills it within the stop grace, the probe passes, all 7 probes pass, exit 0, one real entry");
+  }
+
+  // ---- 12: reasons of failed help/capability reads are in the session language (change 207) ----
+  const LANG_TEXT = {
+    ru: { head: "не удалось прочитать справку или возможности CLI", exited: "завершился с кодом 3", noAnswer: "нет ответа за 500 мс", large: "вывод больше 64 байт" },
+    en: { head: "could not read the CLI help or capabilities", exited: "exited with code 3", noAnswer: "no answer within 500 ms", large: "the output is larger than 64 bytes" },
+  } as const;
+  const FOREIGN = { ru: ["exited with", "no answer within", "output is larger"], en: ["завершился", "нет ответа", "вывод больше"] } as const;
+  for (const lang of ["ru", "en"] as const) {
+    const t = LANG_TEXT[lang];
+    const noForeign = (r: Result) => { for (const f of FOREIGN[lang]) assert.ok(!r.err.includes(f), `${lang}: foreign text "${f}" in ${r.err}`); };
+    {
+      const h = H(`help-fail-${lang}`);
+      await install(h);
+      const r = await accept(h, ["--candidate", "--max-calls", "7"], { lang, mode: "help_fail" });
+      assert.equal(r.code, 5, `${lang}: ${r.out}\n${r.err}`);
+      if (lang === "ru") assert.ok(CYR.test(r.err), r.err);
+      assert.ok(r.err.includes(t.head), r.err);
+      assert.ok(r.err.includes(t.exited), r.err);
+      assert.ok(r.err.includes("boom"), r.err);
+      noForeign(r);
+      assert.deepEqual(turnPids(r), []);
+      assert.deepEqual(realOf(h), []);
+      ok(`${lang}: the help exits with code 3 and "boom": exit 5, reason "${t.exited}" with boom verbatim, no foreign frames, no probe launched, no real entry`);
+    }
+    {
+      const h = H(`help-hang-limit-${lang}`);
+      await install(h);
+      let tg = "";
+      const r = await accept(h, ["--candidate", "--max-calls", "7"], { lang, mode: "help_hang", limits: { timeoutMs: 500 }, onSpawn: (_cp, x) => { tg = x; } });
+      assert.equal(r.code, 5, `${lang}: ${r.out}\n${r.err}`);
+      assert.ok(r.err.includes(t.head) && r.err.includes(t.noAnswer), r.err);
+      noForeign(r);
+      const pidFile = join(pidDir, `${tg}.pid`);
+      assert.ok(existsSync(pidFile) && readFileSync(pidFile, "utf8") !== "", "the stub did not start its child");
+      const pid = Number(readFileSync(pidFile, "utf8"));
+      const gone = await waitFor(() => !isAlive(pid), 5000);
+      if (!gone) try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+      assert.ok(gone, `${lang}: the hung child ${pid} outlived the read`);
+      assert.deepEqual(turnPids(r), []);
+      ok(`${lang}: the help hangs with a 500 ms limit: exit 5, reason "${t.noAnswer}", no foreign frames, the hung child gone within 5 s`);
+    }
+    {
+      const h = H(`help-large-${lang}`);
+      await install(h);
+      const r = await accept(h, ["--candidate", "--max-calls", "7"], { lang, limits: { maxBytes: 64 } });
+      assert.equal(r.code, 5, `${lang}: ${r.out}\n${r.err}`);
+      assert.ok(r.err.includes(t.head) && r.err.includes(t.large), r.err);
+      noForeign(r);
+      assert.deepEqual(turnPids(r), []);
+      ok(`${lang}: the help is larger than a 64-byte limit: exit 5, reason "${t.large}", no foreign frames`);
+    }
   }
 
   // ---- safety ----

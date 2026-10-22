@@ -76,7 +76,7 @@ export interface CliIo {
   urlWorker?: string; // for packaging: path of the HTML text extraction worker
   appVersion?: string; // application version, passed by the entry point (doctor)
   processVersions?: Partial<NodeJS.ProcessVersions>; // for tests: replacement of process.versions (doctor)
-  cliPin?: { source?: PackageSource; record?: VerifiedRecord; releases?: ReleaseSource; builtin?: readonly VerifiedEntry[] }; // for the stand and tests: replacement of the package source, of the verified-versions record (cli install, use, list), of the release source and of the built-in record (cli candidates)
+  cliPin?: { source?: PackageSource; record?: VerifiedRecord; releases?: ReleaseSource; builtin?: readonly VerifiedEntry[]; inspectLimits?: { timeoutMs?: number; maxBytes?: number } }; // for the stand and tests: shorter limits for the help and capability reads of cli accept (never set by the production entry), replacement of the package source, of the verified-versions record (cli install, use, list), of the release source and of the built-in record (cli candidates)
 }
 
 export const help = (): string => cliMessages().help;
@@ -758,6 +758,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
               signal: io.signal ? AbortSignal.any([io.signal, ctl.signal]) : ctl.signal,
               ...(values["save-fixture"] !== undefined ? { saveFixture: resolve(values["save-fixture"]) } : {}),
               osenVersion: io.appVersion,
+              ...(io.cliPin?.inspectLimits ? { inspectLimits: io.cliPin.inspectLimits } : {}),
               onProbe: (o) => io.stdout(`${acceptanceMessages().probeLine(++probeNo, acceptanceMessages().probeName(o.probe), o.ok ? undefined : o.reason ?? "")}\n`),
             });
           } finally {

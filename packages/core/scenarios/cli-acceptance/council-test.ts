@@ -29,9 +29,13 @@ const source: PackageSource = {
 // No substitute record: the data folder's cli-verified.json is read, so the real entry written by accept is seen by `cli list`.
 const osenVersion = (JSON.parse(readFileSync(join(import.meta.dirname, "../../../../package.json"), "utf8")) as { version: string }).version;
 
+// Optional stand variable CLI_ACCEPT_STAND_LIMITS = JSON {timeoutMs?, maxBytes?}: shrinks the limits of the help/capability reads
+// so the stand can reach the "no answer within" and "output is larger" reasons quickly. Production council.ts never passes it.
+const limits = process.env.CLI_ACCEPT_STAND_LIMITS ? (JSON.parse(process.env.CLI_ACCEPT_STAND_LIMITS) as { timeoutMs?: number; maxBytes?: number }) : undefined;
+
 const controller = new AbortController();
 process.on("SIGINT", () => controller.abort());
 process.exitCode = await main(process.argv.slice(2), {
   stdout: console.log, stderr: console.error, env: standEnv, signal: controller.signal, appVersion: osenVersion,
-  chunk: (t) => process.stderr.write(t), cliPin: { source },
+  chunk: (t) => process.stderr.write(t), cliPin: { source, ...(limits ? { inspectLimits: limits } : {}) },
 });
