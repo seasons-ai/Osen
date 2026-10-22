@@ -411,7 +411,7 @@ COUNCIL_HOME=.council-data npx council cli rollback claude
 - State is in `cli/pins.json`: per agent `installed` (version, relative path, source, sha256, installedAt), `active`, `previous`, `activatedAt`.
 - Exit codes: 2 — wrong arguments (reason and help in stderr) or a rule refusal (unknown agent, version not `real`, not installed, nothing to roll back); 1 — package source or write failure, or a corrupted `pins.json`.
 - Search order for the CLI of a provider: an explicit `path` in `config.json` > the active pin > `PATH`. If the pinned file is missing, the provider is unavailable; there is no fallback to `PATH`.
-- Environment of a pinned child: claude gets `CLAUDE_CONFIG_DIR=<version dir>/config`, `DISABLE_AUTOUPDATER=1`, `DISABLE_UPDATES=1`; codex gets `CODEX_HOME=<version dir>/config` and `-c check_for_update_on_startup=false`; a pinned codex whose help does not declare `--config` is not launched, because its self-update could not be turned off. The install-time `--version` check already runs with this environment.
+- Environment of a pinned child: claude gets `CLAUDE_CONFIG_DIR=<version dir>/config`, `DISABLE_AUTOUPDATER=1`, `DISABLE_UPDATES=1`; codex gets `CODEX_HOME=<version dir>/config` and `-c check_for_update_on_startup=false` (also on the help and `features list` reads); a pinned codex whose help does not declare `--config` is not launched, because its self-update could not be turned off. The install-time `--version` check already runs with this environment.
 - A pinned install has its own config dir, so the owner logs in to it once: `CLAUDE_CONFIG_DIR=<version dir>/config claude` and then `/login`; `CODEX_HOME=<version dir>/config codex login`.
 - Switching versions never rewrites session journals.
 

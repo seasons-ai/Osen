@@ -7,6 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 const BIN = join(import.meta.dirname, "../../resources/bin");
 const WRAPPERS = ["osen-mcp", "council"] as const;
 const REQUIREMENT = "Обёртки не зависят от места установки и PATH";
+const SEEDS = [1, 2, 3, 4, 5, 10, 14, 15];
 
 // Own seeded generator: fast-check is not wired in.
 function mulberry32(seed: number) {
@@ -30,7 +31,7 @@ exit "\${STUB_EXIT:-0}"
 const roots: string[] = [];
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
-interface Built { launch: string; stub: string; entry: string; cwd: string }
+interface Built { launch: string; stub: string; entry: string; cwd: string; links: number }
 
 // Bundle <root>/<name>.app, renamed after creation, then 0–3 symlinks (absolute and relative targets) in other folders.
 function build(seed: number, wrapper: (typeof WRAPPERS)[number]): Built {
@@ -51,7 +52,8 @@ function build(seed: number, wrapper: (typeof WRAPPERS)[number]): Built {
   const app = join(parent, `${name()} renamed.app`);
   renameSync(before, app);
   let launch = join(app, "Contents/Resources/bin", wrapper);
-  for (let i = int(4); i > 0; i--) {
+  const links = int(4);
+  for (let i = links; i > 0; i--) {
     const dir = join(root, `links ${i}`, name());
     mkdirSync(dir, { recursive: true });
     const link = join(dir, `${name()} ${wrapper}`);
@@ -60,7 +62,7 @@ function build(seed: number, wrapper: (typeof WRAPPERS)[number]): Built {
   }
   const cwd = join(root, "cwd", name());
   mkdirSync(cwd, { recursive: true });
-  return { launch, stub: join(app, "Contents/MacOS/Osen"), entry: join(app, `Contents/Resources/app.asar.unpacked/out/main/${wrapper}.mjs`), cwd };
+  return { launch, stub: join(app, "Contents/MacOS/Osen"), entry: join(app, `Contents/Resources/app.asar.unpacked/out/main/${wrapper}.mjs`), cwd, links };
 }
 
 function run(b: Built, args: string[], exit: number) {
@@ -72,10 +74,14 @@ function run(b: Built, args: string[], exit: number) {
 
 describe("wrappers", () => {
   it(`${REQUIREMENT}: random install paths, symlink chains, renames, arguments and exit codes`, () => {
-    for (let seed = 1; seed <= 30; seed++) {
+    // Each launch is a child process from the test worker (~0.4 s alone, several seconds in a full parallel run), so instead of
+    // seeds 1..30 only the first seed of each wrapper × symlink-chain length (0–3) runs; the set is checked below.
+    const seen = new Set<string>();
+    for (const seed of SEEDS) {
       const rnd = mulberry32(seed * 7919);
       const wrapper = WRAPPERS[seed % 2]!;
       const b = build(seed, wrapper);
+      seen.add(`${wrapper}:${b.links}`);
       const args = Array.from({ length: Math.floor(rnd() * 6) }, () => ARGS[Math.floor(rnd() * ARGS.length)]!);
       const exit = rnd() < 0.5 ? 0 : 1 + Math.floor(rnd() * 100);
       const r = run(b, args, exit);
@@ -86,6 +92,7 @@ describe("wrappers", () => {
       // $0 of the stub is the Osen inside the renamed bundle, then the entry file, then the caller's arguments unchanged
       expect(r.parts, ctx).toEqual([b.stub, "1", "UNSET", b.entry, ...args]);
     }
+    expect(seen.size, [...seen].join(" ")).toBe(WRAPPERS.length * 4);
   }, 60_000);
 
   it("--help example: argument passed, exit code 0, nothing but the stub output", () => {

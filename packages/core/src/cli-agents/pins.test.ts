@@ -35,7 +35,10 @@ function fakeSource(): PackageSource {
     }
   };
 }
-const deps = (): PinDeps => ({ source: fakeSource(), record, now });
+// The fake binary only echoes its version, so it is read from the file: a child process from the test worker costs ~0.4 s,
+// and several seconds in a full parallel run (hooks with 3 installs hit their 10 s timeout). The real child probe keeps one test below.
+const stubVersion = async (path: string) => /echo "([^"]*)"/.exec(readFileSync(path, "utf8"))![1]!;
+const deps = (): PinDeps => ({ source: fakeSource(), record, now, readVersion: stubVersion });
 const install = (agent: string, opts: { version?: string; candidate?: boolean } = {}) => installPin(dir, agent, opts, deps());
 const pinsOf = () => JSON.parse(readFileSync(pinsPath(dir), "utf8"));
 const claude = () => pinsOf().agents.claude;
@@ -65,7 +68,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 describe("Шов источника пакета", () => {
   it("calls the source once with agent, version and a temp folder inside the data folder", async () => {
-    const r = await install("claude", { version: "1.1.0" });
+    const r = await installPin(dir, "claude", { version: "1.1.0" }, { source: fakeSource(), record, now }); // the real --version child
     expect(r.code).toBe(0);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.agent).toBe("claude");

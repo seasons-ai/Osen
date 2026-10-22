@@ -6,10 +6,10 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { main } from "../../src/cli.ts";
 import type { PackageSource } from "../../src/cli-agents/pins.ts";
-import type { VerifiedEntry, VerifiedRecord } from "../../src/cli-agents/verified-record.ts";
+import type { VerifiedRecord } from "../../src/cli-agents/verified-record.ts";
 import { loadEnv } from "../../src/store/env.ts";
 import { applyProcessLanguage } from "../../src/store/preferences.ts";
-import { writeStub } from "./stub.ts";
+import { STAND_ENTRIES, writeCodexStub, writeStub } from "./stub.ts";
 
 const standEnv = loadEnv(process.env, process.cwd());
 applyProcessLanguage(standEnv); // like council.ts: the language is set before main
@@ -20,14 +20,7 @@ if (!raw) {
 }
 const stand = JSON.parse(raw) as { log: string; counter: string; mode: "ok" | "error" | "wrong-version" };
 
-const base = { checkedAt: "2026-10-20", os: "darwin-arm64", osenVersion: "1.0.0" };
-const record: VerifiedRecord = {
-  entries: [
-    { agent: "claude", version: "1.0.0", level: "real", modelCalls: 2, ...base },
-    { agent: "claude", version: "1.1.0", level: "real", modelCalls: 2, ...base },
-    { agent: "claude", version: "2.0.0", level: "interface", ...base },
-  ] satisfies VerifiedEntry[],
-};
+const record: VerifiedRecord = { entries: STAND_ENTRIES };
 
 const source: PackageSource = {
   async fetch(agent, version, dir) {
@@ -37,7 +30,9 @@ const source: PackageSource = {
     mkdirSync(bin, { recursive: true });
     const exe = join(bin, agent);
     mkdirSync(dirname(stand.counter), { recursive: true });
-    writeStub(exe, { version: stand.mode === "wrong-version" ? "9.9.9" : version, counter: `${stand.counter}.${agent}.${version}` });
+    const o = { version: stand.mode === "wrong-version" ? "9.9.9" : version, counter: `${stand.counter}.${agent}.${version}` };
+    if (agent === "codex") writeCodexStub(exe, { ...o, argsLog: `${stand.counter}.codex.${version}.args` });
+    else writeStub(exe, o);
     return { executable: exe, source: `stand:${agent}@${version}` };
   },
 };

@@ -41,7 +41,7 @@ export interface ProviderInspection { status: ProviderStatus; runtime?: CliRunti
 export interface InspectDeps {
   locate: typeof locateCli;
   readHelp(path: string, args: readonly string[], env: Env): Promise<string>;
-  readFeatures(path: string, env: Env): Promise<string>;
+  readFeatures(path: string, args: readonly string[], env: Env): Promise<string>;
   listModels: typeof listModels;
   listHttpModels: typeof listHttpModels;
 }
@@ -54,7 +54,7 @@ const exec = async (path: string, args: readonly string[], env: Env) =>
 const realDeps: InspectDeps = {
   locate: locateCli,
   readHelp: exec,
-  readFeatures: (path, env) => exec(path, ["features", "list"], env),
+  readFeatures: exec,
   listModels,
   listHttpModels,
 };
@@ -76,16 +76,17 @@ async function inspectCli(provider: CliProvider, { env, withModels = true, deps,
   if (loc.warning) status.warning = loc.warning;
   if (loc.source) status.source = loc.source;
 
+  const updateOff = loc.pin && agent === "codex" ? ["-c", "check_for_update_on_startup=false"] : []; // same as turns (planLaunch)
   const childEnv = { ...env, PATH: loc.searchPath, ...(loc.pin ? pinnedEnv(agent, loc.pin.configDir) : {}) };
   let help: string;
   try {
-    help = await d.readHelp(path, HELP_ARGS[agent], childEnv);
+    help = await d.readHelp(path, [...HELP_ARGS[agent], ...updateOff], childEnv);
   } catch (e) {
     return { status: { ...status, reason: registryMessages().helpFailed(agent, errText(e)) } };
   }
   const flags = declaredFlags(help);
   let features: Set<string> | undefined;
-  if (agent === "codex") features = await d.readFeatures(path, childEnv).then(parseCodexFeatures, () => undefined);
+  if (agent === "codex") features = await d.readFeatures(path, ["features", "list", ...updateOff], childEnv).then(parseCodexFeatures, () => undefined);
 
   const plan = planLaunch({ agent, flags, version: loc.version, model: DEFAULT_MODEL, language: getProcessLanguage(), features, pinned: !!loc.pin });
   let runtime: CliRuntime | undefined;
@@ -157,5 +158,5 @@ export async function ensureRegistry(dataDir: string, options: { env: Env; deps?
   if (existsSync(configPath(dataDir))) return "exists";
   const locate = options.deps?.locate ?? locateCli;
   const locs = await Promise.all(CLI_AGENTS.map((a) => locate(a, { env: options.env, dataDir })));
-  return createRegistry(dataDir, locs.filter((l) => l.found).map((l) => l.agent));
+  return createRegistry(dataDir, locs.filter((l) => l.found || l.source === "pin").map((l) => l.agent));
 }
