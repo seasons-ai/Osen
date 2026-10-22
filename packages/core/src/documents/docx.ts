@@ -5,18 +5,23 @@ import type { Zip } from "./zip.ts";
 
 export const DOCX_TYPES = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", "application/vnd.ms-word.document.macroEnabled.main+xml"];
 
-const kids = (el: XmlElement): XmlElement[] => el.children.filter((c): c is XmlElement => typeof c !== "string");
-const xmlPart = (zip: Zip, name: string): XmlElement => parseXml(decodeXml(zip.read(name)));
+export const kids = (el: XmlElement): XmlElement[] => el.children.filter((c): c is XmlElement => typeof c !== "string");
+export const xmlPart = (zip: Zip, name: string): XmlElement => parseXml(decodeXml(zip.read(name)));
 
 // ponytail: the prefixes w: and mc: are taken literally (Word always writes them); resolving namespaces is not needed yet.
-function relationships(zip: Zip, name: string): { type: string; target: string }[] {
+export function relationships(zip: Zip, name: string): { id: string; type: string; target: string }[] {
   if (!zip.entries.has(name)) return [];
   return kids(xmlPart(zip, name)).filter((e) => e.name === "Relationship")
-    .map((e) => ({ type: e.attrs.Type ?? "", target: e.attrs.Target ?? "" }));
+    .map((e) => ({ id: e.attrs.Id ?? "", type: e.attrs.Type ?? "", target: e.attrs.Target ?? "" }));
 }
 
-function resolve(base: string, target: string): string {
+export function resolve(base: string, target: string): string {
   return target.startsWith("/") ? target.slice(1) : posix.normalize(posix.join(posix.dirname(base), target));
+}
+
+// Final cleanup shared by every document builder: control characters out, lone surrogates replaced.
+export function cleanText(text: string): string {
+  return (text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "") as string & { toWellFormed(): string }).toWellFormed();
 }
 
 const choice = (el: XmlElement): XmlElement | undefined => kids(el).find((c) => c.name === "mc:Choice");
@@ -97,6 +102,5 @@ export function docxText(zip: Zip): string {
   const all = [...(fn ? notes(zip, fn, "w:footnote") : []), ...(en ? notes(zip, en, "w:endnote") : [])];
   const tail = all.join("\n");
   if (tail !== "") text += `\n\n${tail}`;
-  text = text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
-  return (text as string & { toWellFormed(): string }).toWellFormed();
+  return cleanText(text);
 }

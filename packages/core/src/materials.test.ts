@@ -9,6 +9,8 @@ import type { CollectOptions } from "./materials.ts";
 import { folderMap, folderStats } from "./protocol/folder.ts";
 import { loadPreparedMaterials, savePreparedMaterials } from "./store/prepared-materials.ts";
 import { PDF_LIMITS } from "./pdf/extract.ts";
+import { makeOdf, odsTable, odtP } from "./documents/odf-fixture.ts";
+import { makeEpub, xhtml } from "./documents/epub-fixture.ts";
 import { makeEncryptedPdf, makeImageOnlyPdf, makeMalformedPdf, makePdf } from "./pdf/fixture.ts";
 
 const hook = vi.hoisted(() => ({ beforeOpen: undefined as undefined | ((p: string) => void), fullReads: 0 }));
@@ -376,6 +378,14 @@ describe("collectSessionMaterials", () => {
     expect(r.workspace.map((f) => f.name).sort()).toEqual(["d/README.md", "d/code.ts", "d/deep/more.md", "d/z.md"]);
   });
 
+  it("selectMaterials: .pptx and .pptm are descriptions in a folder over the limit, .xlsx is not", () => {
+    const m = (name: string, chars: number) => ({ id: "m", name, chars, sha256: "", text: "" });
+    const src = [m("d/a.pptx", 10), m("d/b.pptm", 10), m("d/c.xlsx", 10)];
+    const { taken, left } = selectMaterials(src, [join(root, "d")], 25);
+    expect(taken.map((x) => x.name)).toEqual(["d/a.pptx", "d/b.pptm"]);
+    expect(left).toEqual([{ name: "d/c.xlsx", reason: "не описание — из папки больше лимита берутся только описания" }]);
+  });
+
   it("folder over the limit without descriptions: files closer to the root are taken while they fit", () => {
     put("d/a.ts", x(50));
     put("d/sub/b.ts", x(50));
@@ -555,6 +565,16 @@ describe("local PDFs", () => {
     expect(r.materials.map((m) => m.name)).toEqual(["d/README.md", "d/spec.pdf"]);
     expect(r.left).toEqual([{ name: "d/code.ts", reason: "не описание — из папки больше лимита берутся только описания" }]);
     expect(r.workspace.find((f) => f.name === "d/spec.pdf")?.text).toBe("Первая страница");
+  }, SLOW);
+
+  it("folder over the limit: odt and epub are descriptions, ods is not", () => {
+    put("d/README.md", "r".repeat(10));
+    put("d/notes.odt", makeOdf({ kind: "text", body: odtP("Заметки") }) as unknown as string);
+    put("d/book.epub", makeEpub({ chapters: [{ path: "OEBPS/c1.xhtml", html: xhtml("<p>Глава</p>") }] }) as unknown as string);
+    put("d/data.ods", makeOdf({ kind: "spreadsheet", body: odsTable("Лист", [["а".repeat(100)]]) }) as unknown as string);
+    const r = collectSessionMaterials([join(root, "d")], lim(60));
+    expect(r.materials.map((m) => m.name)).toEqual(["d/README.md", "d/book.epub", "d/notes.odt"]);
+    expect(r.left).toEqual([{ name: "d/data.ods", reason: "не описание — из папки больше лимита берутся только описания" }]);
   }, SLOW);
 
   it("explicit PDF over the limit: refusal by limit with name and size", () => {

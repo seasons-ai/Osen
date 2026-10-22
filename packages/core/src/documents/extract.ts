@@ -17,9 +17,9 @@ export function setDocumentExtractorRuntime(next?: Partial<DocumentExtractorRunt
 
 export function extractDocumentText(bytes: Uint8Array, limits: DocLimits = DOC_LIMITS): DocumentResult {
   if (bytes.length > limits.bytes) return { ok: false, code: "bytes" };
-  const { ms, rssBytes, chars, parts, unpackedBytes, ratio } = limits;
+  const { ms, rssBytes, chars, parts, unpackedBytes, ratio, cells } = limits;
   // ponytail: a synchronous call holds the event loop for up to ms + 2 s per file; an asynchronous collection is separate work, if documents become heavy.
-  const r = spawnSync(runtime.command, [runtime.script, JSON.stringify({ ms, rssBytes, chars, parts, unpackedBytes, ratio, ...(runtime.tools ? { tools: runtime.tools } : {}) })], {
+  const r = spawnSync(runtime.command, [runtime.script, JSON.stringify({ ms, rssBytes, chars, parts, unpackedBytes, ratio, cells, ...(runtime.tools ? { tools: runtime.tools } : {}) })], {
     input: bytes, env: runtime.env, timeout: ms + 2000, killSignal: "SIGKILL",
     maxBuffer: chars * 4 + 2 ** 20, stdio: ["pipe", "pipe", "ignore"],
   });
@@ -66,11 +66,14 @@ export function documentReason(failure: { code: DocFailure; detail?: string }, l
     case "zip_parts": return m.docParts(limits.parts);
     case "zip_size": return m.docUnpacked(limits.unpackedBytes / 2 ** 20);
     case "zip_ratio": return m.docRatio(limits.ratio);
+    case "cells": return m.docCells(limits.cells);
     case "encrypted": return m.docEncrypted;
-    case "damaged": return m.docDamaged;
+    case "damaged": return failure.detail === undefined ? m.docDamaged : m.docDamagedPart(failure.detail);
     case "no_text": return m.docNoText;
     case "unsupported": return m.docUnsupported;
     case "textutil_unavailable": return m.docTextutilUnavailable;
     case "failed": return m.docFailed(failure.detail ?? m.docStartError);
+    case "odf_kind": return m.docOdfKind(failure.detail ?? "");
+    case "drm": return m.docDrm;
   }
 }

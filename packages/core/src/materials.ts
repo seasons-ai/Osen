@@ -426,7 +426,7 @@ export function verifyMaterials(materials: readonly CollectedMaterial[], limit: 
 
 export interface LeftMaterial { name: string; reason: string }
 
-const DOC_EXT = /\.(md|markdown|mdx|txt|rst|adoc|pdf|docx|docm)$/i;
+const DOC_EXT = /\.(md|markdown|mdx|txt|rst|adoc|pdf|docx|docm|pptx|pptm|odt|odp|epub)$/i;
 const LEGACY_DOC_EXT = /\.(rtf|doc)$/i;
 const total = (ms: readonly CollectedMaterial[]) => ms.reduce((s, m) => s + m.chars, 0);
 

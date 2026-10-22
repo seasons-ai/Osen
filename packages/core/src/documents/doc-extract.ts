@@ -7,8 +7,8 @@ import { runTextutil } from "./textutil.ts";
 // ponytail: the supervisor below is copied from pdf/pdf-extract.ts; extract a shared module when a third consumer appears.
 // One file is both the child process (main thread) and its extraction thread, so the app ships exactly one doc-extract.mjs.
 if (isMainThread) {
-  const { ms, rssBytes, chars, parts, unpackedBytes, ratio, worker, tools } = JSON.parse(process.argv[2]!) as {
-    ms: number; rssBytes: number; chars: number; parts: number; unpackedBytes: number; ratio: number; worker?: string; tools?: { sandbox: string; textutil: string };
+  const { ms, rssBytes, chars, parts, unpackedBytes, ratio, cells, worker, tools } = JSON.parse(process.argv[2]!) as {
+    ms: number; rssBytes: number; chars: number; parts: number; unpackedBytes: number; ratio: number; cells: number; worker?: string; tools?: { sandbox: string; textutil: string };
   };
   let done = false;
   let thread: Worker | undefined;
@@ -39,7 +39,7 @@ if (isMainThread) {
     void runTextutil(bytes, kind, { ms, rssBytes, chars }, tools, controller.signal).then(finish);
   } else if (!done) {
     thread = new Worker(worker ?? import.meta.filename, {
-      workerData: { bytes, limits: { chars, parts, unpackedBytes, ratio } }, transferList: [bytes.buffer], stdout: true, stderr: true,
+      workerData: { bytes, limits: { chars, parts, unpackedBytes, ratio, cells } }, transferList: [bytes.buffer], stdout: true, stderr: true,
       resourceLimits: { maxOldGenerationSizeMb: Math.ceil(rssBytes / 2 ** 20) },
     });
     thread.on("message", (result) => finish(result));
