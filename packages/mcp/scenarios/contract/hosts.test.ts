@@ -188,3 +188,30 @@ describe("codex only", () => {
     expect(run("codex").state).toBe("not checked");
   });
 });
+
+describe("codex enabled flag", () => {
+  const ours = (extra: Record<string, unknown>) =>
+    JSON.stringify({ name: "osen", ...extra, transport: { type: "stdio", command: "node", args: ["packages/mcp/src/main.ts"] } });
+
+  it("is not connected when disabled, and names the reason", () => {
+    stub("codex", ours({ enabled: false, disabled_reason: "disabled by user" }));
+    const r = run("codex");
+    expect(r.state).toBe("not connected");
+    expect(r.detail).toContain("disabled");
+    expect(r.detail).toContain("disabled by user");
+  });
+
+  it.each([[{ enabled: false }], [{ enabled: false, disabled_reason: null }], [{ enabled: false, disabled_reason: "" }]])(
+    "is not connected when disabled without a reason %j", (extra) => {
+      stub("codex", ours(extra));
+      const r = run("codex");
+      expect(r.state).toBe("not connected");
+      expect(r.detail).toContain("disabled");
+    });
+
+  it.each([[{ enabled: true }], [{}], [{ enabled: null }], [{ enabled: "false" }]])(
+    "stays connected when the entry is not strictly disabled %j", (extra) => {
+      stub("codex", ours(extra));
+      expect(run("codex").state).toBe("connected");
+    });
+});

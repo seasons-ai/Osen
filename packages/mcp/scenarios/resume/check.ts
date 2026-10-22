@@ -120,6 +120,19 @@ const bytes = (id: string) => readFileSync(eventsPath(home, id));
 const same = (a: Buffer, b: Buffer) => a.length === b.length && a.equals(b);
 const sessionIds = () => (existsSync(join(home, "sessions")) ? readdirSync(join(home, "sessions")) : []);
 const stat = (id: string) => readSession(home, id)!.status;
+// Resume executors are detached (change 184): they outlive the server. Pids are only read from this stand's resume.lock files.
+const executorPids = new Set<number>();
+const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const lockPid = async (id: string) => {
+  const pid = await until(`${id}: executor pid in resume.lock`, () => Number(readFileSync(resumeLockPath(home, id), "utf8").trim()) || false);
+  executorPids.add(pid);
+  return pid;
+};
+async function stopAndWait(srv: Srv, id: string, pid: number) {
+  await call(srv, "council_stop", { sessionId: id });
+  await until(`${id}: stopped`, () => stat(id) === "stopped", 20000);
+  await until(`${id}: executor ${pid} gone`, () => !alive(pid), 20000);
+}
 
 // ---- result output ----
 let total = 0, passed = 0;
@@ -409,24 +422,31 @@ async function main() {
   });
 
   // 23
-  await check(23, "K. the server shut down normally (stdin closed) during a resumed turn: interrupted, turns preserved, one session_resumed", async () => {
+  await check(23, "K. the server shut down normally (stdin closed) during a resumed turn: the detached executor survives, running, turns preserved, one session_resumed, then stopped", async () => {
     const S = await connect();
     const pl = await plan(S, K2.id, { rounds: 1 });
     json(await call(S, "council_resume", { sessionId: K2.id, rounds: 1, execute: true, planToken: pl.planToken }), "execute");
-    await until("K2: turn 3 completed, turn 4 in progress", () => of(K2.id, "turn_completed").length >= 3 && of(K2.id, "turn_started").length >= 4);
-    const completed = of(K2.id, "turn_completed").length;
-    await S.client.close();
-    await until("K2: server process finished", () => { try { process.kill(S.pid, 0); return false; } catch { return true; } }, 20000);
-    await until("K2: interrupted", () => stat(K2.id) === "interrupted");
-    must(of(K2.id, "turn_completed").length >= completed, "completed turns disappeared");
-    eq(of(K2.id, "session_resumed").length, 1, "session_resumed");
-    const st = await status(A, K2.id);
-    eq([st.status, st.turns], ["interrupted", completed], "council_status");
-    return `completed turns ${completed}`;
+    const pid = await lockPid(K2.id);
+    try {
+      await until("K2: turn 3 completed, turn 4 in progress", () => of(K2.id, "turn_completed").length >= 3 && of(K2.id, "turn_started").length >= 4);
+      const completed = of(K2.id, "turn_completed").length;
+      await S.client.close();
+      await until("K2: server process finished", () => !alive(S.pid), 20000);
+      must(pid !== S.pid && alive(pid), `executor ${pid} is not alive or equals the server pid ${S.pid}`);
+      eq(stat(K2.id), "running", "status after the server exit");
+      must(of(K2.id, "turn_completed").length >= completed, "completed turns disappeared");
+      eq(of(K2.id, "session_resumed").length, 1, "session_resumed");
+      const st = await status(A, K2.id);
+      eq(st.status, "running", "council_status");
+      await stopAndWait(A, K2.id, pid);
+      return `completed turns ${completed}, executor ${pid}`;
+    } finally {
+      try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+    }
   });
 
   // 24
-  await check(24, "K. the server shut down normally during a resumed owner wait: interrupted, waiting and the deadline preserved", async () => {
+  await check(24, "K. the server shut down normally during a resumed owner wait: the detached executor survives, running, waiting and the deadline preserved, then stopped", async () => {
     const W = await startExec("w", { flags: ["--pause-after-round", "--owner-wait-sec", "600"], rounds: 3 });
     await until("W: wait", () => of(W.id, "owner_wait_started")[0]);
     W.exec.child.kill("SIGKILL");
@@ -437,17 +457,22 @@ async function main() {
     eq(pl.waiting?.expired, false, "waiting.expired");
     const turns = of(W.id, "turn_started").length;
     json(await call(S2, "council_resume", { sessionId: W.id, rounds: 1, execute: true, planToken: pl.planToken }), "execute");
-    await S2.client.close();
-    await until("W: server process finished", () => { try { process.kill(S2.pid, 0); return false; } catch { return true; } }, 20000);
-    await until("W: interrupted", () => stat(W.id) === "interrupted");
-    const w1 = readSession(home, W.id)!.state.waiting;
-    must(w1, "waiting lost");
-    eq([w1.waitId, w1.deadline], [w0.waitId, w0.deadline], "waitId and deadline");
-    eq(of(W.id, "turn_started").length, turns, "turn_started");
-    eq(of(W.id, "session_resumed").length, 1, "session_resumed");
-    const pl2 = await plan(A, W.id, { rounds: 1 });
-    eq([pl2.waiting?.waitId, pl2.waiting?.expired], [w0.waitId, false], "new plan: waitId/expired");
-    return `waitId ${w0.waitId}`;
+    const pid = await lockPid(W.id);
+    try {
+      await S2.client.close();
+      await until("W: server process finished", () => !alive(S2.pid), 20000);
+      must(pid !== S2.pid && alive(pid), `executor ${pid} is not alive or equals the server pid ${S2.pid}`);
+      eq(stat(W.id), "running", "status after the server exit");
+      const w1 = readSession(home, W.id)!.state.waiting;
+      must(w1, "waiting lost");
+      eq([w1.waitId, w1.deadline], [w0.waitId, w0.deadline], "waitId and deadline");
+      eq(of(W.id, "turn_started").length, turns, "turn_started");
+      eq(of(W.id, "session_resumed").length, 1, "session_resumed");
+      await stopAndWait(A, W.id, pid);
+      return `waitId ${w0.waitId}, executor ${pid}`;
+    } finally {
+      try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+    }
   });
 
   // 25
@@ -495,6 +520,7 @@ try {
 } finally {
   for (const s of servers) { try { process.kill(s.pid, "SIGKILL"); } catch { /* already finished */ } }
   for (const k of kids) { try { k.kill("SIGKILL"); } catch { /* already finished */ } }
+  for (const p of executorPids) { try { process.kill(p, "SIGKILL"); } catch { /* already finished */ } }
   console.log(`\nResult: ${passed} of ${total}`);
   console.log(`Stand: ${home} (${Math.round((Date.now() - t0) / 1000)} s)`);
 }
