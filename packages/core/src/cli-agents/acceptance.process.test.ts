@@ -9,7 +9,7 @@ import { declaredFlags, parseCodexFeatures } from "./flags.ts";
 import { DEFAULT_MODEL } from "./types.ts";
 import type { CliAgent } from "./types.ts";
 import { writeAcceptanceStub } from "./acceptance-stub.fixture.ts";
-import { PROBES, runAcceptance, runProbe } from "./acceptance.ts";
+import { PROBES, readOutput, runAcceptance, runProbe } from "./acceptance.ts";
 import type { AcceptancePlan, ProbeContext, ProbeId, ProbeResult } from "./acceptance.ts";
 
 // Real runProbe against a node stub that stands in for the CLI; the stub mode is set through STUB_MODE.
@@ -207,3 +207,79 @@ echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'
   });
 });
 
+
+describe("Reading the CLI help and feature list in its own process group", () => {
+  // node -e scripts stand in for the CLI: a non-detached child `sleep 30` shares the reader's group, its pid goes to PIDFILE
+  const HANG = `const c = require("node:child_process").spawn("sleep", ["30"], { stdio: "ignore" }); require("node:fs").writeFileSync(process.env.PIDFILE, String(c.pid)); setInterval(() => {}, 1000);`;
+  const FLOOD = `${HANG} process.stdout.write("x".repeat(5 * 1024 * 1024));`;
+  const env = () => ({ PATH: "/usr/bin:/bin", PIDFILE: pidFile });
+  const childPid = () => Number(readFileSync(pidFile, "utf8"));
+  const gone = async (pid: number) => {
+    const end = Date.now() + 5000;
+    for (;;) {
+      try { process.kill(pid, 0); } catch { return true; }
+      if (Date.now() > end) return false;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  };
+  const node = (script: string, signal?: AbortSignal, timeoutMs?: number) => readOutput(process.execPath, ["-e", script], env(), signal, timeoutMs);
+
+  it("returns the output of a call that exits 0", async () => {
+    await expect(node(`process.stdout.write("help text")`)).resolves.toBe("help text");
+  });
+
+  it("a non-zero exit is a failure that names the code and stderr", async () => {
+    await expect(node(`process.stderr.write("bad flag"); process.exit(3)`)).rejects.toThrow(/exited with 3: bad flag/);
+  });
+
+  it("a launch error is a failure", async () => {
+    await expect(readOutput(join(root, "missing-cli"), ["--help"], env())).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("the time limit is a failure, not an interruption, and stops the whole group", async () => {
+    const err = await node(HANG, undefined, 500).catch((e: Error) => e);
+    expect(String(err)).toMatch(/no answer within 500 ms/);
+    expect(String(err)).not.toMatch(/interrupted/);
+    expect(await gone(childPid())).toBe(true);
+  }, LONG_TIMEOUT);
+
+  it("output larger than 4 MiB is a failure and stops the whole group", async () => {
+    await expect(node(FLOOD)).rejects.toThrow(/larger than 4194304 bytes/);
+    expect(await gone(childPid())).toBe(true);
+  }, LONG_TIMEOUT);
+
+  it("the caller's signal is an interruption and stops the whole group", async () => {
+    const controller = new AbortController();
+    const reading = node(HANG, controller.signal);
+    const poll = setInterval(() => { if (existsSync(pidFile)) { clearInterval(poll); controller.abort(); } }, 20);
+    await expect(reading.finally(() => clearInterval(poll))).rejects.toThrow(/interrupted/);
+    expect(await gone(childPid())).toBe(true);
+  }, LONG_TIMEOUT);
+
+  const dataDir = () => join(root, "data");
+  const planFor = (): AcceptancePlan => ({ ...ctxFor("codex", "good").plan, sha256: "a".repeat(64) });
+
+  it.each(["help_hang", "features_hang"])("runAcceptance stopped while the stub hangs in %s: interrupted, code 1, the reader's child is gone, nothing recorded", async (mode) => {
+    mkdirSync(dataDir(), { recursive: true });
+    // the stub answers --help and `features list` with the real texts, except the call its mode hangs on
+    mkdirSync(join(root, "inspect"));
+    const stub = writeAcceptanceStub(join(root, "inspect"), { help: fx("codex-0.159.2-exec-help.txt"), features: fx("codex-0.159.2-features.txt") });
+    const controller = new AbortController();
+    const poll = setInterval(() => { if (existsSync(pidFile)) { clearInterval(poll); controller.abort(); } }, 20);
+    const out = await runAcceptance(dataDir(), { ...planFor(), path: stub }, { env: { PATH: "/usr/bin:/bin", STUB_MODE: mode, STUB_PIDFILE: pidFile }, language: "en", signal: controller.signal })
+      .finally(() => clearInterval(poll));
+    expect(out).toMatchObject({ code: 1, interrupted: true, recorded: false, calls: 0, outcomes: [] });
+    expect(await gone(childPid())).toBe(true);
+    expect(existsSync(join(dataDir(), "cli-verified.json"))).toBe(false);
+  }, LONG_TIMEOUT);
+
+  it("runAcceptance with a reader that runs out of time: the inspection fails (code 5), not interrupted", async () => {
+    mkdirSync(dataDir(), { recursive: true });
+    const inspect = async (plan: AcceptancePlan, e: Record<string, string | undefined>, signal?: AbortSignal) =>
+      ({ flags: declaredFlags(await readOutput(process.execPath, ["-e", HANG], { ...e, PIDFILE: pidFile }, signal, 500)) });
+    const out = await runAcceptance(dataDir(), planFor(), { env: env(), language: "en" }, { inspect });
+    expect(out).toMatchObject({ code: 5, interrupted: false, recorded: false, calls: 0 });
+    expect(out.text).toContain(m.inspectFailed("no answer within 500 ms"));
+    expect(await gone(childPid())).toBe(true);
+  }, LONG_TIMEOUT);
+});
