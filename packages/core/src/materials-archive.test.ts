@@ -215,6 +215,14 @@ describe("ZIP archive as a folder", () => {
     expect(set.materials[1]!.text).toContain("Hello archive");
   }, SLOW);
 
+  it("text entries are decoded with the encodings of change 212 (UTF-16 with BOM, Windows-1251)", () => {
+    const utf16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("Привет из UTF-16", "utf16le")]);
+    const cp1251 = new Uint8Array([0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2, 0x20, 0xe8, 0xe7, 0x20, 0xe0, 0xf0, 0xf5, 0xe8, 0xe2, 0xe0]);
+    const f = zipAt("enc.zip", [{ name: "u16.txt", data: utf16 }, { name: "cp.txt", data: cp1251 }]);
+    const set = collectMaterials([f], opts);
+    expect(set.materials.map((x) => [x.name, x.text])).toEqual([["enc.zip/cp.txt", "Привет из архива"], ["enc.zip/u16.txt", "Привет из UTF-16"]]);
+  }, SLOW);
+
   it("an empty nested ZIP is a nested archive too", () => {
     const f = zipAt("outer.zip", [{ name: "empty.zip", data: makeZip([]) }, { name: "a.txt", data: "a" }]);
     expect(reasonOf(collectMaterials([f], opts), "outer.zip/empty.zip")).toBe(m().archiveNested);

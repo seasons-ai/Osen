@@ -9,7 +9,8 @@ import { extractPdfText, pdfReason } from "./pdf/extract.ts";
 import { imageDimensions, imageSignature } from "./ocr/image-header.ts";
 import { imageReason, OCR_LIMITS, runOcrHelper } from "./ocr/run.ts";
 import { materialsMessages } from "./messages/materials.ts";
-import { compare, decodeText, errText, isEnvName, nameKey, rebaseRule } from "./materials.ts";
+import { decodeFileText } from "./text-encoding.ts";
+import { compare, errText, isEnvName, nameKey, rebaseRule } from "./materials.ts";
 import type { CollectOptions, SkippedMaterial } from "./materials.ts";
 
 export const ARCHIVE_TOTAL_MS = 300_000;
@@ -57,8 +58,8 @@ const TRANSIENT: readonly DocFailure[] = ["timeout", "memory", "failed"];
 type Node = { name: string; dir: boolean; idx?: number; children: Map<string, Node> };
 type Out = { rel: string; text?: string; skip?: string; idx?: number };
 
-// ponytail: this mirrors the readers of readText in materials.ts on bytes (PDF, documents, RTF/DOC of change 211, images, text); a reader added there later
-// (encodings of change 212) must be wired here too.
+// ponytail: this mirrors the readers of readText in materials.ts on bytes (PDF, documents, RTF/DOC of change 211, images, text with the encodings of change 212);
+// a reader added there later (scanned PDF OCR of change 214) must be wired here too.
 function readEntryBytes(bytes: Uint8Array, state: { recognized: number }): { text: string } | { skip: string } {
   const m = materialsMessages();
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -94,9 +95,8 @@ function readEntryBytes(bytes: Uint8Array, state: { recognized: number }): { tex
     const r = runOcrHelper({ mode: "image", ms: OCR_LIMITS.ms, rssBytes: OCR_LIMITS.rssBytes }, bytes);
     return r.ok ? { text: r.text } : { skip: imageReason(r) };
   }
-  if (head.includes(0)) return { skip: m.notText };
-  const text = decodeText(buf);
-  return text === undefined ? { skip: m.notText } : { text };
+  const text = decodeFileText(head, () => buf);
+  return text === undefined ? { skip: m.notText } : typeof text === "object" ? { skip: text.refused } : { text };
 }
 
 // Reads the items (with an idx) in the given order in batches of at most BATCH_BYTES of declared size; one entry over it is its own batch.
