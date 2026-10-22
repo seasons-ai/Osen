@@ -104,6 +104,14 @@ describe.skipIf(!mac)("RTF and DOC through textutil", () => {
     expect(documentReason(r as { code: "textutil_unavailable" })).toBe("не удалось извлечь текст — системная утилита textutil недоступна");
     expect(readFileSync(counter, "utf8")).toBe("");
   }, 30_000);
+
+  it("a converter ended by a signal nobody sent is the unavailable reason, not a damaged document", async () => {
+    const stub = join(tmp(), "textutil-signal");
+    writeFileSync(stub, "#!/bin/sh\nkill -9 $$\n");
+    chmodSync(stub, 0o755);
+    const r = await runTextutil(Buffer.from(makeRtf(["а"])), "rtf", lim(), { sandbox: SYSTEM_TOOLS.sandbox, textutil: stub });
+    expect(r).toEqual({ ok: false, code: "textutil_unavailable" });
+  }, 30_000);
 });
 
 describe.skipIf(!mac)("Текст RTF и DOC", () => {

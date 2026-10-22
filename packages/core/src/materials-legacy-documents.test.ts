@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeCfb, makeRtf } from "./documents/fixture.ts";
+import { setDocumentExtractorRuntime } from "./documents/extract.ts";
 import { collectMaterials, collectSessionMaterials, MaterialsError, type CollectOptions } from "./materials.ts";
 import { getProcessLanguage, setProcessLanguage } from "./i18n/process-language.ts";
 import { materialsMessages } from "./messages/materials.ts";
@@ -78,6 +79,26 @@ describe("Материалы RTF и DOC", () => {
     expect(refusal(() => collectMaterials([loop], opts)).reasons).toEqual([`«${loop}»: документ повреждён`]);
     expect(Date.now() - t0).toBeLessThan(5000);
   });
+
+  it.skipIf(!mac)("in a folder a damaged RTF and an RTF without the converter are skipped with their reasons, README collected", () => {
+    put("d/README.md", "читай");
+    put("d/broken.rtf", "{\\rtf1 {");
+    put("d/note.rtf", makeRtf(["Первая строка"]));
+    setDocumentExtractorRuntime({ tools: { sandbox: join(root, "missing-sandbox-exec"), textutil: "/usr/bin/textutil" } });
+    try {
+      const set = collectMaterials([join(root, "d")], opts);
+      expect(set.materials.map((m) => m.name)).toEqual(["d/README.md"]);
+      expect(set.skipped).toEqual([
+        { name: "d/broken.rtf", reason: "не удалось извлечь текст — системная утилита textutil недоступна" },
+        { name: "d/note.rtf", reason: "не удалось извлечь текст — системная утилита textutil недоступна" },
+      ]);
+    } finally {
+      setDocumentExtractorRuntime();
+    }
+    const set = collectMaterials([join(root, "d")], opts);
+    expect(set.materials.map((m) => m.name)).toEqual(["d/README.md", "d/note.rtf"]);
+    expect(set.skipped).toEqual([{ name: "d/broken.rtf", reason: "документ повреждён" }]);
+  }, 30_000);
 
   it.skipIf(!mac)("folder over the limit: notes.rtf and spec.doc are descriptions next to source", () => {
     put("d/README.md", "r".repeat(10));
