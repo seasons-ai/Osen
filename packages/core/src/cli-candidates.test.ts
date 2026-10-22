@@ -123,8 +123,23 @@ describe("council cli candidates", () => {
     const r = await run(["cli", "candidates", "--agent", "claude", "--json"], h, { source: source([], () => ac.abort()) }, { signal: ac.signal });
     expect(r.code).toBe(1);
     expect(r.out).toBe("");
-    expect(r.err).toContain("interrupted");
+    expect(r.err).toContain("The check was interrupted; temporary installs were removed, nothing was recorded.");
     expect(existsSync(join(h, "cli-verified.json"))).toBe(false);
+    expect(existsSync(join(h, "cli-candidates"))).toBe(false);
+  });
+
+  it("interruption after a recorded candidate names the recorded pair, not \"nothing was recorded\"", async () => {
+    const h = home();
+    const ac = new AbortController();
+    let fetches = 0;
+    const r = await run(["cli", "candidates", "--agent", "claude", "--json"], h, { releases: releases({ claude: ["2.1.288", "2.1.290", "2.1.291"] }), source: source([], () => { if (++fetches === 2) ac.abort(); }) }, { signal: ac.signal });
+    expect(r.code).toBe(1);
+    expect(r.out).toBe("");
+    expect(r.err).toContain("claude 2.1.290");
+    expect(r.err).not.toContain("2.1.291");
+    expect(r.err).not.toContain("nothing was recorded");
+    const entries = (JSON.parse(readFileSync(join(h, "cli-verified.json"), "utf8")) as { entries: VerifiedEntry[] }).entries;
+    expect(entries.map((e) => `${e.agent}@${e.version}:${e.level}`)).toEqual(["claude@2.1.290:interface"]);
     expect(existsSync(join(h, "cli-candidates"))).toBe(false);
   });
 
