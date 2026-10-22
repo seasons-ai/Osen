@@ -1,9 +1,9 @@
-import { chmodSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setProcessLanguage } from "../i18n/process-language.ts";
-import { checkPinnedLaunch, pinBinaryState, resetGuardCache } from "./launch-guard.ts";
+import { checkPinFile, checkPinnedLaunch, pinBinaryState, resetGuardCache } from "./launch-guard.ts";
 import { ifaceEntry, installStub, realEntry, runs, tamper } from "./launch-guard.fixture.ts";
 import { activePin } from "./pins.ts";
 import type { VerifiedRecord } from "./verified-record.ts";
@@ -147,6 +147,23 @@ describe(`${R}: checksum cache`, () => {
     utimesSync(path, new Date(), new Date(Date.now() + 5000));
     await checkPinnedLaunch(input(), { hash });
     expect(hashes).toBe(2);
+  });
+
+  it(`${R}: file rewritten in place with the same size and restored mtime`, async () => {
+    const { path, a } = await pinned();
+    utimesSync(path, 1_700_000_000, 1_700_000_000); // whole-second mtime: restorable exactly
+    expect(await checkPinFile(path, a.sha256)).toEqual({ ok: true });
+    const before = pinBinaryState(dir, "claude");
+    const st = statSync(path);
+    const bytes = readFileSync(path);
+    writeFileSync(path, Buffer.alloc(bytes.length, 0x41)); // same inode, same size
+    utimesSync(path, 1_700_000_000, 1_700_000_000);
+    await new Promise((r) => setTimeout(r, 20)); // make sure ctime moved on coarse clocks
+    expect(statSync(path).ino).toBe(st.ino);
+    expect(statSync(path).size).toBe(st.size);
+    expect(statSync(path).mtimeMs).toBe(st.mtimeMs);
+    expect(pinBinaryState(dir, "claude")).not.toBe(before);
+    expect(await checkPinFile(path, a.sha256)).toMatchObject({ ok: false, code: "sha256_mismatch" });
   });
 
   it(`${R}: pinBinaryState follows the pin and the binary file`, async () => {

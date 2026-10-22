@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,7 +8,7 @@ import type { CliProvider } from "../registry/config.ts";
 import { inspectProvider } from "../registry/providers.ts";
 import { locateCli, resetDiscoveryCache } from "./discovery.ts";
 import { ifaceEntry, realEntry } from "./launch-guard.fixture.ts";
-import { checkPinnedLaunch, resetGuardCache } from "./launch-guard.ts";
+import { checkPinFile, checkPinnedLaunch, resetGuardCache } from "./launch-guard.ts";
 import { installedPath } from "./pins.ts";
 import type { VerifiedEntry } from "./verified-record.ts";
 
@@ -138,6 +139,35 @@ describe(R, () => {
       );
       expect(res.ok, `seed ${seed}`).toBe(same);
       if (!same) expect(touched, `seed ${seed}`).toBe(0);
+    }
+  });
+
+  it(`${R}: in-place rewrite with restored mtime never passes the check`, async () => {
+    for (let seed = 1; seed <= 25; seed++) {
+      const r = mulberry32(seed);
+      resetGuardCache();
+      const dataDir = mkdtempSync(join(tmpdir(), "guard-prop-"));
+      try {
+        const file = join(dataDir, "claude");
+        const size = 8 + Math.floor(r() * 64);
+        const original = Buffer.alloc(size, 0x61);
+        writeFileSync(file, original, { mode: 0o755 });
+        utimesSync(file, 1_700_000_000, 1_700_000_000); // whole-second mtime: restorable exactly
+        const sum = createHash("sha256").update(original).digest("hex");
+        expect(await checkPinFile(file, sum), `seed ${seed}`).toEqual({ ok: true });
+        for (let step = 0; step < 4; step++) {
+          const same = r() < 0.3;
+          const content = same ? original : Buffer.alloc(size, 0x62 + Math.floor(r() * 20));
+          writeFileSync(file, content);
+          if (r() < 0.8) utimesSync(file, 1_700_000_000, 1_700_000_000); // restored mtime
+          await new Promise((res) => setTimeout(res, 5));
+          const res = await checkPinFile(file, sum);
+          const actual = createHash("sha256").update(content).digest("hex");
+          expect(res.ok, `seed ${seed} step ${step}`).toBe(actual === sum);
+        }
+      } finally {
+        rmSync(dataDir, { recursive: true, force: true });
+      }
     }
   });
 });

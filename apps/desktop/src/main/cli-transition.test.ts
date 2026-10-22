@@ -533,6 +533,32 @@ describe("Requirement: Переход и откат из карточки", () =
     expect(pinsBytes(dir)).toBe(kept);
   });
 
+  it("switch and rollback: file changed while the confirmation is open", async () => {
+    await seedPins();
+    const file = (version: string) => {
+      const r = readPins(dir);
+      if (r.state !== "loaded") throw new Error("no pins");
+      return installedPath(dir, "claude", r.pins.agents.claude!.installed.find((i) => i.version === version)!);
+    };
+    appendFileSync(file("7.1.0"), "# changed after installation\n");
+    const t = make();
+    let kept = pinsBytes(dir);
+    expect(() => t.switchCli("claude", "7.1.0")).toThrow(SettingsError);
+    expect(() => t.switchCli("claude", "7.1.0")).toThrow(/does not match/);
+    expect(pinsBytes(dir)).toBe(kept);
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    await seedPins();
+    const t2 = make();
+    t2.switchCli("claude", "7.1.0");
+    appendFileSync(file("7.0.0"), "# changed after installation\n");
+    kept = pinsBytes(dir);
+    expect(() => t2.rollbackCli("claude")).toThrow(SettingsError);
+    expect(() => t2.rollbackCli("claude")).toThrow(/does not match/);
+    expect(pinsBytes(dir)).toBe(kept);
+    expect(JSON.parse(kept).agents.claude).toMatchObject({ active: "7.1.0", previous: "7.0.0" });
+  });
+
   it("a running session refuses both actions; pins stay byte for byte", async () => {
     await seedPins();
     const t = make();

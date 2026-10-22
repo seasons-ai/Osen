@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -91,11 +91,24 @@ describe(R, () => {
     expect(runs(v2)).toBe(0);
   });
 
-  it(`${R}: pins.json gone after inspection means no active pin, no check`, async () => {
-    const { v1, runtime } = await setup();
-    rmSync(pinsPath(data));
-    await createCliDriver(runtime).call(request());
-    expect(runs(v1)).toBe(1); // the turn only
+  describe.each([
+    ["pins.json is not valid JSON", (d: string) => writeFileSync(pinsPath(d), "{ not json"), true],
+    ["pins.json is deleted", (d: string) => rmSync(pinsPath(d)), false],
+    ["pins.json has no active install for the agent", (d: string) => writeFileSync(pinsPath(d), JSON.stringify({ schemaVersion: 1, agents: {} })), false],
+  ])(`${R}: ${"%s"} in the middle of a session`, (name, breakPins, rejected) => {
+    it(`${R}: ${name}: the turn is refused before any process starts`, async () => {
+      const { v1, v2, runtime } = await setup();
+      const driver = createCliDriver(runtime);
+      breakPins(data);
+      const e = await rejection(driver.call(request()));
+      expect(e).toMatchObject({ kind: "call_error", retryable: false });
+      expect(e.message).toContain("claude");
+      expect(e.message).toContain(v1); // the pin path of the running session
+      expect(e.message).toContain("PATH");
+      if (rejected) expect(e.message).toContain(pinsPath(data)); // the reason from the pins file check
+      expect(runs(v1)).toBe(0);
+      expect(runs(v2)).toBe(0);
+    });
   });
 
   it(`${R}: usage and journal when the binary is replaced between turns`, async () => {
