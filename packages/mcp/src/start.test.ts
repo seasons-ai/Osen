@@ -312,7 +312,7 @@ describe("council_start: materials", () => {
     expect(v.materials.chars).toBe("Первая страница\n\nВторая страница".length);
     await finished(ctx, v.sessionId);
     const ctx2 = ctxOf();
-    await rejectsTool(ctx2, { topic: "т", participants: two, attachments: [join(fx, "scan.pdf")] }, /нет текстового слоя/);
+    await rejectsTool(ctx2, { topic: "т", participants: two, attachments: [join(fx, "scan.pdf")] }, /не найден текст/);
     expect(listSessions(ctx2.dataDir)).toEqual([]);
   }, 30_000);
 

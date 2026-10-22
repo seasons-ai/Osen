@@ -1,4 +1,7 @@
 // Test PDFs assembled by hand: no libraries and no personal data.
+import { makeImage } from "../ocr/fixture.ts";
+import { imageDimensions } from "../ocr/image-header.ts";
+
 const hex = (n: number, w = 4): string => n.toString(16).toUpperCase().padStart(w, "0");
 
 function assemble(objects: readonly string[], trailerExtra = "", header = "%PDF-1.7\n"): Uint8Array {
@@ -18,6 +21,22 @@ function assemble(objects: readonly string[], trailerExtra = "", header = "%PDF-
 const stream = (body: string): string => `<< /Length ${body.length} >>\nstream\n${body}\nendstream`;
 
 export function makePdf(pages: readonly string[], options: { link?: string; openActionJs?: string } = {}): Uint8Array {
+  return build(pages, options);
+}
+
+/** Scanned and mixed pages: string[] is an image page with these lines drawn on a JPEG raster, string a text-layer page, null an empty page. */
+export function makeScanPdf(pages: readonly (string[] | string | null)[]): Uint8Array {
+  return build(pages, {});
+}
+
+function build(specs: readonly (string[] | string | null)[], options: { link?: string; openActionJs?: string }): Uint8Array {
+  const pages = specs.map((p) => (typeof p === "string" ? p : ""));
+  const images = specs.map((p) => {
+    if (!Array.isArray(p)) return undefined;
+    const jpeg = makeImage("jpeg", p);
+    const dims = imageDimensions(jpeg, "jpeg")!;
+    return { jpeg, dims, height: Math.round((612 * dims.height) / dims.width) };
+  });
   const codes = new Map<string, number>();
   const cmap: string[] = [];
   const show = (line: string): string => {
@@ -34,7 +53,9 @@ export function makePdf(pages: readonly string[], options: { link?: string; open
     }
     return `<${h}> Tj`;
   };
-  const contents = pages.map((page) => {
+  const contents = pages.map((page, i) => {
+    const img = images[i];
+    if (img) return `q 612 0 0 ${img.height} 0 ${792 - img.height} cm /Im0 Do Q`;
     const lines = page === "" ? [] : page.split("\n");
     return lines.length === 0 ? "" : `BT /F1 12 Tf 14 TL 50 700 Td\n${lines.map(show).join("\nT*\n")}\nET`;
   });
@@ -42,6 +63,13 @@ export function makePdf(pages: readonly string[], options: { link?: string; open
     + `1 begincodespacerange <00> <FF> endcodespacerange\n${cmap.length} beginbfchar\n${cmap.join("\n")}\nendbfchar\nendcmap end end`;
   const kids = pages.map((_, i) => `${5 + i * 2} 0 R`).join(" ");
   const annot = options.link ? 5 + pages.length * 2 : 0;
+  let nextImage = 5 + pages.length * 2 + (annot ? 1 : 0);
+  const imageObjects: string[] = [];
+  const imageRefs = images.map((img) => {
+    if (!img) return 0;
+    imageObjects.push(`<< /Type /XObject /Subtype /Image /Width ${img.dims.width} /Height ${img.dims.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${img.jpeg.length} >>\nstream\n${img.jpeg.toString("latin1")}\nendstream`);
+    return nextImage++;
+  });
   const widths = Array.from({ length: Math.max(codes.size, 1) }, () => 500).join(" ");
   const objects = [
     `<< /Type /Catalog /Pages 2 0 R${options.openActionJs ? ` /OpenAction << /S /JavaScript /JS (${options.openActionJs}) >>` : ""} >>`,
@@ -49,10 +77,11 @@ export function makePdf(pages: readonly string[], options: { link?: string; open
     `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 1 /LastChar ${Math.max(codes.size, 1)} /Widths [${widths}] /ToUnicode 4 0 R >>`,
     stream(cm),
     ...pages.flatMap((_, i) => [
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${6 + i * 2} 0 R${i === 0 && annot ? ` /Annots [${annot} 0 R]` : ""} >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >>${imageRefs[i] ? ` /XObject << /Im0 ${imageRefs[i]} 0 R >>` : ""} >> /Contents ${6 + i * 2} 0 R${i === 0 && annot ? ` /Annots [${annot} 0 R]` : ""} >>`,
       stream(contents[i]!),
     ]),
     ...(annot ? [`<< /Type /Annot /Subtype /Link /Rect [50 690 300 710] /Border [0 0 0] /A << /S /URI /URI (${options.link}) >> >>`] : []),
+    ...imageObjects,
   ];
   return assemble(objects);
 }

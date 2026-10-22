@@ -23,7 +23,8 @@ describe("Core messages in the selected language: materials, PDF, links", () => 
   afterEach(() => setProcessLanguage("ru"));
 
   it("each kind of PDF refusal: same numbers and limits in both languages", () => {
-    const codes: PdfFailure[] = ["bytes", "pages", "chars", "timeout", "memory", "encrypted", "damaged", "no_text", "failed"];
+    const codes: PdfFailure[] = ["bytes", "pages", "chars", "timeout", "memory", "encrypted", "damaged", "no_text", "failed",
+      "ocr_pages", "ocr_missing", "ocr_start", "ocr_page_timeout", "ocr_timeout", "ocr_memory", "ocr_failed"];
     for (const code of codes) {
       setProcessLanguage("en");
       const en = pdfReason({ code, detail: "exit 3" });

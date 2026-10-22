@@ -25,8 +25,9 @@ const EXPECTED = "Первая страница\n\nВторая страница
 const SECRET = "stand-secret-value";
 const REASON = {
   locked: "PDF зашифрован — пароль не запрашивается",
-  scan: "в PDF нет текстового слоя — распознавание не выполняется",
+  scan: "в PDF не найден текст",
   broken: "PDF повреждён",
+  blank201: "в PDF больше 200 страниц без текстового слоя",
 };
 const baseEnv = { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", COUNCIL_LANG: "ru", COUNCIL_HOME: dir, COUNCIL_DEV: "1" };
 let n = 0;
@@ -101,16 +102,30 @@ async function main() {
     assert.ok(r.isError === true && body(r).includes(reason), `${f}.pdf: ${r.isError} «${body(r)}»`);
     assert.equal(sessions().length, nSessions, `${f}.pdf: a session appeared`);
   }
-  ok("MCP, explicit locked/scan/broken: isError with a reason for each, no new sessions");
+  ok("MCP, explicit locked/scan/broken/blank201: isError with a reason for each, no new sessions");
   const rf = json(await start([join(fx, "proj")]), "council_start with a folder");
   assert.equal(rf.materials.count, 2);
   const sk = rf.materials.skipped as { name: string; reason: string }[];
-  assert.equal(sk.length, 4, JSON.stringify(sk));
+  assert.equal(sk.length, 5, JSON.stringify(sk));
   for (const [f, reason] of Object.entries(REASON)) assert.ok(sk.some((x) => x.name.endsWith(`proj/${f}.pdf`) && x.reason.includes(reason)), `no ${f}.pdf: ${JSON.stringify(sk)}`);
   const envSk = sk.find((x) => x.name.endsWith("proj/.env"));
   assert.ok(envSk?.reason, JSON.stringify(sk));
   await done(rf.sessionId);
-  ok(`MCP, folder: materials.skipped — three PDFs with reasons and .env ("${envSk.reason}"), 2 materials collected`);
+  const folderMaterials = readFileSync(join(dir, "sessions", rf.sessionId, "events.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).find((e) => e.type === "session_created").session.materials as { name: string }[];
+  assert.ok(folderMaterials.length === 2 && folderMaterials.some((x) => x.name.endsWith("README.md")) && folderMaterials.some((x) => x.name.endsWith("good.pdf")), JSON.stringify(folderMaterials));
+  ok(`MCP, folder: materials.skipped — four PDFs with reasons and .env ("${envSk.reason}"), 2 materials collected`);
+
+  // ---- Scan through the real osen-ocr helper ----
+  const ss = json(await start([join(fx, "ocr.pdf")]), "council_start with a scan");
+  assert.equal(ss.materials.count, 1);
+  await done(ss.sessionId);
+  const sdScan = join(dir, "sessions", ss.sessionId);
+  const sc = readFileSync(join(sdScan, "events.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).find((e) => e.type === "session_created").session.materials[0];
+  const scanSnapshot = join(sdScan, "materials", "m1.txt");
+  const scanText = readFileSync(scanSnapshot, "utf8");
+  assert.equal(scanText.split("\n\n").length, 2, JSON.stringify(scanText));
+  assert.deepEqual([sc.chars, sc.sha256, ss.materials.chars], [scanText.length, sha256Of(scanText), scanText.length]);
+  ok(`MCP: council_start with the scan ocr.pdf - recognized text of two pages (${scanText.length} chars), the journal sha256 equals the snapshot text`);
 
   // ---- leaks and source similarity ----
   const log = existsSync(join(dir, "logs/app.log")) ? readFileSync(join(dir, "logs/app.log"), "utf8") : "";
@@ -120,7 +135,7 @@ async function main() {
   assert.deepEqual(tree(fx), before, "source files changed");
   ok("source files (PDF, the proj folder) are byte-for-byte unchanged");
   assert.deepEqual(errors, [], "client/transport errors");
-  result = { checks: n, sha256: m.sha256, chars: m.chars, snapshot };
+  result = { checks: n, sha256: m.sha256, chars: m.chars, snapshot, scanSha256: sc.sha256, scanChars: sc.chars, scanSnapshot };
 }
 
 let failed = false;
