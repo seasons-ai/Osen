@@ -99,8 +99,10 @@ async function chromeWebp(): Promise<Buffer | undefined> {
     const list = (await (await fetch(`http://127.0.0.1:${new URL(ws).port}/json/list`)).json()) as { type: string; webSocketDebuggerUrl: string }[];
     const cdp = await connect(list.find((t) => t.type === "page")!.webSocketDebuggerUrl);
     try {
-      const expr = `(() => { const c = document.createElement('canvas'); c.width = 1200; c.height = 400; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 1200, 400); x.fillStyle = '#000'; x.font = 'bold 64px Helvetica, Arial, sans-serif'; ${LINES.map((l, i) => `x.fillText(${JSON.stringify(l)}, 40, ${130 + i * 120});`).join(" ")} return c.toDataURL('image/webp', 1); })()`;
-      const r = await cdp.send("Runtime.evaluate", { expression: expr, returnByValue: true });
+      // The drawing code is a constant; the lines are passed as call arguments (data), never spliced into the code.
+      const draw = "function (lines) { const c = document.createElement('canvas'); c.width = 1200; c.height = 400; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 1200, 400); x.fillStyle = '#000'; x.font = 'bold 64px Helvetica, Arial, sans-serif'; lines.forEach((l, i) => x.fillText(l, 40, 130 + i * 120)); return c.toDataURL('image/webp', 1); }";
+      const global = await cdp.send("Runtime.evaluate", { expression: "globalThis" });
+      const r = await cdp.send("Runtime.callFunctionOn", { objectId: global.result.objectId, functionDeclaration: draw, arguments: [{ value: LINES }], returnByValue: true });
       const url = String(r.result.value);
       assert.ok(url.startsWith("data:image/webp;base64,"), `Chrome gave ${url.slice(0, 30)}`);
       return Buffer.from(url.slice(23), "base64");
