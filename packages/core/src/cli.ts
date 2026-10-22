@@ -684,7 +684,7 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
           const agents = values.agent ? [values.agent as (typeof CLI_AGENTS)[number]] : CLI_AGENTS;
           const report = await checkCandidates(dataDir, agents, { releases: io.cliPin?.releases ?? npmReleases(io.env), source: io.cliPin?.source ?? npmSource(io.env), builtin: io.cliPin?.builtin, env: io.env, signal: io.signal, osenVersion: io.appVersion });
           if (report.interrupted) {
-            io.stderr(t.candidatesInterrupted);
+            io.stderr(t.candidatesInterrupted(report.candidates.filter((c) => c.recorded)));
             return EXIT.internal;
           }
           const violationText = (v: { code: string; name: string }) => v.code === "missing_flag" ? pm.violationMissingFlag(v.name) : v.code === "missing_feature" ? pm.violationMissingFeature(v.name)
