@@ -106,6 +106,22 @@ describe("Таймаут и прерывание: потомок игнорир�
       expect(alive(pid)).toBe(false);
     } finally { reap(pid); }
   });
+  it("leader exited on its own, the child holds stdout, the stop comes before close: the child gets SIGKILL after the grace", async () => {
+    const pidfile = join(dir, "pid");
+    const leaderFile = join(dir, "leader");
+    const ac = new AbortController();
+    // grace 3000 > the 2000 ms exit-to-close wait: the result comes back before the SIGKILL is due
+    const p = run(stub(`echo $$ > ${leaderFile}\nsh -c 'trap "" TERM; echo $$ > ${pidfile}; exec sleep 20' &\nwhile [ ! -s ${pidfile} ]; do sleep 0.05; done\nexit 0`), { signal: ac.signal, killGraceMs: 3000 });
+    await waitFor(() => existsSync(pidfile) && readFileSync(pidfile, "utf8").trim() !== "" && existsSync(leaderFile) && !alive(readPid(leaderFile)));
+    const pid = readPid(pidfile);
+    try {
+      expect(alive(pid)).toBe(true);
+      ac.abort();
+      expect((await p).aborted).toBe(true);
+      await waitFor(() => !alive(pid), 6000);
+      expect(alive(pid)).toBe(false);
+    } finally { reap(pid); }
+  }, 15_000);
   it("leader still alive at the kill grace: leader and grandchild get SIGKILL", async () => {
     const pidfile = join(dir, "pid");
     const ac = new AbortController();
@@ -125,7 +141,7 @@ describe("readOutput: the CLI read used by candidates and npm", () => {
   it("output over maxBytes: rejects", async () => {
     await expect(readOutput(stub("head -c 2000 /dev/zero | tr '\\0' x"), [], { PATH: "/usr/bin:/bin" }, undefined, 5000, 1024)).rejects.toThrow(/larger than 1024 bytes/);
   });
-  it("Срок проверки истёк: a hung command with a SIGTERM-ignoring child times out and its group is killed", async () => {
+  it("deadline (cli candidates, Срок проверки истёк): a hung read with a SIGTERM-ignoring child times out and its group is killed", async () => {
     const pidfile = join(dir, "pid");
     const e = await readOutput(stub(`${IGNORER(pidfile)}\nsleep 30 & wait`), [], { PATH: "/usr/bin:/bin" }, undefined, 6000).catch((x: unknown) => x);
     const pid = readPid(pidfile);

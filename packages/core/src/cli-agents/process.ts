@@ -111,10 +111,11 @@ export async function readOutput(command: string, args: readonly string[], env: 
     onStdout: (chunk) => { bytes += Buffer.byteLength(chunk); if (bytes > maxBytes) overflow.abort(); },
   });
   if (run.spawnError) throw run.spawnError;
+  const fail = (message: string): Error => Object.assign(new Error(message), { stderr: run.stderr }); // stderr: for callers that report it alone
   if (run.aborted) {
-    if (signal?.aborted) throw new Error("interrupted");
-    throw new Error(overflow.signal.aborted ? `output is larger than ${maxBytes} bytes` : `no answer within ${timeoutMs} ms`);
+    if (signal?.aborted) throw fail("interrupted");
+    throw fail(overflow.signal.aborted ? `output is larger than ${maxBytes} bytes` : `no answer within ${timeoutMs} ms`);
   }
-  if (run.exitCode !== 0) throw new Error(`${command} ${args.join(" ")} exited with ${run.exitCode ?? run.signal}${run.stderr.trim() ? `: ${run.stderr.trim()}` : ""}`);
+  if (run.exitCode !== 0) throw fail(`${command} ${args.join(" ")} exited with ${run.exitCode ?? run.signal}${run.stderr.trim() ? `: ${run.stderr.trim()}` : ""}`);
   return run.stdout;
 }

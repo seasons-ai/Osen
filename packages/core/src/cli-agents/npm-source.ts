@@ -6,7 +6,8 @@ import { readOutput } from "./process.ts";
 import type { ReleaseSource } from "./candidates.ts";
 import type { CliAgent } from "./types.ts";
 
-const tail = (e: unknown): string => String(e instanceof Error ? e.message : e).slice(-500).trim(); // the message ends with npm's stderr
+// As with execFile before: npm's stderr when there is any, otherwise the error message; the last 500 characters.
+const tail = (e: unknown): string => String((e as { stderr?: string }).stderr || (e instanceof Error ? e.message : e)).slice(-500).trim();
 
 const PACKAGES: Record<CliAgent, string> = { claude: "@anthropic-ai/claude-code", codex: "@openai/codex" };
 

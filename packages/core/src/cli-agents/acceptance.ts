@@ -315,8 +315,6 @@ export const runProbe: ProbeRunner = async (probe, ctx) => {
   }
 };
 
-export { readOutput };
-
 export interface ProbeOutcome { probe: ProbeId; ok: boolean; reason?: string }
 export interface AcceptanceOutcome { code: 0 | 1 | 5; outcomes: ProbeOutcome[]; calls: number; recorded: boolean; interrupted: boolean; fixture?: string; fixtureError?: string; text: string }
 

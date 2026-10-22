@@ -86,6 +86,8 @@ describe("Шов источника пакета: npm / прерывание", (
       ac.abort();
       expect(await p).toBeInstanceOf(Error);
       expect(Date.now() - abortedAt).toBeLessThan(5000);
+      const t1 = Date.now();
+      while (alive(pid) && Date.now() - t1 < 3000) await new Promise((r) => setTimeout(r, 25)); // a just-killed child may linger unreaped
       expect(alive(pid)).toBe(false);
     } finally { try { process.kill(pid, "SIGKILL"); } catch {} }
   }

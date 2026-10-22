@@ -452,6 +452,8 @@ describe("Команда cli candidates: прерывание, потомки п
       const r = await p;
       expect(Date.now() - abortedAt).toBeLessThan(5000);
       expect(r).toMatchObject({ interrupted: true, code: 1 });
+      const t1 = Date.now();
+      while (alive(pid) && Date.now() - t1 < 3000) await new Promise((r) => setTimeout(r, 25)); // a just-killed child may linger unreaped
       expect(alive(pid)).toBe(false);
       expect(existsSync(join(dir, CANDIDATES_DIR))).toBe(false);
     } finally { try { process.kill(pid, "SIGKILL"); } catch {} }

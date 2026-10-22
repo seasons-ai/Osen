@@ -379,8 +379,8 @@ try {
     }
   }
 
-  // ---- 11: a probe's child ignores SIGTERM and the probe process has already exited (change 200) ----
-  // the child writes its own pid to STUB_PIDFILE once its trap is set; it holds no pipes, so the probe ends as soon as the stub exits
+  // ---- 11: a probe's child ignores SIGTERM; the stub itself exits on SIGTERM, so the group leader is gone before the grace (change 200) ----
+  // the child writes its own pid to STUB_PIDFILE once its trap is set; it holds no pipes, so the probe result comes back as soon as the stub exits
   const ignorerPid = async (t: string): Promise<number> => {
     const f = join(pidDir, `${t}.pid`);
     assert.ok(await waitFor(() => existsSync(f) && readFileSync(f, "utf8").trim() !== "", 90_000), "the stub did not start its SIGTERM-ignoring child");
@@ -411,7 +411,7 @@ try {
     let t = "";
     const r = await accept(h, ["--candidate", "--max-calls", "7"], { mode: "term_ignorer_stop", onSpawn: (_cp, tg) => { t = tg; } });
     const pid = await ignorerPid(t);
-    const gone = !isAlive(pid);
+    const gone = await waitFor(() => !isAlive(pid), 5000);
     if (!gone) try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
     assert.equal(r.code, 0, `${r.out}\n${r.err}`);
     assert.ok(gone, `the stop turn's SIGTERM-ignoring child ${pid} outlived the turn`);
