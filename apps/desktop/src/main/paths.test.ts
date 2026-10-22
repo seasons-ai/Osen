@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { profileDir, resourceDirs } from "./paths.ts";
+import { ocrHelperPath, profileDir, resourceDirs } from "./paths.ts";
 
 const base = { appPath: "/repo/apps/desktop", resourcesPath: "/App/Contents/Resources" };
 
@@ -28,5 +28,14 @@ describe("profileDir", () => {
   });
   it("the --user-data-dir key wins in build and in development", () => {
     expect([profileDir(true, true, appData), profileDir(true, false, appData)]).toEqual([null, null]);
+  });
+});
+
+describe("ocrHelperPath", () => {
+  it("build — in the resources folder", () => {
+    expect(ocrHelperPath({ ...base, packaged: true })).toBe("/App/Contents/Resources/ocr/osen-ocr");
+  });
+  it("development — built helper in the core source tree", () => {
+    expect(ocrHelperPath({ ...base, packaged: false })).toBe("/repo/packages/core/src/ocr/bin/osen-ocr");
   });
 });

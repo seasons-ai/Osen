@@ -8,6 +8,8 @@ import { FOLDER_LIMITS, folderStats } from "./protocol/folder.ts";
 import type { FolderFile } from "./protocol/folder.ts";
 import { documentReason, readDocumentText } from "./documents/extract.ts";
 import { pdfReason, readPdfText } from "./pdf/extract.ts";
+import { imageSignature, type ImageFormat } from "./ocr/image-header.ts";
+import { imageReason, OCR_LIMITS, readImageText } from "./ocr/run.ts";
 import { materialsMessages } from "./messages/materials.ts";
 
 export interface CollectedMaterial {
@@ -112,8 +114,8 @@ export function decodeText(bytes: Buffer): string | undefined {
   return /[\x00-\x08\x0e-\x1f\x7f]/.test(text) ? undefined : text;
 }
 
-// string — text, undefined — non-text, { refused } — the PDF or document was refused with a reason
-function readText(abs: string): string | { refused: string } | undefined {
+// string — text, undefined — non-text, { refused } — the PDF, document or image was refused with a reason, { image } — an image whose recognition is deferred (defer)
+function readText(abs: string, defer = false): string | { refused: string } | { image: ImageFormat } | undefined {
   const fd = openSync(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     if (!fstatSync(fd).isFile()) throw new Error(materialsMessages().notRegularFile);
@@ -129,9 +131,26 @@ function readText(abs: string): string | { refused: string } | undefined {
       if (r.code === "unsupported" || r.code === "bytes") return undefined;
       return { refused: documentReason(r) };
     }
+    const image = imageSignature(head.subarray(0, n), fstatSync(fd).size);
+    if (image) {
+      if (defer) return { image };
+      const r = readImageText(fd, image);
+      return r.ok ? r.text : { refused: imageReason(r) };
+    }
     if (head.subarray(0, n).includes(0)) return undefined;
     // ponytail: a large text file is read entirely before the limit check; a streaming count — if folders with gigabyte logs become normal
     return decodeText(readFileSync(fd));
+  } finally {
+    closeSync(fd);
+  }
+}
+
+// Recognition of an image found during a folder walk: the files are opened again after the folder is sorted
+function readImage(abs: string, format: ImageFormat): ReturnType<typeof readImageText> {
+  const fd = openSync(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    if (!fstatSync(fd).isFile()) throw new Error(materialsMessages().notRegularFile);
+    return readImageText(fd, format);
   } finally {
     closeSync(fd);
   }
@@ -181,7 +200,7 @@ export function attachedFolderPrefixes(paths: readonly string[]): Map<string, st
   return folderPrefixes(dirs);
 }
 
-type WalkOut = { rel: string; text?: string; skip?: string; excludedPath?: string; rule?: string }[];
+type WalkOut = { rel: string; text?: string; skip?: string; excludedPath?: string; rule?: string; abs?: string; image?: ImageFormat }[];
 
 export function collectMaterials(paths: readonly string[], options: CollectOptions): MaterialSet {
   const m = materialsMessages();
@@ -260,8 +279,9 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
         else if (!entry.isFile()) skip(m.notRegularFile);
         else if (!seen.has(abs)) {
           try {
-            const text = readText(abs);
+            const text = readText(abs, true);
             if (text === undefined) skip(m.notText);
+            else if (typeof text === "object" && "image" in text) out.push({ rel: eRel, abs, image: text.image });
             else if (typeof text === "object") skip(text.refused);
             else {
               seen.add(abs);
@@ -298,6 +318,25 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
         const out: WalkOut = [];
         walk(abs, prefixes.get(abs) ?? base, "", out, options.gitignore === false ? undefined : ignore({ allowRelativePaths: true }));
         out.sort((a, b) => compare(a.rel, b.rel));
+        // images are recognized in the final name order: the first folderImages that reach the helper; refusals by size and header take no slot
+        let recognized = 0;
+        for (const o of out) {
+          if (!o.image) continue;
+          if (recognized >= OCR_LIMITS.folderImages) {
+            o.skip = m.imgFolderLimit(OCR_LIMITS.folderImages);
+            continue;
+          }
+          try {
+            const r = readImage(o.abs!, o.image);
+            if (!(!r.ok && (r.code === "bytes" || r.code === "pixels" || r.code === "damaged"))) recognized++;
+            if (r.ok) {
+              seen.add(o.abs!);
+              o.text = r.text;
+            } else o.skip = imageReason(r);
+          } catch (e) {
+            o.skip = m.readFailed(errText(e));
+          }
+        }
         for (const o of out) {
           const name = `${prefixes.get(abs) ?? base}/${o.rel}`;
           if (o.skip !== undefined) skipped.push({ name, reason: o.skip, ...(o.excludedPath !== undefined ? { excludedPath: o.excludedPath, rule: o.rule! } : {}) });
@@ -308,7 +347,7 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
       } else if (!seen.has(abs)) {
         const text = readText(abs);
         if (text === undefined) reasons.push(m.pathNamed(p, m.notTextExplicit));
-        else if (typeof text === "object") reasons.push(m.pathNamed(p, text.refused));
+        else if (typeof text === "object") reasons.push(m.pathNamed(p, "refused" in text ? text.refused : m.notTextExplicit));
         else addFile(abs, base, text);
       }
     } catch (e) {

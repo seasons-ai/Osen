@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { delimiter, extname, join } from "node:path";
 import {
   CLI_AGENTS, DataDirError, createLogger, ensureDataDir, ensureRegistry, envFilePath, inspectProviders, loadEnv, locateCli, isValidSessionId, loadTemplates, logRegistryLoaded, readRegistry, readSession,
-  applyProcessLanguage, OwnerReleaseRejectedError, OwnerSelectionRejectedError, readUsageSummary, requestOwnerMessage, setDocumentExtractorRuntime, setPdfExtractorRuntime, requestOwnerRelease, requestStop, selectOwnerVersion, prepareDataDir, userTemplatesDir, builtinTemplateIds, watchSession,
+  applyProcessLanguage, OwnerReleaseRejectedError, OwnerSelectionRejectedError, readUsageSummary, requestOwnerMessage, setDocumentExtractorRuntime, setOcrRuntime, setPdfExtractorRuntime, requestOwnerRelease, requestStop, selectOwnerVersion, prepareDataDir, userTemplatesDir, builtinTemplateIds, watchSession,
 } from "@model-council/core";
 import { readFile, writeFile } from "node:fs/promises";
 import { app, BrowserWindow, nativeTheme, clipboard, dialog, ipcMain, Notification, protocol, shell } from "electron";
@@ -37,7 +37,7 @@ import { createSettings } from "./settings.ts";
 import { createTemplateEditor } from "./template-editor.ts";
 import { lineupsView, saveLineupInput } from "./lineups.ts";
 import { lastRoster, listScenarios, registryView, scenarioPath, templatesView } from "./setup-data.ts";
-import { profileDir, resourceDirs } from "./paths.ts";
+import { ocrHelperPath, profileDir, resourceDirs } from "./paths.ts";
 import { logAppQuit, logMissingClis, logProviders } from "./startup-log.ts";
 import { APP_SCHEME, APP_URL, DEV_ICON, guardClose, hardenWindow, rendererFile, revealWindow, windowOptions } from "./window.ts";
 
@@ -89,6 +89,7 @@ async function start(): Promise<void> {
   const htmlWorker = join(import.meta.dirname, "html-worker.mjs").replace("app.asar", "app.asar.unpacked");
   setPdfExtractorRuntime({ script: join(import.meta.dirname, "pdf-extract.mjs").replace("app.asar", "app.asar.unpacked"), env: { ELECTRON_RUN_AS_NODE: "1" } });
   setDocumentExtractorRuntime({ script: join(import.meta.dirname, "doc-extract.mjs").replace("app.asar", "app.asar.unpacked"), env: { ELECTRON_RUN_AS_NODE: "1" } });
+  setOcrRuntime({ helper: ocrHelperPath({ packaged: app.isPackaged, appPath: app.getAppPath(), resourcesPath: process.resourcesPath }) });
   const env = loadEnv(process.env, process.cwd());
   applyProcessLanguage(env); // the data folder may not exist yet: language from the variable, the file or the default
   let dataDir: string;

@@ -17,7 +17,9 @@
     "release": "node scripts/release.ts",
     "predesktop": "install-electron",
     "desktop": "npm run dev -w @model-council/desktop --",
-    "dist": "install-electron && npm run build -w @model-council/desktop && electron-builder --mac dmg --arm64 -c.electronVersion=$(node -p \"require('electron/package.json').version\") --projectDir apps/desktop && node -p \"require('path').resolve('apps/desktop/release.noindex','osen-'+require('./apps/desktop/package.json').version+'-arm64.dmg')\"",
+    "build:ocr": "node scripts/build-ocr.ts",
+    "postinstall": "node scripts/build-ocr.ts --optional",
+    "dist": "npm run build:ocr && install-electron && npm run build -w @model-council/desktop && electron-builder --mac dmg --arm64 -c.electronVersion=$(node -p \"require('electron/package.json').version\") --projectDir apps/desktop && node -p \"require('path').resolve('apps/desktop/release.noindex','osen-'+require('./apps/desktop/package.json').version+'-arm64.dmg')\"",
     "dist:check": "node apps/desktop/scripts/check-image.ts"
   },
   "devDependencies": {

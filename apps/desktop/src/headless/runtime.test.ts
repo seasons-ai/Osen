@@ -23,6 +23,7 @@ describe("bundlePaths", () => {
       scenarios: "/A b/Osen.app/Contents/Resources/scenarios",
       council: `${dir}/council.mjs`,
       pdfExtract: `${dir}/pdf-extract.mjs`,
+      ocrHelper: "/A b/Osen.app/Contents/Resources/ocr/osen-ocr",
       docExtract: `${dir}/doc-extract.mjs`,
       htmlWorker: `${dir}/html-worker.mjs`,
     });
@@ -30,10 +31,11 @@ describe("bundlePaths", () => {
 });
 
 // Source-level order of calls in an entry: line of the first call to each name, and the source of the setPdfExtractorRuntime and setDocumentExtractorRuntime calls.
-function scan(file: string): { lines: Record<string, number>; runtimeCall: string; docCall: string } {
+function scan(file: string): { lines: Record<string, number>; runtimeCall: string; docCall: string; ocrCall: string } {
   const lines: Record<string, number> = {};
   let runtimeCall = "";
   let docCall = "";
+  let ocrCall = "";
   const text = readFileSync(join(import.meta.dirname, file), "utf8");
   visitAst(parseSource(text), (n: Node) => {
     const callee = n["callee"] as Node | undefined;
@@ -42,12 +44,13 @@ function scan(file: string): { lines: Record<string, number>; runtimeCall: strin
     lines[name] ??= n.loc!.start.line;
     if (name === "setPdfExtractorRuntime") runtimeCall = text.split("\n")[n.loc!.start.line - 1]!;
     if (name === "setDocumentExtractorRuntime") docCall = text.split("\n")[n.loc!.start.line - 1]!;
+    if (name === "setOcrRuntime") ocrCall = text.split("\n")[n.loc!.start.line - 1]!;
   });
-  return { lines, runtimeCall, docCall };
+  return { lines, runtimeCall, docCall, ocrCall };
 }
 
 describe.each(["osen-mcp.ts", "council.ts"])("entry %s", (file) => {
-  const { lines, runtimeCall, docCall } = scan(file);
+  const { lines, runtimeCall, docCall, ocrCall } = scan(file);
   it("drops ELECTRON_RUN_AS_NODE before the variables are read", () => {
     expect(lines["dropRunAsNode"]).toBeDefined();
     expect(lines["dropRunAsNode"]).toBeLessThan(lines["loadEnv"]!);
@@ -60,5 +63,9 @@ describe.each(["osen-mcp.ts", "council.ts"])("entry %s", (file) => {
     expect(docCall).toContain('env: { ELECTRON_RUN_AS_NODE: "1" }');
     expect(docCall).toContain("command: process.execPath");
     expect(docCall).toContain("paths.docExtract");
+  });
+  it("sets the OCR helper from the bundle before the entry starts", () => {
+    expect(ocrCall).toContain("paths.ocrHelper");
+    expect(lines["setOcrRuntime"]).toBeLessThan(lines["loadEnv"]!);
   });
 });

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { ocrHelperLine } from "./ocr-in-image.ts";
 import { reportHeadlessLines } from "./headless-in-image.ts";
 import { appIconLine, bundleIdentityLine, FONT_FILES, docExtractLine, fuseLine, htmlWorkerLine, missingFontFiles, missingTemplateFiles } from "./templates-in-image.ts";
 
@@ -104,6 +105,9 @@ try {
   report(doc.ok, doc.text);
   const html = htmlWorkerLine(unpackedMain);
   report(html.ok, html.text);
+  // run on the mounted (read-only) image: --version reads nothing and writes nothing
+  const ocr = ocrHelperLine(res);
+  report(ocr.ok, ocr.text);
 
   const noFonts = missingFontFiles(appRoot);
   report(noFonts.length === 0, `IBM Plex Sans and JetBrains Mono fonts in app.asar: .woff2 ${FONT_FILES.length - noFonts.length} of ${FONT_FILES.length}${noFonts.length ? `, missing: ${noFonts.join(", ")}` : ""}`);
