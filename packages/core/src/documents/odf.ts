@@ -146,8 +146,8 @@ const OTHER = new RegExp(`^${BASE.replace(/\./g, "\\.")}(graphics|formula|chart|
 const is = (kind: string) => (t: string): boolean => t === BASE + kind || t === `${BASE}${kind}-template`;
 
 export const ODF_FORMATS: DocFormat[] = [
-  { id: "odt", test: is("text"), check: checkEncryption, build: odtText },
-  { id: "ods", test: is("spreadsheet"), check: checkEncryption, build: odsText },
-  { id: "odp", test: is("presentation"), check: checkEncryption, build: odpText },
+  { id: "odt", test: is("text"), check: checkEncryption, build: (zip, l) => odtText(zip, l.chars) },
+  { id: "ods", test: is("spreadsheet"), check: checkEncryption, build: (zip, l) => odsText(zip, l.chars) },
+  { id: "odp", test: is("presentation"), check: checkEncryption, build: (zip, l) => odpText(zip, l.chars) },
   { id: "odf-other", test: (t) => OTHER.test(t), build: (zip) => { throw new DocError("odf_kind", OTHER.exec(typeOf(zip))?.[1]); } },
 ];

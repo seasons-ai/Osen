@@ -1,6 +1,7 @@
-// App part of the local Word document check: real main-process modules without an Electron window, scripted participants only (0 model calls).
+// App part of the local document check (DOCX, XLSX, PPTX): real main-process modules without an Electron window, scripted participants only (0 model calls).
 // Launched from packages/core/scenarios/documents/check.ts, which prepares the fixtures folder; separately:
-//   COUNCIL_DEV=1 COUNCIL_HOME=<new empty folder inside the project> node apps/desktop/scenarios/documents/check.ts <fixtures folder> <ru|en> <reason text for a damaged document>
+//   COUNCIL_DEV=1 COUNCIL_HOME=<new empty folder inside the project> node apps/desktop/scenarios/documents/check.ts <fixtures folder> <ru|en> <reason text for a damaged document> [<document file name> <expected text file name>]
+// The document defaults to report.docx with expected.txt; the damaged-document refusal runs only for that default document.
 // Writes only to COUNCIL_HOME, does not delete it. The last output line is RESULT {json}.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -15,8 +16,8 @@ import { previewMaterials } from "../../src/main/materials-preview.ts";
 import { createSettings } from "../../src/main/settings.ts";
 import type { MaterialsPreviewView, MaterialsView } from "../../src/shared/setup.ts";
 
-const home = process.env.COUNCIL_HOME, [fxArg, lang, damaged] = process.argv.slice(2);
-const usage = "Run: COUNCIL_DEV=1 COUNCIL_HOME=<new empty folder inside the project> node apps/desktop/scenarios/documents/check.ts <fixtures folder> <ru|en> <damaged reason>";
+const home = process.env.COUNCIL_HOME, [fxArg, lang, damaged, docName = "report.docx", expName = "expected.txt"] = process.argv.slice(2);
+const usage = "Run: COUNCIL_DEV=1 COUNCIL_HOME=<new empty folder inside the project> node apps/desktop/scenarios/documents/check.ts <fixtures folder> <ru|en> <damaged reason> [<document file name> <expected text file name>]";
 if (process.env.COUNCIL_DEV !== "1" || !home || !fxArg || !lang || !damaged) { console.error(usage); process.exit(2); }
 if (!existsSync(resolve(home)) || !statSync(resolve(home)).isDirectory() || readdirSync(resolve(home)).length > 0) {
   console.error(`COUNCIL_HOME ${resolve(home)} must exist and be empty. ${usage}`);
@@ -24,7 +25,7 @@ if (!existsSync(resolve(home)) || !statSync(resolve(home)).isDirectory() || read
 }
 const dir = realpathSync(resolve(home)), fx = realpathSync(resolve(fxArg)); // the collector rejects paths through symlinks
 const scenDir = resolve(import.meta.dirname, "../../../../packages/core/scenarios/consensus");
-const EXPECTED = readFileSync(join(fx, "expected.txt"), "utf8");
+const EXPECTED = readFileSync(join(fx, expName), "utf8");
 setProcessLanguage(lang as "ru" | "en");
 const env = { ...process.env, COUNCIL_DEV: "1", COUNCIL_HOME: dir, COUNCIL_LANG: lang };
 let n = 0;
@@ -80,13 +81,13 @@ async function main() {
 
   // ---- 3. A good document ----
   await good("clearMaterials");
-  const v = await good<MaterialsView>("attachMaterials", [join(fx, "report.docx")]);
+  const v = await good<MaterialsView>("attachMaterials", [join(fx, docName)]);
   views.push(v);
   assert.equal(v.error, null);
   assert.equal(v.items.length, 1);
-  assert.ok(v.items[0]!.name.endsWith("report.docx"));
+  assert.ok(v.items[0]!.name.endsWith(docName));
   assert.equal(v.items[0]!.chars, EXPECTED.length);
-  ok(`app: attachMaterials(report.docx) - one material in the list, chars ${EXPECTED.length}`);
+  ok(`app: attachMaterials(${docName}) - one material in the list, chars ${EXPECTED.length}`);
   const pv = await good<MaterialsPreviewView>("previewMaterials", false);
   views.push(pv);
   assert.ok(pv.initial?.includes(EXPECTED), "no document text in \"Owner's materials\"");
@@ -107,12 +108,14 @@ async function main() {
   ok(`app: startSession by the accepted set - all ${prompts.length} requests to participants contain the document text, the journal has the text sha256, m1.txt equals the text`);
 
   // ---- Refusal ----
-  await good("clearMaterials");
-  const bad = await good<MaterialsView>("attachMaterials", [join(fx, "broken.docx")]);
-  views.push(bad);
-  assert.ok(bad.error?.includes(damaged), `broken.docx: error «${bad.error}»`);
-  assert.equal(bad.items.length, 0);
-  ok(`app: a damaged .docx gives view.error with "${damaged}", the list stays empty`);
+  if (docName === "report.docx") {
+    await good("clearMaterials");
+    const bad = await good<MaterialsView>("attachMaterials", [join(fx, "broken.docx")]);
+    views.push(bad);
+    assert.ok(bad.error?.includes(damaged), `broken.docx: error «${bad.error}»`);
+    assert.equal(bad.items.length, 0);
+    ok(`app: a damaged .docx gives view.error with "${damaged}", the list stays empty`);
+  }
 
   // ---- sources ----
   assert.deepEqual(tree(fx), before, "the source files changed");

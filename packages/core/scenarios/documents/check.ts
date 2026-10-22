@@ -1,28 +1,31 @@
-// Live check of local Word document materials (DOCX/DOCM): terminal (real council), MCP over stdio and the app's main process.
+// Live check of local document materials (Word DOCX/DOCM, Excel XLSX/XLSM, PowerPoint PPTX/PPTM): terminal (real council), MCP over stdio and the app's main process.
 // Participants are scripted only, 0 real model calls. Every step runs twice, on ru and on en (process language, COUNCIL_LANG of the child processes).
-// All files live in COUNCIL_HOME (inside the project: the collector rejects paths through symlinks).
-//   COUNCIL_DEV=1 COUNCIL_HOME="$(mktemp -d "$PWD/.council-data-documents-XXXXXX")" node packages/core/scenarios/documents/check.ts
+// All files live in COUNCIL_HOME (resolved through realpath: the collector rejects paths through symlinks).
+//   COUNCIL_DEV=1 node packages/core/scenarios/documents/check.ts
+// Without COUNCIL_HOME the stand creates a folder in the system temporary folder and deletes it on success.
+// With COUNCIL_HOME (a new empty folder, e.g. inside the project) it uses that folder and does not delete it.
 // The MCP and app parts run as child processes (packages/mcp/scenarios/documents/check.ts, apps/desktop/scenarios/documents/check.ts).
-// Does not delete COUNCIL_HOME. Documents are generated in code (packages/core/src/documents/fixture.ts), no binary files.
+// Documents are generated in code (packages/core/src/documents/fixture.ts), no binary files.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import net from "node:net";
+import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { collectMaterials, setDocumentExtractorRuntime, setProcessLanguage } from "../../src/index.ts";
-import { makeDocx, makeZip, p, table } from "../../src/documents/fixture.ts";
+import { makePptx, makeXlsx, makeDocx, makeZip, p, pptxTable, sp, table } from "../../src/documents/fixture.ts";
 import { odfEpubSuite } from "./odf-epub.ts";
 
 const repo = resolve(import.meta.dirname, "../../../..");
 const home = process.env.COUNCIL_HOME;
-const usage = 'COUNCIL_DEV=1 COUNCIL_HOME="$(mktemp -d "$PWD/.council-data-documents-XXXXXX")" node packages/core/scenarios/documents/check.ts';
-if (process.env.COUNCIL_DEV !== "1" || !home) { console.error(`Usage: ${usage}`); process.exit(2); }
-if (!existsSync(resolve(home)) || !statSync(resolve(home)).isDirectory() || readdirSync(resolve(home)).length > 0) {
+const usage = "COUNCIL_DEV=1 [COUNCIL_HOME=<new empty folder>] node packages/core/scenarios/documents/check.ts";
+if (process.env.COUNCIL_DEV !== "1") { console.error(`Usage: ${usage}`); process.exit(2); }
+if (home && (!existsSync(resolve(home)) || !statSync(resolve(home)).isDirectory() || readdirSync(resolve(home)).length > 0)) {
   console.error(`COUNCIL_HOME ${resolve(home)} must exist and be empty. Usage: ${usage}`);
   process.exit(2);
 }
-const work = realpathSync(resolve(home));
+const work = home ? realpathSync(resolve(home)) : mkdtempSync(join(realpathSync(tmpdir()), "documents-check-"));
 const fx = join(work, "fx"), scen = join(work, "scen");
 for (const d of [fx, scen]) mkdirSync(d, { recursive: true });
 const SECRET = "stand-secret-value";
@@ -32,6 +35,45 @@ const EXPECTED = "Первый абзац отчёта\nВторой абзац 
 const shaExp = createHash("sha256").update(Buffer.from(EXPECTED, "utf8")).digest("hex");
 const REPORT = { body: p("Первый абзац отчёта") + p("Второй абзац отчёта") + table([["Ячейка А1", "Ячейка Б1"], ["Ячейка А2", "Ячейка Б2"]]), footnotes: `<w:footnote w:id="1">${p("Сноска: источник данных")}</w:footnote>` };
 
+// ---- XLSX and PPTX fixtures (the expected texts are written out by hand, not taken from the extractor) ----
+const XLSX_SPEC = {
+  sheets: [
+    {
+      name: "Продажи",
+      rows: [
+        ["Товар", "Цена", "Оплачено", "Дата"],
+        [{ inline: "Хлеб" }, 40, true, 45292],
+        [],
+        [null, null],
+        ["Итого", { f: "SUM(B2:B3)+SECRETFORMULA()", v: 80 }, null, "", null],
+        [{ f: "NOW()" }, "после пустой"],
+      ],
+    },
+    { name: "Архив", hidden: true as const, rows: [["старое", "данные"]] },
+    { name: "План", rows: [["Квартал", "Цель"], ["Q1", 100]] },
+  ],
+};
+const XLSX_EXPECTED = "# Продажи\nТовар\tЦена\tОплачено\tДата\nХлеб\t40\tTRUE\t45292\nИтого\t80\n\tпосле пустой\n\n# Архив\nстарое\tданные\n\n# План\nКвартал\tЦель\nQ1\t100";
+const PPTX_SPEC = {
+  fileOrder: [2, 1, 3],
+  slides: [
+    { shapes: sp(["Название доклада"], "title") + sp(["Первый пункт"]) },
+    { shapes: pptxTable([["Месяц", "Сумма"], ["май", "10"]]), notes: sp([""], "sldImg") + sp(["Заметка докладчика"], "body") + sp(["2"], "sldNum") },
+    { shapes: sp(["Скрытый слайд"]) + sp(["подвал"], "ftr"), hidden: true },
+  ],
+};
+const PPTX_EXPECTED = "# 1\nНазвание доклада\nПервый пункт\n\n# 2\nМесяц\tСумма\nмай\t10\n\nЗаметка докладчика\n\n# 3\nСкрытый слайд";
+// distinct values keep the compression ratio of each part far below 200
+function bigBook(cells: number): Uint8Array {
+  const rows: string[] = [];
+  for (let i = 0; i < cells; i += 10) {
+    let row = "";
+    for (let j = 0; j < Math.min(10, cells - i); j++) row += `<c r="${String.fromCharCode(65 + j)}${i / 10 + 1}"><v>${(i + j) * 7919 % 1000003}.${(i * 31 + j) % 977}</v></c>`;
+    rows.push(`<row r="${i / 10 + 1}">${row}</row>`);
+  }
+  return makeXlsx({ sheets: [{ name: "Big", sheetData: rows.join("") }] });
+}
+
 interface Texts { session: RegExp; summary: (n: number, chars: number) => RegExp; rejected: string; skipped: (n: number) => RegExp; leftOut: (n: number) => RegExp; reason: Record<string, string>; nonText: string; nonTextSkipped: string }
 const T: Record<"ru" | "en", Texts> = {
   ru: {
@@ -40,7 +82,7 @@ const T: Record<"ru" | "en", Texts> = {
     reason: {
       damaged: "документ повреждён", encrypted: "документ зашифрован — пароль не запрашивается", noText: "в документе нет текста",
       ratio: "часть документа сжата сильнее чем в 200 раз", parts: "в документе больше 10000 частей", unpacked: "документ распаковывается больше чем в 512 МиБ",
-      chars: "текст документа больше 20000000 знаков",
+      chars: "текст документа больше 20000000 знаков", cells: "в таблице больше 1000000 ячеек",
     },
     nonText: "нетекстовый файл (не UTF-8 или бинарные данные)", nonTextSkipped: "нетекстовый файл",
   },
@@ -50,7 +92,7 @@ const T: Record<"ru" | "en", Texts> = {
     reason: {
       damaged: "document is damaged", encrypted: "document is encrypted — no password is requested", noText: "document has no text",
       ratio: "a document part is compressed more than 200 times", parts: "document has more than 10000 parts", unpacked: "document unpacks to more than 512 MiB",
-      chars: "document text is longer than 20000000 characters",
+      chars: "document text is longer than 20000000 characters", cells: "spreadsheet has more than 1000000 cells",
     },
     nonText: "not a text file (not UTF-8 or binary data)", nonTextSkipped: "not a text file",
   },
@@ -286,6 +328,115 @@ async function suite(lang: "ru" | "en") {
   assert.ok(!r7.r.err.includes(t.reason.damaged));
   ok(`${tag} 7: a plain ZIP is refused as a non-text file ("${t.nonText}"), not as damaged`);
 
+  // ---- XLSX / PPTX ----
+  const noCall = () => promptLines().length;
+  /** One attach; checks the exact snapshot text, the journal sha256 and that every fresh request carries the text. */
+  async function exact(label: string, file: string, expected: string) {
+    const before = promptLines().length;
+    const r = await attach(label, file, expected);
+    assert.equal(r.code, 0, `${label}: code ${r.code}${dump(r.r)}`);
+    assert.match(r.r.out, t.summary(1, expected.length), `${label}: summary${dump(r.r)}`);
+    const id = sessionId(r.r);
+    const m = created(id).materials as { name: string; chars: number; sha256: string }[];
+    assert.equal(m.length, 1, `${label}: materials`);
+    assert.deepEqual([m[0]!.chars, m[0]!.sha256], [expected.length, sha(Buffer.from(expected, "utf8"))], `${label}: journal`);
+    const snapshot = join(sdir(id), "materials", "m1.txt");
+    assert.equal(readFileSync(snapshot, "utf8"), expected, `${label}: m1.txt`);
+    assert.ok(!events(id).some((e) => e.type === "turn_failed"), `${label}: turn_failed`);
+    const fresh = promptLines().slice(before);
+    assert.ok(fresh.length >= 2 && fresh.every((l) => (JSON.parse(l) as { prompt: string }).prompt.includes(expected)), `${label}: not every request carries the text`);
+    return { sha256: m[0]!.sha256, chars: m[0]!.chars, snapshot, requests: fresh.length };
+  }
+  const xlsxSha = sha(Buffer.from(XLSX_EXPECTED, "utf8")), pptxSha = sha(Buffer.from(PPTX_EXPECTED, "utf8"));
+
+  const x1 = await exact("x1", join(fx, "sheet.xlsx"), XLSX_EXPECTED);
+  assert.ok(!XLSX_EXPECTED.includes("SECRETFORMULA") && !readFileSync(x1.snapshot, "utf8").includes("SECRETFORMULA"), "formula text in the snapshot");
+  ok(`${tag} X1: XLSX (3 sheets with a hidden one, shared and inline strings, a formula with a cached value, a boolean, a date serial, empty rows, empty right cells): m1.txt is the exact text, sha256 ${xlsxSha.slice(0, 12)}…, ${x1.requests} requests carry it, formula text absent`);
+
+  copyFileSync(join(fx, "sheet.xlsx"), join(fx, "sheet.bin"));
+  const x2 = await exact("x2", join(fx, "sheet.bin"), XLSX_EXPECTED);
+  assert.equal(x2.sha256, xlsxSha);
+  ok(`${tag} X2: the same bytes as sheet.bin (format by content) give the same text and sha256`);
+
+  const x3 = await exact("x3", join(fx, "sheet-macro.xlsm"), XLSX_EXPECTED);
+  assert.equal(x3.sha256, xlsxSha);
+  ok(`${tag} X3: an XLSM with vbaProject.bin gives the same text and sha256, the macro is not read`);
+
+  // 4. a book over the cells limit
+  const big = join(fx, "big.xlsx");
+  const callsBefore = noCall(), nBefore4 = journals().length;
+  const r4x = await run(["--topic", "t", "--attach", big, ...parts(okPair), "--max-rounds", "1"]);
+  assert.equal(r4x.code, 2, `big: code ${r4x.code}${dump(r4x.r)}`);
+  assert.equal(r4x.r.out, "", `big: stdout${dump(r4x.r)}`);
+  assert.equal(r4x.r.err, `${t.rejected}\n  «big.xlsx»: ${t.reason.cells}\n`, `big: stderr${dump(r4x.r)}`);
+  assert.equal(journals().length, nBefore4, "big: a session appeared");
+  assert.equal(noCall(), callsBefore, "big: a participant was called");
+  const withBig = join(fx, "projbig");
+  mkdirSync(withBig, { recursive: true });
+  writeFileSync(join(withBig, "README.md"), "Описание проекта.\n");
+  copyFileSync(big, join(withBig, "big.xlsx"));
+  const r4f = await attach("x4f", withBig, undefined);
+  assert.equal(r4f.code, 0, dump(r4f.r));
+  const names4 = (created(sessionId(r4f.r)).materials as { name: string }[]).map((m) => m.name);
+  assert.ok(names4.length === 1 && names4[0]!.endsWith("README.md"), `collected: ${names4}`);
+  assert.match(r4f.r.out, t.skipped(1), dump(r4f.r));
+  assert.ok(r4f.r.out.split("\n").some((l) => l.includes("big.xlsx") && l.includes(t.reason.cells)), `no skipped line with the cells reason${dump(r4f.r)}`);
+  ok(`${tag} X4: 1000001 non-empty cells: explicit attach is refused (code 2, "${t.reason.cells}", no session, no participant calls); in a folder with README.md the book is skipped with that reason and README is collected`);
+
+  // 5. PPTX
+  const p5 = await exact("p5", join(fx, "deck.pptx"), PPTX_EXPECTED);
+  assert.equal(p5.sha256, pptxSha);
+  ok(`${tag} P5: PPTX (slide files in another order than sldIdLst, a table, a speaker note, a hidden slide, a footer): m1.txt is the exact text "# 1", "# 2", note after a blank line, hidden slide present, footer absent`);
+
+  // 6. parity with MCP and the app main modules
+  const gone = join(fx, "gone-sheet.xlsx");
+  copyFileSync(join(fx, "sheet.xlsx"), gone);
+  const g = await exact("x6", gone, XLSX_EXPECTED);
+  unlinkSync(gone);
+  assert.equal(readFileSync(g.snapshot, "utf8"), XLSX_EXPECTED, "the snapshot changed after the source was deleted");
+  ok(`${tag} 6: after the source file is deleted the session snapshot m1.txt is unchanged`);
+  for (const [what, doc, exp, expected, cli] of [["XLSX", "sheet.xlsx", "sheet-expected.txt", XLSX_EXPECTED, x1], ["PPTX", "deck.pptx", "deck-expected.txt", PPTX_EXPECTED, p5]] as const) {
+    const m = await subStand(`MCP ${what}`, "packages/mcp/scenarios/documents/check.ts", join(work, `mcp-${what}-${lang}`), lang, [t.reason.damaged, doc, exp]);
+    const a = await subStand(`app ${what}`, "apps/desktop/scenarios/documents/check.ts", join(work, `desktop-${what}-${lang}`), lang, [t.reason.damaged, doc, exp]);
+    for (const [who, r] of [["terminal", cli], ["MCP", m], ["app", a]] as const) {
+      assert.equal(r.sha256, sha(Buffer.from(expected, "utf8")), `${what} ${who}: sha256`);
+      assert.equal(r.chars, expected.length, `${what} ${who}: chars`);
+      assert.equal(readFileSync(r.snapshot, "utf8"), expected, `${what} ${who}: snapshot`);
+    }
+    ok(`${tag} 6: ${what} parity: chars ${expected.length}, sha256 and the snapshot are identical in the terminal, MCP council_start and the app main modules (preview + startSession)`);
+  }
+
+  // 7. a folder over the limit: the presentation is a description, the spreadsheet is not
+  const over = join(fx, "projover");
+  mkdirSync(over, { recursive: true });
+  writeFileSync(join(over, "deck.pptx"), makePptx({ slides: [{ shapes: sp(["Название"]) }] }));
+  copyFileSync(join(fx, "sheet.xlsx"), join(over, "sheet.xlsx"));
+  writeFileSync(join(over, "code.ts"), "x".repeat(500));
+  const r7x = await attach("x7", over, undefined, ["--materials-chars", "150"]);
+  assert.equal(r7x.code, 0, dump(r7x.r));
+  const names7 = (created(sessionId(r7x.r)).materials as { name: string }[]).map((m) => m.name);
+  assert.ok(names7.length === 1 && names7[0]!.endsWith("deck.pptx"), `taken: ${names7}`);
+  assert.match(r7x.r.out, t.leftOut(2), dump(r7x.r));
+  const leftLines = r7x.r.out.split("\n").filter((l) => l.includes("sheet.xlsx") || l.includes("code.ts"));
+  assert.ok(leftLines.some((l) => l.includes("sheet.xlsx")) && leftLines.some((l) => l.includes("code.ts")), `left-out names${dump(r7x.r)}`);
+  ok(`${tag} X7: folder over the limit without README: deck.pptx is in the initial set as a description, sheet.xlsx and code.ts are named among the files not in the initial set`);
+
+  // 8. damaged book and a presentation without text in a folder with README
+  const dmg = join(fx, "projdamaged");
+  mkdirSync(dmg, { recursive: true });
+  writeFileSync(join(dmg, "README.md"), "Описание проекта.\n");
+  writeFileSync(join(dmg, "broken.xlsx"), makeXlsx({ sheets: [{ name: "S", sheetData: "<row><c>" }] }));
+  writeFileSync(join(dmg, "empty.pptx"), makePptx({ slides: [{ shapes: sp([""]) }] }));
+  const r8 = await attach("x8", dmg, undefined);
+  assert.equal(r8.code, 0, dump(r8.r));
+  const names8 = (created(sessionId(r8.r)).materials as { name: string }[]).map((m) => m.name);
+  assert.ok(names8.length === 1 && names8[0]!.endsWith("README.md"), `collected: ${names8}`);
+  assert.match(r8.r.out, t.skipped(2), dump(r8.r));
+  const out8 = r8.r.out.split("\n");
+  assert.ok(out8.some((l) => l.includes("broken.xlsx") && l.includes(t.reason.damaged)), `damaged line${dump(r8.r)}`);
+  assert.ok(out8.some((l) => l.includes("empty.pptx") && l.includes(t.reason.noText)), `no-text line${dump(r8.r)}`);
+  ok(`${tag} X8: a damaged .xlsx ("${t.reason.damaged}") and a text-less .pptx ("${t.reason.noText}") are skipped, README is collected`);
+
   // Change 210: OpenDocument and EPUB checks with their own fixtures.
   await odfEpubSuite({ lang, work, t, run, attach, created, sessionId, sdir, journals, promptLines, pair: (n) => pair(n), parts, subStand, dump, ok });
 }
@@ -331,8 +482,14 @@ async function main() {
   writeFileSync(join(fx, "report-macro.docm"), makeDocx({ ...REPORT, macro: true }));
   writeFileSync(join(fx, "expected.txt"), EXPECTED);
   writeFileSync(join(fx, "broken.docx"), makeDocx({ body: "<w:p>" }));
+  writeFileSync(join(fx, "sheet.xlsx"), makeXlsx(XLSX_SPEC));
+  writeFileSync(join(fx, "sheet-macro.xlsm"), makeXlsx({ ...XLSX_SPEC, macro: true }));
+  writeFileSync(join(fx, "sheet-expected.txt"), XLSX_EXPECTED);
+  writeFileSync(join(fx, "deck.pptx"), makePptx(PPTX_SPEC));
+  writeFileSync(join(fx, "deck-expected.txt"), PPTX_EXPECTED);
+  writeFileSync(join(fx, "big.xlsx"), bigBook(1_000_001));
   const srcBefore = Object.fromEntries(allFiles(fx).map((f) => [f, sha(readFileSync(f))]));
-  const keep = ["report.docx", "report-macro.docm", "broken.docx"].map((n) => join(fx, n));
+  const keep = ["report.docx", "report-macro.docm", "broken.docx", "sheet.xlsx", "sheet-macro.xlsm", "deck.pptx", "big.xlsx"].map((n) => join(fx, n));
   for (const lang of ["ru", "en"] as const) await suite(lang);
   await inProcess();
   for (const f of keep) assert.equal(sha(readFileSync(f)), srcBefore[f], `${f} changed`);
@@ -359,4 +516,5 @@ try {
   clearTimeout(guard);
   for (const k of kids) k.kill("SIGKILL");
 }
+if (!failed && !home) rmSync(work, { recursive: true, force: true });
 process.exit(failed ? 1 : 0);
