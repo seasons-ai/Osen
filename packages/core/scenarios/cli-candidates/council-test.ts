@@ -6,10 +6,13 @@
 //   counter: folder of the launch counters of the stubs; log: jsonl of source fetch calls
 //   slowOnly: "<agent>@<version>" — only this install is slow (slowInstallMs), the others are immediate
 //   hangHelp: "<agent>@<version>" — the help of this stub hangs with children, their pids go to hangPid (codex stub only)
+//   releases values may also be any other JSON (e.g. an object): it is returned as is, to reach the "not a list" reason
+//   npmReleases: true — the real `npm view` release source (npmReleases from npm-source.ts) instead of the substitute one; `npm` is whatever the stand puts in PATH
 //   npm: true — the real npm package source (npm-source.ts) instead of the substitute one; `npm` is whatever the stand puts in PATH
 import { appendFileSync, chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main } from "../../src/cli.ts";
+import { npmReleases } from "../../src/cli-agents/npm-source.ts";
 import type { ReleaseSource } from "../../src/cli-agents/candidates.ts";
 import type { PackageSource } from "../../src/cli-agents/pins.ts";
 import { BUILTIN_RECORD } from "../../src/cli-agents/verified-record.ts";
@@ -23,7 +26,7 @@ if (!raw) {
   console.error("The CLI_CANDIDATES_STAND variable is not set (JSON with releases, counter, log): this is the stand service entry.");
   process.exit(2);
 }
-const stand = JSON.parse(raw) as { releases: string; counter: string; log: string; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number; slowOnly?: string; hangHelp?: string; hangPid?: string; npm?: boolean };
+const stand = JSON.parse(raw) as { releases: string; counter: string; log: string; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number; slowOnly?: string; hangHelp?: string; hangPid?: string; npm?: boolean; npmReleases?: boolean };
 
 const stubs = join(import.meta.dirname, "stubs");
 const fixtures = join(import.meta.dirname, "../../src/cli-agents/fixtures");
@@ -38,13 +41,14 @@ const files = (agent: string, variant: Variant): { HELP_FILE: string; FEATURES_F
       };
 const q = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
 
-const releases: ReleaseSource = {
+const substituteReleases: ReleaseSource = {
   async list(agent) {
-    const got = (JSON.parse(readFileSync(stand.releases, "utf8")) as Record<string, string[] | "error">)[agent];
+    const got = (JSON.parse(readFileSync(stand.releases, "utf8")) as Record<string, string[] | "error" | unknown>)[agent];
     if (got === "error" || got === undefined) throw new Error("substitute release source failure");
-    return got;
+    return got as string[]; // a non-list value is deliberately passed through: the stand checks how the command reports it
   },
 };
+const releases: ReleaseSource = stand.npmReleases ? npmReleases(standEnv) : substituteReleases;
 
 const source: PackageSource = {
   async fetch(agent, version, dir, signal) {

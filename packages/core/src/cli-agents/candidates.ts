@@ -7,13 +7,18 @@ import { providerMessages } from "../messages/providers.ts";
 import { CODEX_ISOLATION_FEATURES, HELP_ARGS, REQUIRED_FLAGS, planLaunch } from "./args.ts";
 import { parseVersion, pinnedEnv } from "./discovery.ts";
 import { declaredFlags, parseCodexFeatures } from "./flags.ts";
-import { readOutput } from "./process.ts";
+import { describeOutputError, readOutput } from "./process.ts";
 import { activePin } from "./pins.ts";
 import type { PackageSource } from "./pins.ts";
 import { DEFAULT_MODEL } from "./types.ts";
 import type { CliAgent } from "./types.ts";
 import { BUILTIN_RECORD, VERIFIED_FILE, addLocalEntry, mergeRecords, readLocalRecord } from "./verified-record.ts";
 import type { VerifiedEntry } from "./verified-record.ts";
+
+/** The release source answered with something that is not a list of version strings; the reason text comes from the catalog. */
+export class ReleaseListError extends Error {
+  constructor() { super("not a list of version strings"); }
+}
 
 export const CANDIDATES_DIR = "cli-candidates";
 export const CANDIDATE_LIMIT = 5;
@@ -170,11 +175,11 @@ export async function checkCandidates(dataDir: string, agents: readonly CliAgent
       let listed: string[];
       try {
         const got: unknown = await step(deps.releases.list(agent, signal));
-        if (!Array.isArray(got) || !got.every((v) => typeof v === "string")) throw new Error("not a list of version strings");
+        if (!Array.isArray(got) || !got.every((v) => typeof v === "string")) throw new ReleaseListError();
         listed = got;
       } catch (e) {
         if (e instanceof Interrupted) throw e;
-        fail(agent, "source_unavailable", m.candidatesSourceFailed(agent, e instanceof Error ? e.message : String(e)));
+        fail(agent, "source_unavailable", m.candidatesSourceFailed(agent, e instanceof ReleaseListError ? m.candidatesNotList : describeOutputError(e)));
         continue;
       }
       const newer = [...new Set(listed.filter((v) => VERSION.test(v) && cmp(v, base) > 0))].sort(cmp).slice(-CANDIDATE_LIMIT);

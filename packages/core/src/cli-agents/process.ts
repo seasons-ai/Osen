@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import type { Language } from "../i18n/language.ts";
+import { acceptanceMessages } from "../messages/acceptance.ts";
 
 export interface RunSpec {
   command: string;                               // absolute path of the executable file
@@ -111,11 +113,46 @@ export async function readOutput(command: string, args: readonly string[], env: 
     onStdout: (chunk) => { bytes += Buffer.byteLength(chunk); if (bytes > maxBytes) overflow.abort(); },
   });
   if (run.spawnError) throw run.spawnError;
-  const fail = (message: string): Error => Object.assign(new Error(message), { stderr: run.stderr }); // stderr: for callers that report it alone
+  const fail = (message: string, failure?: OutputFailure): Error => failure
+    ? new OutputError(failure, message, run.stderr)
+    : Object.assign(new Error(message), { stderr: run.stderr }); // stderr: for callers that report it alone
   if (run.aborted) {
     if (signal?.aborted) throw fail("interrupted");
-    throw fail(overflow.signal.aborted ? `output is larger than ${maxBytes} bytes` : `no answer within ${timeoutMs} ms`);
+    throw overflow.signal.aborted
+      ? fail(`output is larger than ${maxBytes} bytes`, { code: "too_large", maxBytes })
+      : fail(`no answer within ${timeoutMs} ms`, { code: "timeout", ms: timeoutMs });
   }
-  if (run.exitCode !== 0) throw fail(`${command} ${args.join(" ")} exited with ${run.exitCode ?? run.signal}${run.stderr.trim() ? `: ${run.stderr.trim()}` : ""}`);
+  if (run.exitCode !== 0) {
+    const stderr = run.stderr.trim();
+    throw fail(`${command} ${args.join(" ")} exited with ${run.exitCode ?? run.signal}${stderr ? `: ${stderr}` : ""}`,
+      { code: "exit", command: `${command} ${args.join(" ")}`, exitCode: run.exitCode, signal: run.signal, stderr });
+  }
   return run.stdout;
+}
+
+/** Why a CLI read failed, as data: the text is built later, in the language of whoever shows it. */
+export type OutputFailure =
+  | { code: "too_large"; maxBytes: number }
+  | { code: "timeout"; ms: number }
+  | { code: "exit"; command: string; exitCode: number | null; signal: string | null; stderr: string };
+
+/** `message` stays English (logs); `stderr` is what the process wrote, for callers that report it alone. */
+export class OutputError extends Error {
+  readonly failure: OutputFailure;
+  readonly stderr: string;
+  constructor(failure: OutputFailure, message: string, stderr: string = failure.code === "exit" ? failure.stderr : "") {
+    super(message);
+    this.failure = failure;
+    this.stderr = stderr;
+  }
+}
+
+/** Text of a failed CLI read in the given language (default: the process language); other errors keep their own message. */
+export function describeOutputError(e: unknown, language?: Language): string {
+  if (!(e instanceof OutputError)) return e instanceof Error ? e.message : String(e);
+  const m = acceptanceMessages(language);
+  const f = e.failure;
+  if (f.code === "too_large") return m.outputTooLarge(f.maxBytes);
+  if (f.code === "timeout") return m.outputNoAnswer(f.ms);
+  return f.exitCode === null && f.signal !== null ? m.outputSignaled(f.command, f.signal, f.stderr) : m.outputExited(f.command, f.exitCode, f.stderr);
 }

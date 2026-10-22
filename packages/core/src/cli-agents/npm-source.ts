@@ -2,12 +2,13 @@ import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { pinMessages } from "../messages/pins.ts";
 import type { PackageSource } from "./pins.ts";
-import { readOutput } from "./process.ts";
+import { describeOutputError, readOutput } from "./process.ts";
+import { ReleaseListError } from "./candidates.ts";
 import type { ReleaseSource } from "./candidates.ts";
 import type { CliAgent } from "./types.ts";
 
 // As with execFile before: npm's stderr when there is any, otherwise the error message; the last 500 characters.
-const tail = (e: unknown): string => String((e as { stderr?: string }).stderr || (e instanceof Error ? e.message : e)).slice(-500).trim();
+const tail = (e: unknown): string => String((e as { stderr?: string }).stderr || describeOutputError(e)).slice(-500).trim();
 
 const PACKAGES: Record<CliAgent, string> = { claude: "@anthropic-ai/claude-code", codex: "@openai/codex" };
 
@@ -42,8 +43,9 @@ export function npmReleases(env: Record<string, string | undefined>): ReleaseSou
       const npmEnv = { ...env, npm_config_update_notifier: "false", npm_config_fund: "false", npm_config_audit: "false" };
       const out = await readOutput("npm", ["view", PACKAGES[agent], "versions", "--json"], npmEnv, signal, 60_000, 16 * 1024 * 1024)
         .catch((e: unknown) => { throw new Error(tail(e)); });
-      const data: unknown = JSON.parse(out);
-      if (!Array.isArray(data) || !data.every((v) => typeof v === "string")) throw new Error("npm view did not return a JSON array of strings");
+      let data: unknown;
+      try { data = JSON.parse(out); } catch { throw new ReleaseListError(); } // the parser's English text must not reach the reason
+      if (!Array.isArray(data) || !data.every((v) => typeof v === "string")) throw new ReleaseListError();
       return data;
     },
   };

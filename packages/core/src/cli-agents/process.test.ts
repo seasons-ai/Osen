@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readOutput, runProcess } from "./process.ts";
+import { OutputError, readOutput, runProcess } from "./process.ts";
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "proc-")); });
@@ -150,5 +150,23 @@ describe("readOutput: the CLI read used by candidates and npm", () => {
       await waitFor(() => !alive(pid), 5000);
       expect(alive(pid)).toBe(false);
     } finally { reap(pid); }
+  });
+});
+
+describe("readOutput: output limit boundary and typed failures", () => {
+  const out = (n: number) => stub(`head -c ${n} /dev/zero | tr '\\0' x`);
+  const env = { PATH: "/usr/bin:/bin" };
+  it("exactly maxBytes resolves, one byte over rejects with too_large", async () => {
+    expect((await readOutput(out(64), [], env, undefined, 5000, 64)).length).toBe(64);
+    const e = await readOutput(out(65), [], env, undefined, 5000, 64).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(OutputError);
+    expect((e as OutputError).failure).toEqual({ code: "too_large", maxBytes: 64 });
+    expect((e as Error).message).toBe("output is larger than 64 bytes");
+  });
+  it("exit failure carries the command, code and trimmed stderr", async () => {
+    const path = stub('echo " boom " >&2; exit 3');
+    const e = await readOutput(path, ["a", "b"], env).catch((x: unknown) => x);
+    expect((e as OutputError).failure).toEqual({ code: "exit", command: `${path} a b`, exitCode: 3, signal: null, stderr: "boom" });
+    expect((e as Error).message).toBe(`${path} a b exited with 3: boom`);
   });
 });
