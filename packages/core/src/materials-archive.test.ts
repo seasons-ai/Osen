@@ -215,6 +215,11 @@ describe("ZIP archive as a folder", () => {
     expect(set.materials[1]!.text).toContain("Hello archive");
   }, SLOW);
 
+  it("an empty nested ZIP is a nested archive too", () => {
+    const f = zipAt("outer.zip", [{ name: "empty.zip", data: makeZip([]) }, { name: "a.txt", data: "a" }]);
+    expect(reasonOf(collectMaterials([f], opts), "outer.zip/empty.zip")).toBe(m().archiveNested);
+  }, SLOW);
+
   it("RTF and Compound File Binary entries go to the RTF/DOC readers of change 211", () => {
     const f = zipAt("legacy.zip", [
       { name: "note.dat", data: makeRtf(["Первая строка"]) },

@@ -67,6 +67,8 @@ function readEntryBytes(bytes: Uint8Array, state: { recognized: number }): { tex
     const r = extractPdfText(bytes);
     return r.ok ? { text: r.text } : { skip: pdfReason(r) };
   }
+  // an empty ZIP is only the end record: as in readText it is an archive, here a nested one
+  if (buf.length === 22 && head.readUInt32LE(0) === 0x06054b50) return { skip: m.archiveNested };
   if (head.length >= 4 && head.readUInt32LE(0) === 0x04034b50) {
     const r = extractDocumentText(bytes);
     if (r.ok) return { text: r.text };
