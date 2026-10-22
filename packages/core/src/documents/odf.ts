@@ -142,12 +142,14 @@ function checkEncryption(zip: Zip): void {
 }
 
 const typeOf = (zip: Zip): string => Buffer.from(zip.read("mimetype")).toString("latin1").trim();
-const OTHER = new RegExp(`^${BASE.replace(/\./g, "\\.")}(graphics|formula|chart|database|image|text-master|text-web)(-template)?$`);
-const is = (kind: string) => (t: string): boolean => t === BASE + kind || t === `${BASE}${kind}-template`;
+const OTHER_KINDS = ["graphics", "formula", "chart", "database", "image", "text-master", "text-web"];
+// Kind of an OpenDocument media type with an optional "-template" suffix, or undefined for any other value.
+const kindOf = (t: string): string | undefined => t.startsWith(BASE) ? t.slice(BASE.length).replace(/-template$/, "") : undefined;
+const is = (kind: string) => (t: string): boolean => kindOf(t) === kind;
 
 export const ODF_FORMATS: DocFormat[] = [
   { id: "odt", test: is("text"), check: checkEncryption, build: (zip, l) => odtText(zip, l.chars) },
   { id: "ods", test: is("spreadsheet"), check: checkEncryption, build: (zip, l) => odsText(zip, l.chars) },
   { id: "odp", test: is("presentation"), check: checkEncryption, build: (zip, l) => odpText(zip, l.chars) },
-  { id: "odf-other", test: (t) => OTHER.test(t), build: (zip) => { throw new DocError("odf_kind", OTHER.exec(typeOf(zip))?.[1]); } },
+  { id: "odf-other", test: (t) => OTHER_KINDS.includes(kindOf(t) ?? ""), build: (zip) => { throw new DocError("odf_kind", kindOf(typeOf(zip))); } },
 ];

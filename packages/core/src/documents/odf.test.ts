@@ -108,6 +108,15 @@ describe("Текст OpenDocument", () => {
     expect(run(mismatch)).toEqual({ ok: false, code: "damaged" });
   });
 
+  it("sheet names with quotes and apostrophes survive the fixture and the parser", () => {
+    expect(text(makeOdf({ kind: "spreadsheet", body: odsTable(`Итоги "Q1" и 'Q2'`, [["a"]]) }))).toBe(`# Итоги "Q1" и 'Q2'\na`);
+  });
+
+  it("a media type that only resembles an OpenDocument kind is unsupported", () => {
+    for (const t of ["application/vnd.oasis.opendocument.graphicsX", "application/vndXoasis.opendocument.graphics", "application/vnd.oasis.opendocument.text-template-template"])
+      expect(run(makeOdf({ kind: t, body: odtP("x") }))).toEqual({ ok: false, code: "unsupported" });
+  });
+
   it("real child process: extractDocumentText accepts an ODT", () => {
     expect(extractDocumentText(body("text", odtP("через процесс")))).toMatchObject({ ok: true, text: "через процесс", format: "odt" });
   });

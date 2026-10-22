@@ -1,6 +1,7 @@
 import { makeZip, type ZipPart } from "./fixture.ts";
 
-export const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// Text and attribute values: every XML special character, quotes included.
+export const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 export const odtP = (text: string): string => `<text:p>${esc(text)}</text:p>`;
 export const odtH = (text: string): string => `<text:h text:outline-level="1">${esc(text)}</text:h>`;
 export const odtTable = (rows: string[][]): string =>
