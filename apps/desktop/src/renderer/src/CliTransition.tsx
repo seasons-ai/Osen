@@ -186,8 +186,9 @@ export function CliLines({ provider: p, cli, ui }: { provider: SettingsProvider;
           </div>
         </>
       )}
+      {cli.broken.map((b) => <Alert key={b.version} tone="warn" title={t.cliBrokenTitle(b.version)}>{t.cliBrokenText(b.code)}</Alert>)}
       {cli.check !== null && cli.check.outcome !== "ok" && <Alert tone="warn" title={t.cliCheckFailedTitle}>{t.cliCheckFailedText(cli.check.outcome, formatAt(cli.check.at, language))}</Alert>}
-      {cli.check?.notSaved && <Alert tone="warn" title={t.cliCheckNotSavedTitle}>{t.cliCheckNotSavedText(cli.check.notSaved.file, cli.check.notSaved.code, formatAt(cli.check.at, language))}</Alert>}
+      {cli.check?.notSaved && <Alert tone="warn" title={t.cliCheckNotSavedTitle}>{t.cliCheckNotSavedText(cli.check.notSaved.code, formatAt(cli.check.at, language))}</Alert>}
       {ui.confirm !== null && (
         <div className="alert" data-tone="info" role="alert">
           <Icon name="i-info" />

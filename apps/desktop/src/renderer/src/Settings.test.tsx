@@ -345,7 +345,7 @@ describe("CLI transition on the Providers tab", () => {
     agent: "claude", source: "pin", level: "real", checkedAt: "2026-10-07",
     pin: { version: "2.1.288", activatedAt: "2026-09-10T08:30:00Z", ageDays: 40, previous: "2.1.270" },
     due: { from: "2.1.288", to: "2.1.300", ageDays: 40, acceptedAt: "2026-10-15" },
-    target: { version: "2.1.300", acceptedAt: "2026-10-15" }, install: null, candidates: [], violations: [], check: null, ...o,
+    target: { version: "2.1.300", acceptedAt: "2026-10-15" }, install: null, broken: [], candidates: [], violations: [], check: null, ...o,
   });
   const withCli = (o: Partial<SettingsView> = {}, c: CliTransition | null = cli()) =>
     loaded({ providers: [prov({ id: "claude", label: "Claude Code", version: "2.1.288", cli: c }), http()], ...o });
@@ -453,7 +453,7 @@ describe("CLI transition actions", () => {
   const c: CliTransition = {
     agent: "claude", source: "pin", level: "real", checkedAt: "2026-10-07",
     pin: { version: "2.1.288", activatedAt: "2026-09-10T08:30:00Z", ageDays: 40, previous: "2.1.270" },
-    due: null, target, install: null, candidates: [], violations: [], check: null,
+    due: null, target, install: null, broken: [], candidates: [], violations: [], check: null,
   };
   const flush = () => new Promise((r) => setTimeout(r, 0));
   function harness(api: Partial<CliApi>) {

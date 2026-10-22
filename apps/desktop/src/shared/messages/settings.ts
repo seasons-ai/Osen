@@ -261,8 +261,11 @@ export const settings = defineMessages({
     cliCheckFailedText: (code: string, at: string): string =>
       `${({ source_unavailable: "the release source is unavailable", install_failed: "the candidate did not install", record_failed: "the acceptance record could not be read", no_base: "no active pin to compare with", check_failed: "the contract check failed" } as Record<string, string>)[code] ?? code}. Last attempt: ${at}.`,
     cliCheckNotSavedTitle: "Check result not saved",
-    cliCheckNotSavedText: (file: string, code: string, at: string): string =>
-      `The candidate check ran at ${at}, but ${file} could not be written: ${code}. The next check in this run is not before 24 hours.`,
+    cliCheckNotSavedText: (code: string, at: string): string =>
+      `The candidate check ran at ${at}, but its result could not be saved: ${code}. The next check in this run is not before 24 hours.`,
+    cliBrokenTitle: (version: string): string => `Installation ${version} is damaged`,
+    cliBrokenText: (code: string): string =>
+      `${code === "missing" ? "The executable is missing" : "The executable changed after installation"} (${code}). Switching to this version is unavailable.`,
     cliSwitchTo: (version: string): string => `Switch to ${version}`,
     cliRollbackTo: (version: string): string => `Roll back to ${version}`,
     cliRollback: "Roll back",
@@ -527,8 +530,11 @@ export const settings = defineMessages({
     cliCheckFailedText: (code: string, at: string): string =>
       `${({ source_unavailable: "источник релизов недоступен", install_failed: "кандидат не установился", record_failed: "запись приёмки не прочитана", no_base: "нет активного закрепления для сравнения", check_failed: "проверка контракта не прошла" } as Record<string, string>)[code] ?? code}. Последняя попытка: ${at}.`,
     cliCheckNotSavedTitle: "Итог проверки не сохранён",
-    cliCheckNotSavedText: (file: string, code: string, at: string): string =>
-      `Проверка кандидатов прошла ${at}, но записать ${file} не удалось: ${code}. Следующая проверка в этом запуске — не раньше чем через 24 часа.`,
+    cliCheckNotSavedText: (code: string, at: string): string =>
+      `Проверка кандидатов прошла ${at}, но её итог не удалось сохранить: ${code}. Следующая проверка в этом запуске — не раньше чем через 24 часа.`,
+    cliBrokenTitle: (version: string): string => `Установка ${version} повреждена`,
+    cliBrokenText: (code: string): string =>
+      `${code === "missing" ? "Исполняемый файл отсутствует" : "Исполняемый файл изменился после установки"} (${code}). Переход на эту версию недоступен.`,
     cliSwitchTo: (version: string): string => `Перейти на ${version}`,
     cliRollbackTo: (version: string): string => `Откатить на ${version}`,
     cliRollback: "Откатить",

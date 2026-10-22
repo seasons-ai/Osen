@@ -47,7 +47,7 @@ export function createSettings(deps: SettingsDeps): SettingsApi {
   const inspect = deps.inspect ?? inspectProvider;
   const keyFile = envFilePath(dataDir);
 
-  function toProvider(provider: Provider, status: ProviderStatus): SettingsProvider {
+  async function toProvider(provider: Provider, status: ProviderStatus): Promise<SettingsProvider> {
     const cli = provider.kind === "cli";
     const models = status.models.filter((m) => m !== DEFAULT_MODEL);
     const modelsSource: SettingsProvider["modelsSource"] =
@@ -65,7 +65,7 @@ export function createSettings(deps: SettingsDeps): SettingsApi {
       billing: cli ? "subscription" : status.keyEnv ? "paid" : "free",
       models, defaultModel: cli ? DEFAULT_MODEL : null,
       modelsSource, modelsReason, modelsAt: modelsSource === "provider" ? now().toISOString() : null,
-      cli: provider.kind === "cli" ? deps.transition.forProvider(provider.agent, status) : null,
+      cli: provider.kind === "cli" ? await deps.transition.forProvider(provider.agent, status) : null,
     };
   }
 
@@ -84,7 +84,7 @@ export function createSettings(deps: SettingsDeps): SettingsApi {
     const { maxRounds, turnTimeoutSec, contextChars, materialsChars, maxTotalTokens, maxParticipants, participants } = registry.defaults;
     return {
       ...base, registryError: null, transition: deps.transition.settingsView(),
-      providers: registry.providers.map((p, i) => toProvider(p, found[i]!.status)),
+      providers: await Promise.all(registry.providers.map((p, i) => toProvider(p, found[i]!.status))),
       defaults: { maxRounds, turnTimeoutSec, contextChars, materialsChars, maxTotalTokens: maxTotalTokens ?? null, maxParticipants, participants: participants.map((x) => ({ providerId: x.providerId, model: x.model })) },
     };
   }
@@ -162,7 +162,7 @@ export function createSettings(deps: SettingsDeps): SettingsApi {
       const provider = find(readRegistry(dataDir), id);
       const found = await look(provider, true);
       logger.info(`Model list refreshed: ${provider.id}`);
-      return toProvider(provider, found.status);
+      return await toProvider(provider, found.status);
     },
 
     async testProvider(id, model) {

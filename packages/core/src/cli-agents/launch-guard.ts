@@ -55,6 +55,25 @@ export function pinBinaryState(dataDir: string, agent: CliAgent): string {
   return realGuardDeps.fileId(a.path) ?? "missing";
 }
 
+export type PinFileResult = { ok: true } | { ok: false; code: "missing" } | { ok: false; code: "sha256_mismatch"; actual: string };
+
+/** File integrity of a recorded install: present and runnable, sha256 equal to the record. Shares the sha256 cache with the launch check. */
+export async function checkPinFile(path: string, sha256: string, overrides: Partial<GuardDeps> = {}): Promise<PinFileResult> {
+  const d = { ...realGuardDeps, ...overrides };
+  const id = d.fileId(path);
+  if (id === undefined) return { ok: false, code: "missing" };
+  let cached = shaCache.get(path);
+  if (cached?.id !== id) {
+    try {
+      cached = { id, sha: await d.hash(path) };
+    } catch {
+      return { ok: false, code: "missing" };
+    }
+    shaCache.set(path, cached);
+  }
+  return cached.sha === sha256 ? { ok: true } : { ok: false, code: "sha256_mismatch", actual: cached.sha };
+}
+
 /** Free check of the active pin before a launch. Stops at the first failure; the binary runs only for `--version`, after the sha256 matches. */
 export async function checkPinnedLaunch(
   input: { agent: CliAgent; pin: PinnedInstall; launchPath: string; record: VerifiedRecord; env: Env },
@@ -64,18 +83,10 @@ export async function checkPinnedLaunch(
   const { agent, pin, launchPath, record, env } = input;
   const m = providerMessages();
   if (launchPath !== pin.path) return { ok: false, reason: m.pinPathMismatch(agent, pin.path, launchPath) };
-  const id = d.fileId(pin.path);
-  if (id === undefined) return { ok: false, reason: m.cliPinMissing(agent, pin.path) };
-  let cached = shaCache.get(pin.path);
-  if (cached?.id !== id) {
-    try {
-      cached = { id, sha: await d.hash(pin.path) };
-    } catch {
-      return { ok: false, reason: m.cliPinMissing(agent, pin.path) };
-    }
-    shaCache.set(pin.path, cached);
+  const file = await checkPinFile(pin.path, pin.sha256, overrides);
+  if (!file.ok) {
+    return { ok: false, reason: file.code === "missing" ? m.cliPinMissing(agent, pin.path) : m.pinSha256Mismatch(agent, pin.version, pin.path, pin.sha256, file.actual) };
   }
-  if (cached.sha !== pin.sha256) return { ok: false, reason: m.pinSha256Mismatch(agent, pin.version, pin.path, pin.sha256, cached.sha) };
   const entry = lookupVerified(record, agent, pin.version);
   if (entry?.level !== "real") return { ok: false, reason: m.pinNotReal(agent, pin.version, entry?.level ?? "none") };
   let parsed: string | undefined;

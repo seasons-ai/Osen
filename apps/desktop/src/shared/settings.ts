@@ -43,12 +43,13 @@ export interface CliTransition {
     previous: string | null;    // version kept for rollback
   } | null;
   due: { from: string; to: string; ageDays: number; acceptedAt: string } | null; // planned transition reminder: pin older than the period and a newer `real` version exists
-  target: { version: string; acceptedAt: string } | null;   // newest installed `real` version newer than the active pin: the "Switch to" button
+  target: { version: string; acceptedAt: string } | null;   // newest installed `real` version newer than the active pin whose install is intact (file present, sha256 as recorded): the "Switch to" button
   install: { version: string; command: string } | null;     // newest `real` version newer than the active pin and newer than target, not installed: the install command
+  broken: { version: string; code: "missing" | "sha256_mismatch" }[]; // recorded `real` installs newer than the active pin that failed the integrity check, newest first: no switch to them
   candidates: { version: string }[];                         // newer than the active pin, `interface` only in the record
   violations: { version: string; names: string[] }[];        // newer than the active pin, last check status `violates`: missing flags and features
-  // last candidate check for this agent; null — none recorded. notSaved: this run's latest attempt could not be written to cli-reminder.json (file path and errno code); the next attempt in this run is not before 24 hours
-  check: { at: string; outcome: CliCheckOutcome; notSaved?: { file: string; code: string } } | null;
+  // last candidate check for this agent; null — none recorded. notSaved: this run's latest attempt could not be written to cli-reminder.json (errno code only; the path stays in logs/app.log); the next attempt in this run is not before 24 hours
+  check: { at: string; outcome: CliCheckOutcome; notSaved?: { code: string } } | null;
 }
 export interface CliTransitionSettings {
   periodDays: number;           // planned transition period; 30 when the file is absent or broken

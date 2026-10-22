@@ -1,10 +1,10 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderStatus } from "@model-council/core";
 import { setProcessLanguage } from "@model-council/core/i18n";
-import { pinsPath, readPins } from "../../../../packages/core/src/cli-agents/pins.ts";
+import { installedPath, pinsPath, readPins } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { CandidatesReport } from "../../../../packages/core/src/cli-agents/candidates.ts";
 import { VERIFIED_FILE } from "../../../../packages/core/src/cli-agents/verified-record.ts";
 import { settings as catalog } from "../shared/messages/settings.ts";
@@ -121,12 +121,61 @@ describe("Requirement: Ежесуточная проверка кандидат�
       for (let i = 0; i < 23; i++) { ms += HOUR; await t.maybeCheck(); }
       expect(listCalls).toHaveLength(1);
       expect(reminderRaw()).toBe(original);
-      expect(t.forProvider("claude", status()).check).toMatchObject({ at: stampOf(T0 + 10 * DAY), notSaved: { file: reminderPath(dir), code: "EACCES" } });
+      expect((await t.forProvider("claude", status())).check).toMatchObject({ at: stampOf(T0 + 10 * DAY), notSaved: { code: "EACCES" } });
       expect(logs.some((l) => l.startsWith("E CLI candidate check result not saved"))).toBe(true);
       ms += HOUR;
       await t.maybeCheck();
       expect(listCalls).toHaveLength(2);
       expect(reminderRaw()).toBe(original);
+    } finally {
+      chmodSync(reminderPath(dir), 0o644);
+    }
+  });
+
+  const installFile = (agent: "claude" | "codex", version: string): string => {
+    const p = readPins(dir);
+    if (p.state !== "loaded") throw new Error("no pins");
+    return installedPath(dir, agent, p.pins.agents[agent]!.installed.find((i) => i.version === version)!);
+  };
+
+  it("after rollback: no switch to a damaged install (scenario «После отката нет перехода на неисправную установку»)", async () => {
+    await seedPins();
+    const intact = await make().forProvider("claude", status());
+    expect(intact.target).toMatchObject({ version: "7.1.0" });
+    expect(intact.broken).toEqual([]);
+    appendFileSync(installFile("claude", "7.1.0"), "# changed after installation\n");
+    const c = await make().forProvider("claude", status());
+    expect(c.target).toBeNull();
+    expect(c.install).toBeNull();
+    expect(c.broken).toEqual([{ version: "7.1.0", code: "sha256_mismatch" }]);
+  });
+
+  it("the install file is missing: the older intact install is the target, the damaged one is listed, no install command (scenario «Файл установки отсутствует»)", async () => {
+    record(dir, "claude", "7.0.0", "real", "2026-08-30");
+    record(dir, "claude", "7.1.0", "real", "2026-10-07");
+    record(dir, "claude", "7.2.0", "real", "2026-10-15");
+    await installVersions(dir, "claude", [{ version: "7.0.0" }, { version: "7.1.0" }, { version: "7.2.0" }], () => new Date(T0));
+    rmSync(installFile("claude", "7.2.0"));
+    const c = await make().forProvider("claude", status());
+    expect(c.target).toMatchObject({ version: "7.1.0" });
+    expect(c.broken).toEqual([{ version: "7.2.0", code: "missing" }]);
+    expect(c.install).toBeNull();
+  });
+
+  it("the write failure of the reminder file leaves no absolute path in the view; the path stays in the app log (scenario «Ежесуточная проверка: сбой записи без пути в окне»)", async () => {
+    await seedPins();
+    ms = T0 + 10 * DAY;
+    writeFileSync(reminderPath(dir), validFile(stampOf(ms - 2 * DAY)));
+    chmodSync(reminderPath(dir), 0o444);
+    try {
+      const t = make();
+      await t.maybeCheck();
+      const c = await t.forProvider("claude", status());
+      expect(c.check?.notSaved).toEqual({ code: "EACCES" });
+      const json = JSON.stringify(c);
+      expect(json).not.toContain(REMINDER_FILE);
+      expect(json).not.toContain(dir);
+      expect(logs.some((l) => l.startsWith("E ") && l.includes(reminderPath(dir)))).toBe(true);
     } finally {
       chmodSync(reminderPath(dir), 0o644);
     }
@@ -172,7 +221,7 @@ describe("Requirement: Ежесуточная проверка кандидат�
     ms += 23 * HOUR;
     await t.maybeCheck();
     expect(listCalls).toHaveLength(1);
-    expect(t.forProvider("claude", status()).check).toEqual({ at: "2026-09-01T00:00:00Z", outcome: "source_unavailable" });
+    expect((await t.forProvider("claude", status())).check).toEqual({ at: "2026-09-01T00:00:00Z", outcome: "source_unavailable" });
   });
 
   it("a thrown check is stored as check_failed for every checked agent", async () => {
@@ -259,7 +308,7 @@ describe("Requirement: Срок планового перехода", () => {
   it("default 30 without creating the file", async () => {
     const t = make();
     expect(t.settingsView()).toMatchObject({ periodDays: 30, fileError: null, running: false });
-    t.forProvider("claude", status());
+    await t.forProvider("claude", status());
     expect(names()).toEqual([]);
   });
 
@@ -350,7 +399,7 @@ describe("Requirement: Срок планового перехода", () => {
 describe("Requirement: Переход и откат из карточки", () => {
   it("card transition and rollback: pin failed the pre-launch check still gives source pin and previous", async () => {
     const unavailable = await guardedPinStatus(dir, new Date(T0));
-    const c = make().forProvider("claude", unavailable);
+    const c = await make().forProvider("claude", unavailable);
     expect(c.source).toBe("pin");
     expect(c.pin).toMatchObject({ version: "2.1.288", previous: "2.1.280" });
   });
@@ -361,7 +410,7 @@ describe("Requirement: Напоминание о плановом переход
     await seedPins();
     ms = T0 + 40 * DAY;
     const before = pinsBytes(dir);
-    const c = make().forProvider("claude", status());
+    const c = await make().forProvider("claude", status());
     expect(c.pin).toEqual({ version: "7.0.0", activatedAt: "2026-09-01T00:00:00Z", ageDays: 40, previous: null });
     expect(c.due).toEqual({ from: "7.0.0", to: "7.1.0", ageDays: 40, acceptedAt: "2026-10-07" });
     expect(c.target).toEqual({ version: "7.1.0", acceptedAt: "2026-10-07" });
@@ -372,7 +421,7 @@ describe("Requirement: Напоминание о плановом переход
   it("term not over: no reminder, the switch target is still there", async () => {
     await seedPins();
     ms = T0 + 10 * DAY;
-    const c = make().forProvider("claude", status());
+    const c = await make().forProvider("claude", status());
     expect(c.due).toBeNull();
     expect(c.target).toEqual({ version: "7.1.0", acceptedAt: "2026-10-07" });
   });
@@ -382,7 +431,7 @@ describe("Requirement: Напоминание о плановом переход
     record(dir, "claude", "7.3.0", "interface");
     await installVersions(dir, "claude", [{ version: "7.0.0" }], () => new Date(T0));
     ms = T0 + 40 * DAY;
-    const c = make().forProvider("claude", status());
+    const c = await make().forProvider("claude", status());
     expect(c).toMatchObject({ due: null, target: null, install: null, candidates: [{ version: "7.3.0" }] });
   });
 
@@ -390,7 +439,7 @@ describe("Requirement: Напоминание о плановом переход
     await seedPins();
     record(dir, "claude", "7.2.0", "real", "2026-10-15");
     ms = T0 + 40 * DAY;
-    const c = make().forProvider("claude", status());
+    const c = await make().forProvider("claude", status());
     expect(c.due).toMatchObject({ to: "7.2.0", acceptedAt: "2026-10-15" });
     expect(c.target).toMatchObject({ version: "7.1.0" });
     expect(c.install).toEqual({ version: "7.2.0", command: "council cli install claude --version 7.2.0" });
@@ -400,7 +449,7 @@ describe("Requirement: Напоминание о плановом переход
     record(dir, "claude", "7.0.0", "real");
     record(dir, "claude", "7.2.0", "real");
     await installVersions(dir, "claude", [{ version: "7.0.0" }], () => new Date(T0));
-    const c = make().forProvider("claude", status());
+    const c = await make().forProvider("claude", status());
     expect(c.target).toBeNull();
     expect(c.install?.command).toBe("council cli install claude --version 7.2.0");
   });
@@ -409,9 +458,9 @@ describe("Requirement: Напоминание о плановом переход
     await seedPins();
     ms = T0 + 20 * DAY;
     const t = make();
-    expect(t.forProvider("claude", status()).due).toBeNull();
+    expect((await t.forProvider("claude", status())).due).toBeNull();
     t.setPeriod(14);
-    expect(t.forProvider("claude", status()).due).toMatchObject({ ageDays: 20 });
+    expect((await t.forProvider("claude", status())).due).toMatchObject({ ageDays: 20 });
     expect(listCalls).toHaveLength(0);
   });
 
@@ -421,7 +470,7 @@ describe("Requirement: Напоминание о плановом переход
     pins.agents.claude.activatedAt = null;
     writeFileSync(pinsPath(dir), `${JSON.stringify(pins, null, 2)}\n`);
     ms = T0 + 400 * DAY;
-    const c = make().forProvider("claude", status());
+    const c = await make().forProvider("claude", status());
     expect(c.pin).toEqual({ version: "7.0.0", activatedAt: null, ageDays: null, previous: null });
     expect(c.due).toBeNull();
     expect(c.target).toMatchObject({ version: "7.1.0" });
@@ -431,12 +480,12 @@ describe("Requirement: Напоминание о плановом переход
     await seedPins();
     ms = T0 + 40 * DAY;
     const t = make();
-    const explicit = t.forProvider("claude", status({ source: "explicit" }));
+    const explicit = await t.forProvider("claude", status({ source: "explicit" }));
     expect(explicit).toMatchObject({ source: "explicit", due: null, target: null, install: null, candidates: [], violations: [], check: null });
     expect(explicit.pin?.version).toBe("7.0.0");
-    const path = t.forProvider("codex", status({ id: "codex", source: "path", verified: { level: "none", checkedAt: null } }));
+    const path = await t.forProvider("codex", status({ id: "codex", source: "path", verified: { level: "none", checkedAt: null } }));
     expect(path).toMatchObject({ agent: "codex", source: "path", level: "none", checkedAt: null, pin: null, due: null });
-    expect(t.forProvider("claude", status({ source: undefined })).source).toBeNull();
+    expect((await t.forProvider("claude", status({ source: undefined }))).source).toBeNull();
   });
 
   it("a candidate that violates the contract is shown with the missing names, no buttons", async () => {
@@ -447,7 +496,7 @@ describe("Requirement: Напоминание о плановом переход
     };
     const t = make({ check: async () => report });
     await t.maybeCheck();
-    const c = t.forProvider("claude", status());
+    const c = await t.forProvider("claude", status());
     expect(c.violations).toEqual([{ version: "7.9.0", names: ["--tools"] }]);
     expect(c.check).toEqual({ at: "2026-09-01T00:00:00Z", outcome: "ok" });
     expect(c.target).toMatchObject({ version: "7.1.0" });
@@ -549,7 +598,7 @@ describe("Requirement: Файл напоминаний о переходе CLI",
   it("no pins: opening the settings data, a periodic check and a recheck create nothing", async () => {
     const t = make();
     t.settingsView();
-    t.forProvider("claude", status({ source: "path" }));
+    await t.forProvider("claude", status({ source: "path" }));
     await t.maybeCheck();
     expect(names()).toEqual([]);
   });

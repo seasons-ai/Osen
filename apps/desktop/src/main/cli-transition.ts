@@ -4,7 +4,8 @@ import { CLI_AGENTS, resetDiscoveryCache } from "@model-council/core";
 import type { CliAgent, Logger, ProviderStatus } from "@model-council/core";
 import { candidatesJson, checkCandidates } from "../../../../packages/core/src/cli-agents/candidates.ts";
 import type { CandidateDeps, CandidatesReport } from "../../../../packages/core/src/cli-agents/candidates.ts";
-import { readPins, rollbackPin, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
+import { checkPinFile } from "../../../../packages/core/src/cli-agents/launch-guard.ts";
+import { installedPath, readPins, rollbackPin, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { AgentPins } from "../../../../packages/core/src/cli-agents/pins.ts";
 import { loadVerifiedRecord } from "../../../../packages/core/src/cli-agents/verified-record.ts";
 import type { VerifiedEntry } from "../../../../packages/core/src/cli-agents/verified-record.ts";
@@ -103,6 +104,8 @@ export interface TransitionInput {
   pins: AgentPins | undefined;
   record: readonly VerifiedEntry[];
   lastCheck: LastCheck | null;
+  /** Integrity of the recorded installs newer than the active pin that are `real` in the record: a version missing here is not intact. */
+  integrity: ReadonlyMap<string, "ok" | "missing" | "sha256_mismatch">;
 }
 
 /** Pure: reminders and the switch target from already-read inputs. Writes nothing. */
@@ -112,7 +115,7 @@ export function computeTransition(i: TransitionInput): CliTransition {
   const act = i.pins?.activatedAt ?? null;
   const ageDays = act === null ? null : Math.floor((i.now.getTime() - Date.parse(act)) / DAY_MS);
   const pin = active === null ? null : { version: active, activatedAt: act, ageDays, previous: i.pins?.previous ?? null };
-  const out: CliTransition = { agent, source, level, checkedAt, pin, due: null, target: null, install: null, candidates: [], violations: [], check: null };
+  const out: CliTransition = { agent, source, level, checkedAt, pin, due: null, target: null, install: null, broken: [], candidates: [], violations: [], check: null };
   if (source !== "pin" || active === null) return out;
 
   const newer = (v: string) => cmp(v, active) > 0;
@@ -120,7 +123,11 @@ export function computeTransition(i: TransitionInput): CliTransition {
   const reals = mine.filter((e) => e.level === "real").sort((a, b) => cmp(b.version, a.version));
   const installed = new Set((i.pins?.installed ?? []).map((x) => x.version));
   const newestReal = reals[0];
-  const targetEntry = reals.find((e) => installed.has(e.version));
+  const targetEntry = reals.find((e) => installed.has(e.version) && i.integrity.get(e.version) === "ok");
+  out.broken = reals.filter((e) => installed.has(e.version)).flatMap((e) => {
+    const code = i.integrity.get(e.version);
+    return code === "missing" || code === "sha256_mismatch" ? [{ version: e.version, code }] : [];
+  });
   if (ageDays !== null && ageDays > i.periodDays && newestReal) out.due = { from: active, to: newestReal.version, ageDays, acceptedAt: newestReal.checkedAt };
   if (targetEntry) out.target = { version: targetEntry.version, acceptedAt: targetEntry.checkedAt };
   if (newestReal && !installed.has(newestReal.version) && (!targetEntry || cmp(newestReal.version, targetEntry.version) > 0)) {
@@ -155,7 +162,7 @@ export interface CliTransitionDeps {
 export interface CliTransitionApi {
   maybeCheck(): Promise<void>;
   settingsView(): CliTransitionSettings;
-  forProvider(agent: CliAgent, status: ProviderStatus): CliTransition;
+  forProvider(agent: CliAgent, status: ProviderStatus): Promise<CliTransition>;
   setPeriod(days: unknown): void;
   switchCli(agent: unknown, version: unknown): void;
   rollbackCli(agent: unknown): void;
@@ -230,16 +237,28 @@ export function createCliTransition(deps: CliTransitionDeps): CliTransitionApi {
     return { periodDays: loadedData(s)?.periodDays ?? DEFAULT_PERIOD_DAYS, fileError: s.state === "broken" ? s.error : null, running: deps.running() };
   }
 
-  function forProvider(agent: CliAgent, status: ProviderStatus): CliTransition {
+  async function forProvider(agent: CliAgent, status: ProviderStatus): Promise<CliTransition> {
     const reminder = loadedData(readReminder(dataDir));
     const pins = readPins(dataDir);
+    const agentPins = pins.state === "loaded" ? pins.pins.agents[agent] : undefined;
+    const record = loadVerifiedRecord(dataDir).entries;
+    // only recorded `real` installs newer than the active pin can become a target, so only those are hashed
+    const integrity = new Map<string, "ok" | "missing" | "sha256_mismatch">();
+    if (status.source === "pin" && agentPins?.active) { // the target exists only for the pin source
+      const real = new Set(record.filter((e) => e.agent === agent && e.level === "real").map((e) => e.version));
+      for (const inst of agentPins.installed) {
+        if (cmp(inst.version, agentPins.active) <= 0 || !real.has(inst.version)) continue;
+        const r = await checkPinFile(installedPath(dataDir, agent, inst), inst.sha256);
+        integrity.set(inst.version, r.ok ? "ok" : r.code);
+      }
+    }
     const out = computeTransition({
       agent, now: now(), periodDays: reminder?.periodDays ?? DEFAULT_PERIOD_DAYS,
       source: status.source ?? null, level: status.verified?.level ?? "none", checkedAt: status.verified?.checkedAt ?? null,
-      pins: pins.state === "loaded" ? pins.pins.agents[agent] : undefined,
-      record: loadVerifiedRecord(dataDir).entries, lastCheck: unsaved?.lastCheck ?? reminder?.lastCheck ?? null,
+      pins: agentPins,
+      record, integrity, lastCheck: unsaved?.lastCheck ?? reminder?.lastCheck ?? null,
     });
-    if (unsaved && out.check) out.check = { ...out.check, notSaved: { file: reminderPath(dataDir), code: unsaved.code } };
+    if (unsaved && out.check) out.check = { ...out.check, notSaved: { code: unsaved.code } };
     return out;
   }
 
