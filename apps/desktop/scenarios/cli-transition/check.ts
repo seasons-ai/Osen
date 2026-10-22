@@ -14,6 +14,7 @@ import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { isInsideRepo } from "../../../../packages/core/scenarios/inside-repo.ts";
 import { createLogger, ensureDataDir, initialRegistry, readRegistry, setProcessLanguage, writeRegistry } from "../../../../packages/core/src/index.ts";
 import type { Registry } from "../../../../packages/core/src/index.ts";
 import { activePin, installPin, installedPath, pinsPath, readPins, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
@@ -37,7 +38,7 @@ if (process.env.COUNCIL_DEV !== "1" || (seedOnly && !process.env.COUNCIL_HOME)) 
   process.exit(2);
 }
 const given = process.env.COUNCIL_HOME ? resolve(process.env.COUNCIL_HOME) : undefined;
-if (given && relative(repo, given).startsWith("..")) {
+if (given && !isInsideRepo(repo, given)) {
   console.error(`COUNCIL_HOME must be inside the project (${repo}): ${given}`);
   process.exit(2);
 }

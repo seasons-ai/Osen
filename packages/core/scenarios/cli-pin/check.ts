@@ -10,6 +10,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative, resolve } from "node:path";
+import { isInsideRepo } from "../inside-repo.ts";
 import { writeCodexStub, writeStandRecord, writeStub } from "./stub.ts";
 
 if (process.env.COUNCIL_DEV !== "1") {
@@ -19,7 +20,7 @@ if (process.env.COUNCIL_DEV !== "1") {
 const repo = resolve(import.meta.dirname, "../../../..");
 const entry = join(import.meta.dirname, "council-test.ts");
 const given = process.env.COUNCIL_HOME ? resolve(process.env.COUNCIL_HOME) : undefined;
-if (given && relative(repo, given).startsWith("..")) {
+if (given && !isInsideRepo(repo, given)) {
   console.error(`COUNCIL_HOME must be inside the repository (${repo}): ${given}`);
   process.exit(2);
 }
