@@ -50,6 +50,12 @@ export const rosterProviders = (registry: ReturnType<typeof readRegistry>): Prov
 
 const START_TIMEOUT_MS = 15_000;
 
+// Launches waiting for their executor; a server that quits mid-wait removes their files synchronously.
+const activeLaunches = new Set<() => void>();
+export function cleanupActiveLaunches(): void {
+  for (const forget of activeLaunches) forget();
+}
+
 type Prepared = Omit<LaunchPayload, "deadline"> | Omit<LaunchResumePayload, "deadline">;
 
 // Hands the prepared launch file to a detached executor and waits until isReady(); any other outcome is a ToolError (or ResumeRejectedError) and leaves no launch files.
@@ -64,6 +70,8 @@ export async function launchExecutor(ctx: ToolContext, id: string, payload: Prep
   const errPath = launchErrPath(file);
   const acceptedFile = launchAcceptedPath(file);
   const cleanup = (): void => { rmSync(file, { force: true }); rmSync(errPath, { force: true }); };
+  const forget = (): void => { cleanup(); rmSync(acceptedFile, { force: true }); };
+  activeLaunches.add(forget);
   let failure: string | null = null;
   try {
     writeLaunchFile(ctx.dataDir, { ...payload, deadline: new Date(Date.now() + timeoutMs).toISOString() }, launchId);
@@ -96,7 +104,8 @@ export async function launchExecutor(ctx: ToolContext, id: string, payload: Prep
         ctx.logger.error(`Executor of session ${id} failed before ${waitingFor}`, failure);
         throw rejection(failure) ?? new ToolError(m.startExecutorFailed(failure));
       }
-      if (Date.now() >= end) {
+      // the executor may accept right at the deadline: allow one more poll step; the loop condition just above is the last readiness check
+      if (Date.now() >= end + pollMs) {
         ctx.logger.error(`Executor of session ${id} did not respond in ${timeoutMs} ms`);
         throw new ToolError(m.startExecutorTimeout(Math.round(timeoutMs / 1000)));
       }
@@ -108,6 +117,8 @@ export async function launchExecutor(ctx: ToolContext, id: string, payload: Prep
     cleanup();
     rmSync(acceptedFile, { force: true });
     throw e;
+  } finally {
+    activeLaunches.delete(forget);
   }
 }
 

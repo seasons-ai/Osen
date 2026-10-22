@@ -6,7 +6,7 @@ import { setProcessLanguage, createLogger, FOLDER_LIMITS, listSessions, loadTemp
 import type { CliLocation } from "@model-council/core";
 import { configPath, initialRegistry, lineupsPath, saveLineup } from "@model-council/core";
 import { main } from "../../core/src/cli.ts";
-import { councilStart } from "./start.ts";
+import { cleanupActiveLaunches, councilStart } from "./start.ts";
 import { makeImageOnlyPdf, makePdf } from "../../core/src/pdf/fixture.ts";
 import { councilStatus } from "./status.ts";
 import type { StartView } from "./start.ts";
@@ -740,5 +740,20 @@ describe("council_start: detached executor", () => {
     await sleep(2000);
     expect(listSessions(ctx.dataDir)).toEqual([]);
     noLaunchFiles(ctx);
+  });
+});
+
+describe("server closed during the launch wait", () => {
+  it("cleanupActiveLaunches removes this launch's launch, err and accepted files", async () => {
+    const ctx = ctxOf({ startTimeoutMs: 600, startPollMs: 20, spawnExecutor: () => new Promise<number>(() => {}) });
+    const pending = start(ctx, { topic: "t", participants: two }).catch((e: unknown) => e);
+    const launch = join(ctx.dataDir, "launch");
+    const files = await until(() => { const f = existsSync(launch) ? readdirSync(launch).filter((n) => n.endsWith(".json")) : []; return f.length ? f : null; });
+    const base = join(launch, files[0]!.replace(/\.json$/, ""));
+    writeFileSync(`${base}.err`, "boom");
+    writeFileSync(`${base}.accepted.json`, "{}");
+    cleanupActiveLaunches();
+    expect(readdirSync(launch)).toEqual([]);
+    await pending;
   });
 });
