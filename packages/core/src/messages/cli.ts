@@ -280,7 +280,9 @@ Example:
     maxCallsRange: (value: string) => `--max-calls must be an integer of at least 1, got «${value}».`,
     flagNeedsValue: (flag: string) => `The ${flag} flag needs a value.`,
     agentOnlyCandidates: "The --agent flag applies only to the command cli candidates.",
-    candidatesInterrupted: "The check was interrupted; temporary installs were removed, nothing was recorded.",
+    candidatesInterrupted: (recorded: readonly { agent: string; version: string }[]) => recorded.length
+      ? `The check was interrupted; temporary installs were removed. Recorded before the interruption: ${recorded.map((r) => `${r.agent} ${r.version}`).join(", ")}.`
+      : "The check was interrupted; temporary installs were removed, nothing was recorded.",
     candidatesHeader: (agent: string, base: string) => `${agent} (base ${base})`,
     candidatesNone: "no newer versions",
     candidatesFits: "fits",
@@ -660,7 +662,9 @@ history-pins.json в ней — закрепления экрана «Истор
     maxCallsRange: (value: string) => `--max-calls должен быть целым числом не меньше 1, получено «${value}».`,
     flagNeedsValue: (flag: string) => `Флаг ${flag} требует значение.`,
     agentOnlyCandidates: "Флаг --agent применяется только у команды cli candidates.",
-    candidatesInterrupted: "Проверка прервана; временные установки удалены, ничего не записано.",
+    candidatesInterrupted: (recorded: readonly { agent: string; version: string }[]) => recorded.length
+      ? `Проверка прервана; временные установки удалены. До прерывания записано: ${recorded.map((r) => `${r.agent} ${r.version}`).join(", ")}.`
+      : "Проверка прервана; временные установки удалены, ничего не записано.",
     candidatesHeader: (agent: string, base: string) => `${agent} (база ${base})`,
     candidatesNone: "версий новее нет",
     candidatesFits: "подходит",

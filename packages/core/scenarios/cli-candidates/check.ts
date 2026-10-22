@@ -55,10 +55,10 @@ function treeHash(dir: string): string {
 let n = 0;
 const ok = (s: string) => console.log(`ok ${++n}: ${s}`);
 interface Result { code: number; out: string; err: string }
-interface RunOpts { lang?: "en" | "ru"; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number }
+interface RunOpts { lang?: "en" | "ru"; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number; slowOnly?: string }
 const childEnv = (home: string, o: RunOpts): Record<string, string> => ({
   PATH: `${bin}:/usr/bin:/bin`, HOME: homedir(), SHELL: fakeShell, COUNCIL_HOME: home, COUNCIL_DEV: "1", COUNCIL_LANG: o.lang ?? "en",
-  CLI_CANDIDATES_STAND: JSON.stringify({ releases: releasesFile, counter: counters, log: sourceLog, ...(o.builtin ? { builtin: o.builtin } : {}), ...(o.slowInstallMs ? { slowInstallMs: o.slowInstallMs } : {}) }),
+  CLI_CANDIDATES_STAND: JSON.stringify({ releases: releasesFile, counter: counters, log: sourceLog, ...(o.builtin ? { builtin: o.builtin } : {}), ...(o.slowInstallMs ? { slowInstallMs: o.slowInstallMs } : {}), ...(o.slowOnly ? { slowOnly: o.slowOnly } : {}) }),
 });
 function run(home: string, args: string[], o: RunOpts = {}): Promise<Result> {
   return new Promise((res, rej) => {
@@ -230,7 +230,7 @@ try {
   const code7 = await Promise.race([exited, sleep(20_000).then(() => { child.kill("SIGKILL"); return -999; })]);
   assert.equal(code7, 1, err7);
   assert.equal(out7, "");
-  assert.equal(err7.trim(), cliMessages("en").candidatesInterrupted);
+  assert.equal(err7.trim(), cliMessages("en").candidatesInterrupted([]));
   assert.match(err7, /interrupted/);
   assert.ok(!existsSync(join(I, "cli-candidates")));
   assert.deepEqual(readFileSync(recordFile(I)), before7);
@@ -254,12 +254,41 @@ try {
     const k2 = await Promise.race([x2, sleep(20_000).then(() => { c2.kill("SIGKILL"); return -999; })]);
     assert.equal(k2, 1, e2);
     assert.equal(o2, "");
-    assert.equal(e2.trim(), cliMessages(lang).candidatesInterrupted);
+    assert.equal(e2.trim(), cliMessages(lang).candidatesInterrupted([]));
     assert.match(e2, lang === "en" ? /interrupted/ : /прервана/);
     assert.ok(!existsSync(join(I2, "cli-candidates")));
     assert.deepEqual(calls().slice(mark7a2).map((c) => c.agent), ["codex"]);
   }
   ok("step 7a2 claude has no base (no_base), SIGINT during the install of codex 0.160.0, en and ru: exit 1 (not 2), empty stdout under --json, exact interruption line, nothing left");
+  // 7a3: claude 2.1.290 is recorded, SIGINT during the slow install of 2.1.291: the line names the recorded pair, en and ru
+  for (const lang of ["en", "ru"] as const) {
+    const I3 = prepare();
+    const mark7a3 = calls().length;
+    const c3 = spawn(process.execPath, [entry, "cli", "candidates", "--agent", "claude"], { env: childEnv(I3, { lang, slowInstallMs: 30_000, slowOnly: "claude@2.1.291" }), cwd: repo, stdio: ["ignore", "pipe", "pipe"] });
+    let o3 = "", e3 = "";
+    c3.stdout.on("data", (c) => (o3 += c));
+    c3.stderr.on("data", (c) => (e3 += c));
+    const x3 = new Promise<number>((res) => c3.on("close", (c) => res(c ?? -1)));
+    const t3 = Date.now();
+    const recorded290 = () => readFileSync(recordFile(I3), "utf8").includes('"2.1.290"');
+    while (!(recorded290() && existsSync(join(I3, "cli-candidates")) && readdirSync(join(I3, "cli-candidates")).some((x) => x.startsWith("claude-2.1.291-")))) {
+      if (Date.now() - t3 > 20_000) { c3.kill("SIGKILL"); throw new Error(`2.1.290 was not recorded or the 2.1.291 prefix did not appear\n${e3}`); }
+      await sleep(50);
+    }
+    c3.kill("SIGINT");
+    const k3 = await Promise.race([x3, sleep(20_000).then(() => { c3.kill("SIGKILL"); return -999; })]);
+    assert.equal(k3, 1, e3);
+    assert.equal(o3, "");
+    assert.equal(e3.trim(), cliMessages(lang).candidatesInterrupted([{ agent: "claude", version: "2.1.290" }]));
+    assert.match(e3, /claude 2\.1\.290/);
+    assert.doesNotMatch(e3, lang === "en" ? /nothing was recorded/ : /ничего не записано/);
+    const entries3 = (JSON.parse(readFileSync(recordFile(I3), "utf8")) as { entries: { agent: string; version: string; level: string }[] }).entries;
+    assert.deepEqual(entries3.filter((e) => e.agent === "claude").map((e) => `${e.version}:${e.level}`), ["2.1.288:interface", "2.1.290:interface"]);
+    assert.ok(!existsSync(join(I3, "cli-candidates")));
+    assert.ok(!existsSync(join(I3, "cli")));
+    assert.deepEqual(calls().slice(mark7a3).map((c) => `${c.agent}@${c.version}`), ["claude@2.1.290", "claude@2.1.291"]);
+  }
+  ok("step 7a3 claude 2.1.290 recorded, SIGINT during the install of 2.1.291, en and ru: exit 1, empty stdout, the line names claude 2.1.290 and not \"nothing recorded\", 2.1.290 stays in the record, no 2.1.291, nothing left");
   const J = prepare(false);
   writeFileSync(recordFile(J), "{not json");
   const corrupted = readFileSync(recordFile(J));
