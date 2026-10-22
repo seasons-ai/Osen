@@ -16,6 +16,9 @@ import { join } from "node:path";
 //   slow: every turn hangs without output (the first probe stays running until it is stopped)
 //   help_hang, features_hang: on --help (or `features list`) starts a child `sleep 30` in its own group (not detached),
 //     writes the child's pid to STUB_PIDFILE and hangs; nothing is written to STUB_LOG (no turn is launched)
+//   term_ignorer: every turn starts a child that ignores SIGTERM (in its group, no pipes; it writes its own pid to STUB_PIDFILE
+//     once the trap is set) and hangs without output, so the first probe stays running until it is stopped
+//   term_ignorer_stop: like good, but the stop turn starts that child before streaming
 // STUB_LOG (optional): every turn launch appends its pid, one line per launch.
 // Options (writeAcceptanceStub): version line for --version, help text for --help, features text for `features list`; each answers only when given.
 const SCRIPT = `const fs = require("node:fs");
@@ -37,8 +40,11 @@ const emit = (text) => {
 const streamForever = () => setInterval(() => process.stdout.write("chunk\\n"), 300);
 const sleepForever = () => setTimeout(() => emit("late"), 60000);
 if (mode === "err") { process.stderr.write("boom"); process.exit(1); }
+const termIgnorer = () => spawn("sh", ["-c", 'trap "" TERM; echo $$ > "$STUB_PIDFILE"; exec sleep 30'], { stdio: "ignore" });
 if (mode === "slow") setTimeout(() => emit("late"), 600000);
+else if (mode === "term_ignorer") { termIgnorer(); setTimeout(() => emit("late"), 600000); }
 else if (prompt.includes("very long essay")) {
+  if (mode === "term_ignorer_stop") termIgnorer();
   if (mode === "quick") process.exit(0);
   if (mode === "resume_fail" && afterStop) fs.writeFileSync(afterStop, "");
   if (mode === "history") {

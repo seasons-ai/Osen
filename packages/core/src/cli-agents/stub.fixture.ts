@@ -20,7 +20,7 @@ export function cleanupStubs(): void {
 /** CLI stub: writes the launch protocol to its own folder, prints the prepared output. */
 export function stub(
   agent: CliAgent,
-  o: { stdout?: string | Buffer; stderr?: string; code?: number; sleep?: number; flags?: Set<string>; child?: boolean } = {},
+  o: { stdout?: string | Buffer; stderr?: string; code?: number; sleep?: number; flags?: Set<string>; child?: boolean | "ignores-term" } = {},
 ): Stub {
   const root = mkdtempSync(join(tmpdir(), "stub-"));
   stubRoots.push(root);
@@ -36,7 +36,7 @@ printf '%s\\n' "COUNCIL_PARTICIPANT=$COUNCIL_PARTICIPANT" "CLAUDE_CONFIG_DIR=$CL
 printf '%s' "\${COUNCIL_TEST_MARKER-unset}" > "$P/marker"
 pwd > "$P/pwd"; ls -A > "$P/ls"
 prev=""; for a in "$@"; do [ "$prev" = "--output-schema" ] && cat "$a" > "$P/schema"; prev="$a"; done
-${o.child ? 'sleep 30 >/dev/null 2>&1 & echo $! > "$P/child"' : ""}
+${o.child === "ignores-term" ? `C="$P/child" sh -c 'trap "" TERM; echo $$ > "$C"; exec sleep 30' >/dev/null 2>&1 &` : o.child ? 'sleep 30 >/dev/null 2>&1 & echo $! > "$P/child"' : ""}
 ${o.sleep ? `sleep ${o.sleep}` : ""}
 cat "$D/out"; cat "$D/err" >&2
 exit ${o.code ?? 0}

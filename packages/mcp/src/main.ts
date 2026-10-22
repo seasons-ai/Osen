@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { join } from "node:path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { DataDirError, applyProcessLanguage, createLogger, ensureDataDir, loadEnv, prepareDataDir } from "@model-council/core";
+import { DataDirError, applyProcessLanguage, createLogger, ensureDataDir, loadEnv, prepareDataDir, sweepLaunchDir } from "@model-council/core";
 import { createServer } from "./server.ts";
+import { cleanupActiveLaunches } from "./start.ts";
 
 const env = loadEnv(process.env, process.cwd());
 applyProcessLanguage(env);
@@ -16,6 +17,8 @@ try {
 }
 const logger = createLogger(dataDir, "mcp", env);
 logger.info(`MCP server started, data folder: ${dataDir}`);
+const swept = sweepLaunchDir(dataDir);
+if (swept > 0) logger.info(`Launch folder swept: ${swept} stale files removed`);
 
 const controller = new AbortController();
 const ctx = {
@@ -26,10 +29,11 @@ const ctx = {
   councilLaunch: { command: process.execPath, args: [join(import.meta.dirname, "../../core/src/council.ts")], env: {} },
 };
 
-// ponytail: quit only exits the server and wakes its waits; every session (council_start, council_resume) runs in its own detached executor and survives
+// ponytail: quit removes the files of launches still waiting, exits the server and wakes its waits; every session (council_start, council_resume) runs in its own detached executor and survives
 const quit = (reason: string): void => {
   logger.info(`MCP server is stopping: ${reason}`);
   controller.abort();
+  cleanupActiveLaunches();
   process.exit(0);
 };
 process.stdin.on("end", () => quit("stdin closed"));

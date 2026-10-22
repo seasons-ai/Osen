@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { main } from "../cli.ts";
 import { createSession } from "../engine.ts";
 import { cliMessages } from "../messages/cli.ts";
-import { LaunchFileError, launchAcceptedPath, launchDir, launchFilePath, readLaunchFile, writeLaunchFile } from "./launch.ts";
+import { LaunchFileError, launchAcceptedPath, launchDir, launchFilePath, readLaunchFile, sweepLaunchDir, writeLaunchFile } from "./launch.ts";
 import type { LaunchPayload, LaunchResumePayload } from "./launch.ts";
 import { createScriptedDriver } from "../participants/scripted.ts";
 import type { Scenario } from "../participants/scripted.ts";
@@ -229,5 +229,20 @@ describe("Внутренний запуск подготовленной сес�
     expect(() => JSON.parse(firstLine(r.err))).toThrow();
     expect(journalText(home, "r5")).toBe(before);
     expect(existsSync(f)).toBe(false);
+  });
+});
+
+describe("sweepLaunchDir", () => {
+  it("removes launch, err, accepted and temp files older than 60 s and keeps fresh ones", () => {
+    const dir = tmp();
+    expect(sweepLaunchDir(dir)).toBe(0);
+    mkdirSync(launchDir(dir), { recursive: true });
+    const old = ["a.l1.json", "a.l1.err", "a.l1.accepted.json", "a.l1.accepted.json.123.tmp", "a.l1.json.123.tmp"];
+    const fresh = ["b.l2.json", "b.l2.accepted.json.9.tmp"];
+    const at = (n: string, ageSec: number) => { const f = join(launchDir(dir), n); writeFileSync(f, "{}"); const t = new Date(Date.now() - ageSec * 1000); utimesSync(f, t, t); };
+    old.forEach((n) => at(n, 120));
+    fresh.forEach((n) => at(n, 1));
+    expect(sweepLaunchDir(dir)).toBe(old.length);
+    expect(readdirSync(launchDir(dir)).sort()).toEqual([...fresh].sort());
   });
 });

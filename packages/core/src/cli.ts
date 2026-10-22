@@ -60,6 +60,7 @@ import type { JournalPartial, StoredStatus } from "./store/sessions.ts";
 import { OwnerMessageRejectedError, OwnerReleaseRejectedError, requestOwnerMessage, requestOwnerRelease } from "./store/owner-messages.ts";
 import type { ReplacementInput } from "./store/resume.ts";
 import { planResume, ResumeRejectedError, resumeDrivers, runResumedSession } from "./store/resume.ts";
+import type { ResumePlan } from "./store/resume.ts";
 
 export const EXIT = { consensus: 0, internal: 1, usage: 2, no_consensus: 3, stopped: 4, failed: 5 } as const;
 
@@ -384,6 +385,15 @@ function formatShow(events: SessionEvent[], status: StoredStatus, partial: Journ
   return out;
 }
 
+/** Check under the lock of the single executor: the deadline is the last action before any write, after the slow re-check of replacements. */
+// ponytail: the writes after this check take milliseconds and the server waits one poll step (100 ms) past the deadline; a stall longer than that leaves an accepted resume behind a timeout answer, add a cancel marker in launch/ if it ever shows up
+export function resumeRevalidator(plan: ResumePlan, driverOptions: Parameters<typeof resumeDrivers>[1], deadline: string, now: () => number = Date.now): () => Promise<void> {
+  return async () => {
+    if (plan.replacements.length) await resumeDrivers(plan, driverOptions);
+    if (now() > Date.parse(deadline)) throw new ResumeRejectedError("stale_plan", cliMessages().launchExpired(deadline));
+  };
+}
+
 /** Resume kind of the launch file. A refusal before acceptance is one JSON line `{code, message}` first on stderr, for the MCP server to read. */
 async function runPreparedResume(p: LaunchResumePayload, file: string, dataDir: string, io: CliIo, log: Logger, fail: (message: string) => number): Promise<number> {
   const id = p.sessionId;
@@ -402,12 +412,7 @@ async function runPreparedResume(p: LaunchResumePayload, file: string, dataDir: 
     log.info(`Prepared resume: session ${id}`);
     const run = await runResumedSession({
       dataDir, plan, drivers, signal: io.signal, logger: log,
-      // under the lock, before any write: past the deadline the server has already answered with a timeout, so the resume must not start
-      // ponytail: a check at the lock, not at session_resumed; the gap is milliseconds, while the server waits a whole poll step past the deadline
-      revalidate: async () => {
-        if (Date.now() > Date.parse(p.deadline)) throw new ResumeRejectedError("stale_plan", cliMessages().launchExpired(p.deadline));
-        if (plan.replacements.length) await resumeDrivers(plan, driverOptions);
-      },
+      revalidate: resumeRevalidator(plan, driverOptions, p.deadline),
       onAccepted: ({ droppedOwnerRequests }) => {
         const path = launchAcceptedPath(file);
         const tmp = `${path}.${process.pid}.tmp`;
@@ -463,6 +468,8 @@ async function runPrepared(file: string, dataDir: string, io: CliIo, log: Logger
       if (!found.runtime && !found.http) { log.error("Provider unavailable", p.providerId); io.stderr(t.providerUnavailable(p.providerId, String(found.status.reason))); return EXIT.usage; }
       drivers[p.id] = found.runtime ? createCliDriver(found.runtime) : createHttpDriver(found.http!);
     }
+    // the provider checks above can outlast the deadline: the server has already answered with a timeout
+    if (Date.now() > Date.parse(payload.deadline)) return fail(t.launchExpired(payload.deadline));
     log.info(`Prepared start: session ${session.id}`);
     const { state } = await runStoredSession({
       session, drivers, materials, ...(workspace?.length ? { workspace } : {}), signal: io.signal, dataDir, logger: log,

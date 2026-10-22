@@ -1,4 +1,3 @@
-import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { accessSync, constants, createReadStream, mkdirSync, mkdtempSync, rmSync, rmdirSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
@@ -8,6 +7,7 @@ import { providerMessages } from "../messages/providers.ts";
 import { CODEX_ISOLATION_FEATURES, HELP_ARGS, REQUIRED_FLAGS, planLaunch } from "./args.ts";
 import { parseVersion, pinnedEnv } from "./discovery.ts";
 import { declaredFlags, parseCodexFeatures } from "./flags.ts";
+import { readOutput } from "./process.ts";
 import { activePin } from "./pins.ts";
 import type { PackageSource } from "./pins.ts";
 import { DEFAULT_MODEL } from "./types.ts";
@@ -68,10 +68,7 @@ export function checkCandidate(input: { agent: CliAgent; versionOutput: string |
   return { ...(version === undefined ? {} : { version }), violations };
 }
 
-const defaultRun: NonNullable<CandidateDeps["run"]> = (path, args, env, signal) =>
-  new Promise((res, rej) =>
-    execFile(path, [...args], { timeout: 10_000, maxBuffer: 4 * 1024 * 1024, env, signal }, (err, stdout) => (err ? rej(err) : res(String(stdout)))).stdin?.end(),
-  );
+const defaultRun: NonNullable<CandidateDeps["run"]> = (path, args, env, signal) => readOutput(path, args, env, signal, 10_000, 4 * 1024 * 1024);
 
 function sha256File(path: string): Promise<string> {
   return new Promise((res, rej) => {
