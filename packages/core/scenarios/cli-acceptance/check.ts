@@ -353,6 +353,32 @@ try {
     ok(`${sig} during the first probe: exit 1, stderr says interrupted, no stub process alive within 5 s, no real entry`);
   }
 
+  // ---- 10: a stop while the CLI reads its help or feature list (before the first probe) ----
+  // the stub hangs on that call with a non-detached child `sleep 30` and writes the child's pid to STUB_PIDFILE
+  for (const mode of ["help_hang", "features_hang"] as const) {
+    for (const sig of ["SIGTERM", "SIGHUP", "SIGINT"] as const) {
+      const h = H(`${mode}-${sig.toLowerCase()}`);
+      await install(h);
+      let c: ChildProcess | undefined;
+      let t = "";
+      const pend = accept(h, ["--candidate", "--max-calls", "7"], { mode, onSpawn: (cp, tg) => { c = cp; t = tg; } });
+      const pidFile = (): string => join(pidDir, `${t}.pid`);
+      assert.ok(await waitFor(() => existsSync(pidFile()) && readFileSync(pidFile(), "utf8") !== "", 90_000), `${mode}: the stub did not start its child`);
+      const pid = Number(readFileSync(pidFile(), "utf8"));
+      assert.ok(isAlive(pid), `${mode}: the child ${pid} must be alive before the stop`);
+      c!.kill(sig);
+      const r = await pend;
+      assert.equal(r.code, 1, `${mode} ${sig}: ${r.out}\n${r.err}`);
+      assert.ok(r.err.includes("interrupted"), r.err);
+      assert.deepEqual(turnPids(r), [], `${mode} ${sig}: a probe was launched`);
+      const goneInTime = await waitFor(() => !isAlive(pid), 5000);
+      if (!goneInTime) try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+      assert.ok(goneInTime, `${mode} ${sig}: the reader's child ${pid} outlived the stop`);
+      assert.deepEqual(realOf(h), []);
+      ok(`${sig} while the stub hangs in ${mode === "help_hang" ? "--help" : "features list"}: exit 1, interrupted, no probe launched, the reader's child gone within 5 s, no real entry`);
+    }
+  }
+
   // ---- safety ----
   assert.deepEqual(ownerNames(), namesBefore);
   ok("safety: top-level entries of ~/.claude and ~/.codex unchanged; the stub was the only binary launched");
