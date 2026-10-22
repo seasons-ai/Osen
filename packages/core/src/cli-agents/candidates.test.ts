@@ -425,3 +425,37 @@ describe("Команда cli candidates / Ограничение и повтор
     expect(r.candidates.map((c) => c.version)).toEqual(["2.1.291"]);
   });
 });
+
+describe("Команда cli candidates: прерывание, потомки проверки и установки", () => {
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  it("a hung --help with a child: returns well before the 10 s deadline, the child is dead", async () => {
+    const pidfile = join(dir, "help-child");
+    const ac = new AbortController();
+    const { deps } = harness({ versions: { codex: ["0.160.0"] }, signal: ac.signal });
+    deps.source = {
+      async fetch(_agent, version, d) {
+        const exe = join(d, "bin", "codex");
+        mkdirSync(join(d, "bin"), { recursive: true });
+        writeFileSync(exe, `#!/bin/sh\ncase "$1" in --version) echo "codex-cli ${version}";; *) sleep 15 & echo $! > ${pidfile}; wait;; esac\n`);
+        chmodSync(exe, 0o755);
+        return { executable: exe, source: `fake:codex@${version}` };
+      },
+    };
+    delete deps.run; // the real runner
+    const started = Date.now();
+    const p = checkCandidates(dir, ["codex"], deps);
+    while (!(existsSync(pidfile) && readFileSync(pidfile, "utf8").trim()) && Date.now() - started < 8000) await new Promise((r) => setTimeout(r, 25));
+    const pid = Number(readFileSync(pidfile, "utf8").trim());
+    try {
+      const abortedAt = Date.now();
+      ac.abort();
+      const r = await p;
+      expect(Date.now() - abortedAt).toBeLessThan(5000);
+      expect(r).toMatchObject({ interrupted: true, code: 1 });
+      const t1 = Date.now();
+      while (alive(pid) && Date.now() - t1 < 3000) await new Promise((r) => setTimeout(r, 25)); // a just-killed child may linger unreaped
+      expect(alive(pid)).toBe(false);
+      expect(existsSync(join(dir, CANDIDATES_DIR))).toBe(false);
+    } finally { try { process.kill(pid, "SIGKILL"); } catch {} }
+  }, 20_000);
+});

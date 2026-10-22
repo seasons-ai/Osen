@@ -55,10 +55,11 @@ function treeHash(dir: string): string {
 let n = 0;
 const ok = (s: string) => console.log(`ok ${++n}: ${s}`);
 interface Result { code: number; out: string; err: string }
-interface RunOpts { lang?: "en" | "ru"; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number; slowOnly?: string }
+interface RunOpts { lang?: "en" | "ru"; builtin?: "claude-only" | "codex-only"; slowInstallMs?: number; slowOnly?: string; hangHelp?: string; hangPid?: string; npm?: boolean; extraEnv?: Record<string, string> }
 const childEnv = (home: string, o: RunOpts): Record<string, string> => ({
   PATH: `${bin}:/usr/bin:/bin`, HOME: homedir(), SHELL: fakeShell, COUNCIL_HOME: home, COUNCIL_DEV: "1", COUNCIL_LANG: o.lang ?? "en",
-  CLI_CANDIDATES_STAND: JSON.stringify({ releases: releasesFile, counter: counters, log: sourceLog, ...(o.builtin ? { builtin: o.builtin } : {}), ...(o.slowInstallMs ? { slowInstallMs: o.slowInstallMs } : {}), ...(o.slowOnly ? { slowOnly: o.slowOnly } : {}) }),
+  CLI_CANDIDATES_STAND: JSON.stringify({ releases: releasesFile, counter: counters, log: sourceLog, ...(o.builtin ? { builtin: o.builtin } : {}), ...(o.slowInstallMs ? { slowInstallMs: o.slowInstallMs } : {}), ...(o.slowOnly ? { slowOnly: o.slowOnly } : {}), ...(o.hangHelp ? { hangHelp: o.hangHelp, hangPid: o.hangPid } : {}), ...(o.npm ? { npm: true } : {}) }),
+  ...o.extraEnv,
 });
 function run(home: string, args: string[], o: RunOpts = {}): Promise<Result> {
   return new Promise((res, rej) => {
@@ -360,6 +361,46 @@ try {
   assert.equal(calls().length, mark7e);
   assert.equal(readFileSync(blocker, "utf8"), "keep");
   ok("step 7e a file in place of cli-candidates: --json is one document with install_failed for each of the 4 candidates, no stack, exit 1; text names the reason; the file is unchanged");
+
+  // ---- 7f, 7g: SIGINT while a child of the help read or of `npm install` hangs (change 200) ----
+  // Each hung call has a child that ignores SIGTERM and a child `sleep 15` holding stdout; the command must return within the
+  // stop grace (not wait for the 10 s limit) and leave neither child alive.
+  const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const hungInterrupt = async (step: string, o: RunOpts, pidFile: string): Promise<void> => {
+    const h = prepare();
+    const c = spawn(process.execPath, [entry, "cli", "candidates", "--agent", "codex"], { env: childEnv(h, o), cwd: repo, stdio: ["ignore", "pipe", "pipe"] });
+    let err = "";
+    c.stderr.on("data", (d) => (err += d));
+    c.stdout.on("data", () => {});
+    const closed = new Promise<number>((res) => c.on("close", (code) => res(code ?? -1)));
+    const t0 = Date.now();
+    const ready = () => [pidFile, `${pidFile}.sleep`].every((f) => existsSync(f) && readFileSync(f, "utf8").trim() !== "");
+    while (!ready()) {
+      if (Date.now() - t0 > 30_000) { c.kill("SIGKILL"); throw new Error(`${step}: the hung children did not start\n${err}`); }
+      await sleep(50);
+    }
+    const pids = [pidFile, `${pidFile}.sleep`].map((f) => Number(readFileSync(f, "utf8").trim()));
+    assert.ok(pids.every(alive), `${step}: the children must be alive before SIGINT`);
+    const stoppedAt = Date.now();
+    c.kill("SIGINT");
+    const code = await Promise.race([closed, sleep(20_000).then(() => { c.kill("SIGKILL"); return -999; })]);
+    const took = Date.now() - stoppedAt;
+    const left = pids.filter(alive);
+    for (const p of left) try { process.kill(p, "SIGKILL"); } catch { /* already gone */ }
+    assert.equal(code, 1, err);
+    assert.match(err, /interrupted/);
+    assert.ok(took < 5000, `${step}: returned ${took} ms after SIGINT, not within 5 s`);
+    assert.deepEqual(left, [], `${step}: children outlived the command`);
+    assert.ok(!existsSync(join(h, "cli-candidates")));
+    ok(`${step}: exit 1 in ${took} ms after SIGINT (< 5 s, not the 10 s limit), the SIGTERM-ignoring child and the sleep child are gone, no cli-candidates folder`);
+  };
+  await hungInterrupt("step 7f SIGINT while codex 0.160.0 `exec --help` hangs", { hangHelp: "codex@0.160.0", hangPid: join(work, "hang-help.pid") }, join(work, "hang-help.pid"));
+  const fakeNpm = join(bin, "npm");
+  writeFileSync(fakeNpm, `#!/bin/sh\n[ "$1" = install ] || exit 1\nP="$NPM_HANG_PID" sh -c 'trap "" TERM; echo $$ > "$P"; exec sleep 15' >/dev/null 2>&1 &\nsleep 15 & echo $! > "$NPM_HANG_PID.sleep"; wait\n`);
+  chmodSync(fakeNpm, 0o755);
+  const npmPid = join(work, "hang-npm.pid");
+  await hungInterrupt("step 7g SIGINT while a stand `npm install` (the real npm package source) hangs", { npm: true, extraEnv: { NPM_HANG_PID: npmPid } }, npmPid);
+  rmSync(fakeNpm);
 
   // ---- 8 ----
   const files = readdirSync(counters);

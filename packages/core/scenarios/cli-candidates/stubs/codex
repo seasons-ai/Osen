@@ -1,9 +1,16 @@
 #!/bin/sh
 # Stand stub of the codex CLI: never calls a model. Settings come from stub.env next to this file.
+# HANG_PID (stub.env, optional): `exec --help` hangs with two children and writes their pids to $HANG_PID and $HANG_PID.sleep.
 . "$(dirname "$0")/stub.env"
 case "$1 $2" in
   "--version ") echo x >> "$COUNTER.version"; echo "codex-cli $VERSION" ;;
-  "exec --help") echo x >> "$COUNTER.help"; cat "$HELP_FILE" ;;
+  "exec --help") echo x >> "$COUNTER.help"
+    if [ -n "$HANG_PID" ]; then
+      # hangs: a child that ignores SIGTERM (writes its pid once the trap is set) and a child `sleep 15` holding stdout
+      P="$HANG_PID" sh -c 'trap "" TERM; echo $$ > "$P"; exec sleep 15' >/dev/null 2>&1 &
+      sleep 15 & echo $! > "$HANG_PID.sleep"; wait
+    fi
+    cat "$HELP_FILE" ;;
   "features list") echo x >> "$COUNTER.features"; cat "$FEATURES_FILE" ;;
   *) echo x >> "$COUNTER.turn"; exit 1 ;;
 esac

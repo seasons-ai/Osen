@@ -9,7 +9,8 @@ import { declaredFlags, parseCodexFeatures } from "./flags.ts";
 import { DEFAULT_MODEL } from "./types.ts";
 import type { CliAgent } from "./types.ts";
 import { writeAcceptanceStub } from "./acceptance-stub.fixture.ts";
-import { PROBES, readOutput, runAcceptance, runProbe } from "./acceptance.ts";
+import { PROBES, runAcceptance, runProbe } from "./acceptance.ts";
+import { readOutput } from "./process.ts";
 import type { AcceptancePlan, ProbeContext, ProbeId, ProbeResult } from "./acceptance.ts";
 
 // Real runProbe against a node stub that stands in for the CLI; the stub mode is set through STUB_MODE.

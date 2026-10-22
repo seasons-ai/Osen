@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setProcessLanguage } from "../i18n/process-language.ts";
-import { npmSource } from "./npm-source.ts";
+import { npmReleases, npmSource } from "./npm-source.ts";
 
 let root: string;
 let bin: string;
@@ -67,4 +67,34 @@ describe("Шов источника пакета: npm", () => {
     fakeNpm("exit 0");
     await expect(npmSource(env()).fetch("claude", "1.0.0", work)).rejects.toThrow(/did not produce/);
   });
+});
+
+describe("Шов источника пакета: npm / прерывание", () => {
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  // npm whose script leaves a child holding stdout open; the child's pid goes to <root>/child.
+  const hang = () => `sleep 15 & echo $! > "${root}/child"; wait`;
+  async function interrupt(start: (signal: AbortSignal) => Promise<unknown>) {
+    fakeNpm(hang());
+    const pidfile = join(root, "child");
+    const ac = new AbortController();
+    const p = start(ac.signal).catch((x: unknown) => x);
+    const t0 = Date.now();
+    while (!(existsSync(pidfile) && readFileSync(pidfile, "utf8").trim()) && Date.now() - t0 < 5000) await new Promise((r) => setTimeout(r, 25));
+    const pid = Number(readFileSync(pidfile, "utf8").trim());
+    try {
+      const abortedAt = Date.now();
+      ac.abort();
+      expect(await p).toBeInstanceOf(Error);
+      expect(Date.now() - abortedAt).toBeLessThan(5000);
+      const t1 = Date.now();
+      while (alive(pid) && Date.now() - t1 < 3000) await new Promise((r) => setTimeout(r, 25)); // a just-killed child may linger unreaped
+      expect(alive(pid)).toBe(false);
+    } finally { try { process.kill(pid, "SIGKILL"); } catch {} }
+  }
+  it("install: the npm group is killed", async () => {
+    await interrupt((signal) => npmSource(env()).fetch("claude", "2.1.288", work, signal));
+  }, 20_000);
+  it("view: the npm group is killed", async () => {
+    await interrupt((signal) => npmReleases(env()).list("claude", signal));
+  }, 20_000);
 });

@@ -15,7 +15,7 @@ import { pinnedEnv } from "./discovery.ts";
 import { classifyFailure } from "./errors.ts";
 import { declaredFlags, parseCodexFeatures } from "./flags.ts";
 import { installedPath, pinConfigDir, readPins } from "./pins.ts";
-import { runProcess } from "./process.ts";
+import { readOutput, runProcess } from "./process.ts";
 import type { RunResult } from "./process.ts";
 import { parseClaudeOutput, parseCodexOutput } from "./output-parse.ts";
 import { CLI_AGENTS, DEFAULT_MODEL } from "./types.ts";
@@ -317,29 +317,6 @@ export const runProbe: ProbeRunner = async (probe, ctx) => {
 
 export interface ProbeOutcome { probe: ProbeId; ok: boolean; reason?: string }
 export interface AcceptanceOutcome { code: 0 | 1 | 5; outcomes: ProbeOutcome[]; calls: number; recorded: boolean; interrupted: boolean; fixture?: string; fixtureError?: string; text: string }
-
-const INSPECT_TIMEOUT_MS = 10_000;
-const INSPECT_MAX_BYTES = 4 * 1024 * 1024;
-
-/** Reads the output of one CLI call in its own process group: a stop, the time limit or too much output ends the whole group.
- *  Rejects on a non-zero exit, a launch error, the time limit, more than 4 MiB and the caller's signal; only that signal means an interruption. */
-export async function readOutput(command: string, args: readonly string[], env: Record<string, string | undefined>, signal?: AbortSignal, timeoutMs = INSPECT_TIMEOUT_MS): Promise<string> {
-  const overflow = new AbortController();
-  const timeout = AbortSignal.timeout(timeoutMs);
-  let bytes = 0;
-  const run = await runProcess({
-    command, args, cwd: process.cwd(), stdin: "", env,
-    signal: AbortSignal.any([overflow.signal, timeout, ...(signal ? [signal] : [])]),
-    onStdout: (chunk) => { bytes += Buffer.byteLength(chunk); if (bytes > INSPECT_MAX_BYTES) overflow.abort(); },
-  });
-  if (run.spawnError) throw run.spawnError;
-  if (run.aborted) {
-    if (signal?.aborted) throw new Error("interrupted");
-    throw new Error(overflow.signal.aborted ? `output is larger than ${INSPECT_MAX_BYTES} bytes` : `no answer within ${timeoutMs} ms`);
-  }
-  if (run.exitCode !== 0) throw new Error(`${command} ${args.join(" ")} exited with ${run.exitCode ?? run.signal}${run.stderr.trim() ? `: ${run.stderr.trim()}` : ""}`);
-  return run.stdout;
-}
 
 async function inspectPinned(plan: AcceptancePlan, env: Record<string, string | undefined>, signal?: AbortSignal): Promise<{ flags: ReadonlySet<string>; features?: ReadonlySet<string> }> {
   const childEnv = { ...env, ...pinnedEnv(plan.agent, plan.configDir) };
