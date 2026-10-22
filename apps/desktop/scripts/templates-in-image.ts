@@ -21,6 +21,17 @@ export function htmlWorkerLine(unpackedMain: string): { ok: boolean; text: strin
   return { ok: missing.length === 0, text: `HTML text extraction is unpacked next to app.asar${missing.length ? `, missing: ${missing.join(", ")}` : ""}` };
 }
 
+/** Report line about unpacking the document extractor next to app.asar: out/main/doc-extract.mjs found only inside the archive fails. */
+export function docExtractLine(unpackedMain: string, asarListing: string[]): { ok: boolean; text: string } {
+  const name = "doc-extract.mjs";
+  const onDisk = existsSync(join(unpackedMain, name));
+  const inArchive = asarListing.some((p) => p.replace(/\\/g, "/").endsWith(`/out/main/${name}`));
+  const imports = onDisk ? [...readFileSync(join(unpackedMain, name), "utf8").matchAll(/(?:from|import)\s*"\.\/([^"]+)"/g)].map((m) => m[1]!) : [];
+  const missing = [...(onDisk ? [] : [name]), ...imports.filter((f) => !existsSync(join(unpackedMain, f)))];
+  const where = !onDisk && inArchive ? " (found only inside app.asar)" : "";
+  return { ok: missing.length === 0, text: `Document text extraction is unpacked next to app.asar${missing.length ? `, missing: ${missing.join(", ")}${where}` : ""}` };
+}
+
 /** Report line of the package Info.plist check: identifier com.osen.desktop and display name Osen. */
 export function bundleIdentityLine(plist: string): { ok: boolean; text: string } {
   const info = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", plist], { encoding: "utf8" })) as Record<string, unknown>;

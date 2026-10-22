@@ -10,17 +10,18 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin({ exclude: ["@model-council/connect", "@model-council/core"] })],
     build: {
       rollupOptions: {
-        // PDF text extraction runs in a child process: two self-contained files next to index.js
+        // PDF and document (DOCX) text extraction run in child processes: self-contained files next to index.js
         input: {
           index: resolve("src/main/index.ts"),
           "pdf-extract": resolve("../../packages/core/src/pdf/pdf-extract.ts"),
           "pdf-worker": resolve("../../packages/core/src/pdf/pdf-worker.ts"),
+          "doc-extract": resolve("../../packages/core/src/documents/doc-extract.ts"),
           "html-worker": resolve("../../packages/core/src/url/html-worker.ts"),
           // headless entries started by the bin/ wrappers; same folder as the workers (change 138 relies on it)
           "osen-mcp": resolve("src/headless/osen-mcp.ts"),
           council: resolve("src/headless/council.ts"),
         },
-        output: { entryFileNames: (chunk) => (/^(pdf-|html-worker$|osen-mcp$|council$)/.test(chunk.name) ? "[name].mjs" : "[name].js") },
+        output: { entryFileNames: (chunk) => (/^(pdf-|doc-extract$|html-worker$|osen-mcp$|council$)/.test(chunk.name) ? "[name].mjs" : "[name].js") },
       },
     },
   },

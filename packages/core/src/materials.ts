@@ -6,6 +6,7 @@ import ignore from "ignore";
 import type { Ignore } from "ignore";
 import { FOLDER_LIMITS, folderStats } from "./protocol/folder.ts";
 import type { FolderFile } from "./protocol/folder.ts";
+import { documentReason, readDocumentText } from "./documents/extract.ts";
 import { pdfReason, readPdfText } from "./pdf/extract.ts";
 import { materialsMessages } from "./messages/materials.ts";
 
@@ -111,7 +112,7 @@ export function decodeText(bytes: Buffer): string | undefined {
   return /[\x00-\x08\x0e-\x1f\x7f]/.test(text) ? undefined : text;
 }
 
-// string — text, undefined — non-text, { refused } — the PDF was refused with a reason
+// string — text, undefined — non-text, { refused } — the PDF or document was refused with a reason
 function readText(abs: string): string | { refused: string } | undefined {
   const fd = openSync(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
@@ -121,6 +122,12 @@ function readText(abs: string): string | { refused: string } | undefined {
     if (head.subarray(0, Math.min(n, 5)).toString("latin1") === "%PDF-") {
       const r = readPdfText(fd);
       return r.ok ? r.text : { refused: pdfReason(r) };
+    }
+    if (n >= 4 && head.readUInt32LE(0) === 0x04034b50) {
+      const r = readDocumentText(fd);
+      if (r.ok) return r.text;
+      if (r.code === "unsupported" || r.code === "bytes") return undefined;
+      return { refused: documentReason(r) };
     }
     if (head.subarray(0, n).includes(0)) return undefined;
     // ponytail: a large text file is read entirely before the limit check; a streaming count — if folders with gigabyte logs become normal
@@ -370,7 +377,7 @@ export function verifyMaterials(materials: readonly CollectedMaterial[], limit: 
 
 export interface LeftMaterial { name: string; reason: string }
 
-const DOC_EXT = /\.(md|markdown|mdx|txt|rst|adoc|pdf)$/i;
+const DOC_EXT = /\.(md|markdown|mdx|txt|rst|adoc|pdf|docx|docm)$/i;
 const total = (ms: readonly CollectedMaterial[]) => ms.reduce((s, m) => s + m.chars, 0);
 
 /** "Always included": without "/" in the name — an explicitly attached file; otherwise only if the file path is named and explicit. roots — absolute paths. */

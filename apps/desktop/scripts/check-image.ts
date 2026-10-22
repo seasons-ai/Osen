@@ -6,7 +6,7 @@ import { basename, join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { reportHeadlessLines } from "./headless-in-image.ts";
-import { appIconLine, bundleIdentityLine, FONT_FILES, fuseLine, htmlWorkerLine, missingFontFiles, missingTemplateFiles } from "./templates-in-image.ts";
+import { appIconLine, bundleIdentityLine, FONT_FILES, docExtractLine, fuseLine, htmlWorkerLine, missingFontFiles, missingTemplateFiles } from "./templates-in-image.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const releaseDir = join(root, "apps/desktop/release.noindex");
@@ -100,6 +100,8 @@ try {
   const unpackedMain = join(res, "app.asar.unpacked/out/main");
   const noPdf = ["pdf-extract.mjs", "pdf-worker.mjs"].filter((f) => !existsSync(join(unpackedMain, f)));
   report(noPdf.length === 0, `PDF text extraction is unpacked next to app.asar${noPdf.length ? `, missing: ${noPdf.join(", ")}` : ""}`);
+  const doc = docExtractLine(unpackedMain, existsSync(asar) ? (createRequire(import.meta.url)("@electron/asar").listPackage(asar, {}) as string[]) : []);
+  report(doc.ok, doc.text);
   const html = htmlWorkerLine(unpackedMain);
   report(html.ok, html.text);
 
