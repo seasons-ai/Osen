@@ -247,6 +247,30 @@ describe("storage and subcommands", () => {
     }
   });
 
+  it("1b. --turn-timeout 0, 1.5, abc, 2147484: the reason names both bounds 1 and 2147483 on en and ru; --max-rounds 0 keeps \"at least 1\" (change 234)", async () => {
+    const prev = getProcessLanguage();
+    try {
+      for (const lang of ["en", "ru"] as const) {
+        setProcessLanguage(lang);
+        for (const v of ["0", "1.5", "abc", "2147484"]) {
+          const home = tmp();
+          const b = await run(full(["--turn-timeout", v]), { env: dev(home) });
+          expect(b.code, `${lang} ${v}`).toBe(2);
+          expect(b.err, `${lang} ${v}`).toContain(cliMessages(lang).intRange("--turn-timeout", 1, 2147483));
+          expect(b.err, `${lang} ${v}`).toContain(cliMessages(lang).help);
+          expect(b.out, `${lang} ${v}`).toBe("");
+          expect(existsSync(join(home, "sessions")) ? readdirSync(join(home, "sessions")) : [], `${lang} ${v}`).toEqual([]);
+        }
+        const m = await run([...base, ...two(), "--max-rounds", "0"], { env: dev(tmp()) });
+        expect(m.code).toBe(2);
+        expect(m.err).toContain(cliMessages(lang).intRequired("--max-rounds"));
+        expect(m.err.split("\n")[0]).not.toContain("2147483");
+      }
+    } finally {
+      setProcessLanguage(prev);
+    }
+  });
+
   it("2. list: fields, truncation, empty storage", async () => {
     const home = tmp();
     const empty = await run(["list"], { env: dev(home) });
