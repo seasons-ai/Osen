@@ -5,6 +5,7 @@
 //   ... --seed-only   build the fake HOME and data folder for the dev window, print the launch command, delete nothing
 // The fake HOME/bin live in an ASCII-only folder (zsh cannot read .zprofile under the Cyrillic project path);
 // the stand folder and COUNCIL_HOME are removed on success and kept on failure.
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
@@ -52,6 +53,14 @@ const verb = args[1], name = agent === "claude" && verb !== "get" ? args[4] : ar
 const save = () => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(d)); };
 const sep = args.indexOf("--");
 if (verb === "get") {
+  const delay = Number(process.env.OSEN_STAND_CODEX_GET_DELAY_MS ?? 0); // blocking sleep: this is a separate process
+  const hold = Number(process.env.OSEN_STAND_CODEX_GET_HOLD_MS ?? 0); // grandchild that holds our stdout and ignores SIGTERM
+  if (agent === "codex" && hold > 0) {
+    const gc = require("node:child_process").spawn(process.execPath, ["-e", "process.on('SIGTERM',()=>{});setTimeout(()=>{}," + hold + ")//" + ${JSON.stringify(work)}], { stdio: ["ignore", "inherit", "inherit"] });
+    process.on("SIGTERM", () => {}); // the CLI itself ignores SIGTERM too, so only SIGKILL ends it
+    fs.writeFileSync(${JSON.stringify(join(work, "grandchild.pid"))}, gc.pid + " " + process.pid);
+  }
+  if (agent === "codex" && (delay > 0 || hold > 0)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.max(delay, hold > 0 ? 30_000 : 0));
   const e = d[key][name];
   if (!e) { console.error("Error: No MCP server named '" + name + "' found."); process.exit(1); }
   console.log(JSON.stringify({ name, transport: { type: "stdio", command: e.command, args: e.args } }));
@@ -95,7 +104,9 @@ if (seedOnly) {
   put(join(h, ".codex/fake-state.json"), JSON.stringify(foreignCodex));
   const info = { fakeHome: h, fakeBin, dataDir, wrapper, callsLog, serverCommand: SERVER };
   console.log(`COUNCIL_CONNECTIONS_STAND=${JSON.stringify(info)}`);
-  console.log(`cd "${root}" && HOME=${h} PATH=${fakeBin}:$PATH COUNCIL_DEV=1 COUNCIL_HOME="${dataDir}" COUNCIL_COMMAND_WRAPPER=${wrapper} npm run desktop`);
+  const launch = `cd "${root}" && HOME=${h} PATH=${fakeBin}:$PATH COUNCIL_DEV=1 COUNCIL_HOME="${dataDir}" COUNCIL_COMMAND_WRAPPER=${wrapper}`;
+  console.log(`${launch} npm run desktop`);
+  console.log(`${launch} OSEN_STAND_CODEX_GET_DELAY_MS=10000 npm run desktop`);
   process.exit(0);
 }
 
@@ -316,6 +327,70 @@ try {
   // 16. real files untouched
   const after = realState();
   check("16 owner's real ~/.claude.json, ~/.codex/config.toml, Claude Desktop config and ~/.local/bin/council are untouched", isDeepStrictEqual(realBefore, after), `${realBefore} -> ${after}`);
+  // 17-19. a slow client CLI must not freeze the main-process event loop (change 242)
+  const ticks = async <T>(fn: () => Promise<T>) => {
+    let last = Date.now(), gap = 0;
+    const timer = setInterval(() => { const n = Date.now(); gap = Math.max(gap, n - last); last = n; }, 50);
+    const t0 = Date.now();
+    try { const value = await fn(); return { value, gap: Math.max(gap, Date.now() - last), ms: Date.now() - t0 }; } finally { clearInterval(timer); }
+  };
+  const slowConn = (h: string, ms: number) => conn(h, { env: { ...envFor(h), OSEN_STAND_CODEX_GET_DELAY_MS: String(ms) } });
+  const fakeProcs = () => execFileSync("ps", ["-A", "-o", "pid=,command="], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).split("\n").filter((l) => l.includes(work));
+
+  // 17. view() with `codex mcp get` sleeping 10 s
+  {
+    const h = mkHome("slow-view"), c = slowConn(h, 10_000);
+    put(join(h, ".codex/fake-state.json"), JSON.stringify(foreignCodex));
+    const { value, gap, ms } = await ticks(() => c.view());
+    const row = value.clients.find((x) => x.client === "codex")!;
+    check("17 view() while `codex mcp get` sleeps 10 s: max gap between 50 ms ticks < 500 ms, answer after the fake, codex row not_connected",
+      gap < 500 && ms >= 9_500 && row.state === "not_connected", `gap=${gap}ms elapsed=${ms}ms state=${row.state}`);
+  }
+
+  // 18. update() on a stale codex entry with the same delay
+  {
+    const h = mkHome("slow-update"), c = slowConn(h, 10_000);
+    put(join(h, ".codex/fake-state.json"), JSON.stringify({ servers: { other: { command: "x", args: ["y"] }, osen: { command: join(work, "Old/Osen.app/Contents/Resources/bin/osen-mcp"), args: [] } } }));
+    const { value: r, gap, ms } = await ticks(() => c.update("codex"));
+    const row = r.view.clients.find((x) => x.client === "codex")!;
+    check("18 update(codex) on a stale entry while `codex mcp get` sleeps 10 s: max tick gap < 500 ms, entry rewritten, reply row connected",
+      gap < 500 && ms >= 9_500 && r.result.ok && row.state === "connected" && readJson(join(h, ".codex/fake-state.json")).servers.osen?.command === SERVER.command, `gap=${gap}ms elapsed=${ms}ms result=${JSON.stringify(r.result)} state=${row.state}`);
+  }
+
+  // 19. `codex mcp get` sleeping past the 20 s limit
+  {
+    const h = mkHome("slow-timeout"), c = slowConn(h, 25_000);
+    put(join(h, ".codex/fake-state.json"), JSON.stringify(foreignCodex));
+    const { value, gap, ms } = await ticks(() => c.view());
+    const row = value.clients.find((x) => x.client === "codex")!;
+    let left = fakeProcs();
+    for (let i = 0; i < 20 && left.some((l) => l.includes("mcp get")); i++) { await new Promise((r) => setTimeout(r, 250)); left = fakeProcs(); }
+    check("19 `codex mcp get` past the 20 s limit: view() answers near 20 s, codex row corrupt codex_unclear with a non-empty reason, loop responsive, no stale fake process",
+      ms >= 19_000 && ms < 24_000 && gap < 500 && row.state === "corrupt" && row.reason?.code === "codex_unclear" && !!row.reason.detail.trim() && !left.some((l) => l.includes("mcp get")),
+      `elapsed=${ms}ms gap=${gap}ms state=${row.state} reason=${row.reason?.code}:${JSON.stringify(row.reason?.detail)} left=${JSON.stringify(left)}`);
+  }
+
+  // 20. a descendant that holds stdout and survives SIGTERM must not hang view()
+  {
+    const h = mkHome("grandchild"), c = conn(h, { env: { ...envFor(h), OSEN_STAND_CODEX_GET_HOLD_MS: "40000" } });
+    put(join(h, ".codex/fake-state.json"), JSON.stringify(foreignCodex));
+    const dead = Symbol("no answer");
+    let timer: NodeJS.Timeout | undefined;
+    const { value, gap, ms } = await ticks(() => Promise.race([c.view(), new Promise<typeof dead>((r) => { timer = setTimeout(() => r(dead), 35_000); })]));
+    clearTimeout(timer);
+    const row = value === dead ? undefined : value.clients.find((x) => x.client === "codex");
+    for (const pid of readFileSync(join(work, "grandchild.pid"), "utf8").split(" ").map(Number)) { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } } // only pids the fake recorded
+    check("20 `codex mcp get` ignores SIGTERM and leaves a grandchild holding stdout: view() answers within 25 s, codex row corrupt codex_unclear with a non-empty reason, loop responsive",
+      value !== dead && ms < 25_000 && gap < 500 && row?.state === "corrupt" && row.reason?.code === "codex_unclear" && !!row.reason.detail.trim(),
+      `elapsed=${ms}ms gap=${gap}ms answered=${value !== dead} state=${row?.state} reason=${row?.reason?.code}`);
+  }
+
+  // 21. no process of the stand is left
+  {
+    let left = fakeProcs();
+    for (let i = 0; i < 20 && left.length > 0; i++) { await new Promise((r) => setTimeout(r, 250)); left = fakeProcs(); }
+    check("21 no process whose command line contains the stand folder is left", left.length === 0, left.join("\n     "));
+  }
 } catch (e) {
   check("stand completed without an exception", false, e instanceof Error ? e.stack ?? e.message : String(e));
 }
