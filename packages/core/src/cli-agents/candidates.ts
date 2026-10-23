@@ -4,7 +4,7 @@ import { join, resolve, sep } from "node:path";
 import { getProcessLanguage } from "../i18n/process-language.ts";
 import { pinMessages } from "../messages/pins.ts";
 import { providerMessages } from "../messages/providers.ts";
-import { CODEX_ISOLATION_FEATURES, HELP_ARGS, REQUIRED_FLAGS, planLaunch } from "./args.ts";
+import { CODEX_ISOLATION_FEATURES, CODEX_UPDATE_OFF, HELP_ARGS, REQUIRED_FLAGS, planLaunch } from "./args.ts";
 import { parseVersion, pinnedEnv } from "./discovery.ts";
 import { declaredFlags, parseCodexFeatures } from "./flags.ts";
 import { describeOutputError, readOutput } from "./process.ts";
@@ -77,6 +77,7 @@ export interface CandidateDeps {
   os?: string;
   osenVersion?: string;
   signal?: AbortSignal;
+  makePrefix?: (root: string, base: string) => string; // tests only: replaces mkdtempSync(join(root, base))
 }
 
 /** Pure contract check of one candidate from raw outputs; undefined = could not be read. */
@@ -201,8 +202,16 @@ export async function checkCandidates(dataDir: string, agents: readonly CliAgent
   async function checkOne(agent: CliAgent, version: string): Promise<void> {
     let prefix: string | undefined;
     try {
-      mkdirSync(join(dataDir, CANDIDATES_DIR), { recursive: true });
-      prefix = mkdtempSync(join(dataDir, CANDIDATES_DIR, `${agent}-${version}-`));
+      // A parallel check may remove the empty shared root between mkdir and mkdtemp: retry on ENOENT, 3 attempts in all.
+      const root = join(dataDir, CANDIDATES_DIR);
+      for (let attempt = 1; prefix === undefined; attempt++) {
+        try {
+          mkdirSync(root, { recursive: true });
+          prefix = (deps.makePrefix ?? ((r, b) => mkdtempSync(join(r, b))))(root, `${agent}-${version}-`);
+        } catch (e) {
+          if (attempt >= 3 || (e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+        }
+      }
       writeFileSync(join(prefix, OWNER_FILE), String(process.pid));
       const got = await step(deps.source.fetch(agent, version, prefix, signal));
       const exe = resolve(got.executable);
@@ -225,8 +234,9 @@ export async function checkCandidates(dataDir: string, agents: readonly CliAgent
         fail(agent, "install_failed", m.candidatesInstallFailed(agent, version, m.candidatesVersionMismatch(agent, version, actual)));
         return;
       }
-      const help = await read(HELP_ARGS[agent]);
-      const features = agent === "codex" ? await read(["features", "list"]) : undefined;
+      const updateOff = agent === "codex" ? CODEX_UPDATE_OFF : [];
+      const help = await read([...HELP_ARGS[agent], ...updateOff]);
+      const features = agent === "codex" ? await read(["features", "list", ...updateOff]) : undefined;
       const { violations } = checkCandidate({ agent, versionOutput, help, features });
       if (violations.length) {
         report.candidates.push({ agent, version, status: "violates", violations, recorded: false });

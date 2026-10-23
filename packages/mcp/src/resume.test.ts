@@ -794,6 +794,29 @@ describe("council_resume: detached executor", () => {
     expect(launchLeft(dir2)).toEqual([]);
   });
 
+  it("resume plan and launch: executor refused by deadline before the server answered", async () => {
+    const dir = tmp(), scn = tmp();
+    await prior(dir, scn, { id: "s" });
+    const before = bytes(dir, "s");
+    const expired = JSON.stringify({ code: "launch_expired", message: "launch deadline passed" }) + "\n";
+    const refusing = ctxOf(dir, scn, { spawnExecutor: async (_f, errPath) => { appendFileSync(errPath, expired); return 2; }, startTimeoutMs: 300, startPollMs: 200 });
+    const p = await go(refusing, "s", { rounds: 1 });
+    const e = await rejected(resume(refusing, { sessionId: "s", rounds: 1, execute: true, planToken: p.planToken }));
+    expect(e).toBeInstanceOf(ToolError);
+    expect(e.message).toBe(mcpMessages().startExecutorTimeout(0));
+    expect(e.message.startsWith("stale_plan:")).toBe(false);
+    expect(bytes(dir, "s").equals(before)).toBe(true);
+    expect(launchLeft(dir)).toEqual([]);
+    // the plan is still valid: the same token is accepted by an executor that answers in time
+    const ok = ctxOf(dir, scn, { startTimeoutMs: 300, startPollMs: 20, spawnExecutor: (file) => {
+      setTimeout(() => { writeFileSync(launchAcceptedPath(file), JSON.stringify({ droppedOwnerRequests: [] })); appendFileSync(eventsPath(dir, "s"), "\n"); }, 30);
+      return new Promise<number>(() => {});
+    } });
+    const v = await resume(ok, { sessionId: "s", rounds: 1, execute: true, planToken: p.planToken });
+    expect(v.accepted).toBe(true);
+    expect(launchLeft(dir)).toEqual([]);
+  });
+
   // change 187: two launches of one session must not share launch files
   const busyLine = JSON.stringify({ code: "busy", message: "held by another executor" }) + "\n";
 

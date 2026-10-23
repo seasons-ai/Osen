@@ -199,7 +199,7 @@ describe("Внутренний запуск подготовленной сес�
     const slow = async (agent: "claude" | "codex") => { await new Promise((r) => setTimeout(r, 400)); return { agent, found: false, searchPath: "", reason: "no" }; };
     const code = await main(["run-prepared", path], { stdout: () => {}, stderr: (t) => err.push(t), env: { COUNCIL_HOME: home, COUNCIL_DEV: "1" }, inspectDeps: { locate: slow } });
     expect(code).toBe(2);
-    expect(JSON.parse(firstLine(err.join("\n")))).toMatchObject({ code: "stale_plan" });
+    expect(JSON.parse(firstLine(err.join("\n")))).toMatchObject({ code: "launch_expired" });
     expect(journalText(home, "r6")).toBe(before);
     expect(existsSync(launchAcceptedPath(path))).toBe(false);
     expect(existsSync(resumeLockPath(home, "r6"))).toBe(false);

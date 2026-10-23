@@ -30,7 +30,7 @@ import { resumeMessages } from "../messages/resume.ts";
 
 export type ResumeRejection =
   | "not_found" | "consensus" | "failed" | "running" | "too_few_active" | "corrupted" | "newer_version"
-  | "no_rounds_left" | "bad_rounds" | "token_cap" | "bad_token_cap" | "material" | "draft" | "synthesizer" | "participant" | "busy" | "replacement" | "stale_plan";
+  | "no_rounds_left" | "bad_rounds" | "token_cap" | "bad_token_cap" | "material" | "draft" | "synthesizer" | "participant" | "busy" | "replacement" | "stale_plan" | "launch_expired";
 
 export class ResumeRejectedError extends Error {
   readonly reason: ResumeRejection;

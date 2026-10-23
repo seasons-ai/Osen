@@ -420,12 +420,13 @@ exec "${stubDir}/claude-real" "$@"
     if (!id) throw new Error(`${tag}: no session id in the start output: ${r.out.slice(0, 200)}`);
     return id;
   };
-  const resumeWithReplacement = async (s: { client: Client }, id: string) => {
-    const args = { sessionId: id, rounds: 2, replacements: [{ participantId: "p2", providerId: "claude", model: "default" }] };
-    const pl = await call(s.client, "council_resume", args);
+  const replaceArgs = (id: string) => ({ sessionId: id, rounds: 2, replacements: [{ participantId: "p2", providerId: "claude", model: "default" }] });
+  const planToken = async (s: { client: Client }, id: string) => {
+    const pl = await call(s.client, "council_resume", replaceArgs(id));
     if (pl.isError) throw new Error(`${id} plan: ${body(pl)}`);
-    return call(s.client, "council_resume", { ...args, execute: true, planToken: JSON.parse(body(pl)).planToken });
+    return JSON.parse(body(pl)).planToken as string;
   };
+  const executeWith = (s: { client: Client }, id: string, token: string) => call(s.client, "council_resume", { ...replaceArgs(id), execute: true, planToken: token });
 
   console.log("-- 199.2: resume: the replacement check under the lock overruns the deadline");
   // Timing: the executor needs ~0.3-0.6 s to start; its first (pre-lock) check takes the stub sleep S, the re-check under the lock another S.
@@ -433,10 +434,12 @@ exec "${stubDir}/claude-real" "$@"
   helpSleep(1.2);
   const R8 = failedWithP2("r8");
   check(stat(R8) === "failed", "199.2: the seed session is failed", `status ${stat(R8)}`);
-  const s2a = await inProc(realLaunch, { env: stubEnv, startTimeoutMs: 2000 });
-  const r2a = await resumeWithReplacement(s2a, R8);
+  // the poll step (2 s) is longer than the gap between the deadline and the executor's refusal, so the executor exits before the server answers
+  const s2a = await inProc(realLaunch, { env: stubEnv, startTimeoutMs: 2000, startPollMs: 2000 });
+  const token2 = await planToken(s2a, R8);
+  const r2a = await executeWith(s2a, R8, token2);
   await s2a.close();
-  check(r2a.isError === true && body(r2a).length > 0, "199.2: council_resume execute -> isError (server timeout or executor refusal)", stubFirst(r2a));
+  check(r2a.isError === true && body(r2a) === mcpMessages().startExecutorTimeout(2) && !body(r2a).startsWith("stale_plan:"), "199.2: council_resume execute -> \"did not respond in 2 s\", not stale_plan", stubFirst(r2a));
   await sleep(12000);
   check(evCount(R8, "session_resumed") === 0, "199.2: no session_resumed in the journal 12 s later", `count ${evCount(R8, "session_resumed")}`);
   check(launchLeft().length === 0, "199.2: launch/ empty", launchLeft().join(","));
@@ -445,7 +448,7 @@ exec "${stubDir}/claude-real" "$@"
   console.log("-- 199.3: resume accepted well inside the deadline (fast stub)");
   helpSleep(null);
   const s3a = await inProc(realLaunch, { env: stubEnv, startTimeoutMs: 2000 });
-  const r3a = await resumeWithReplacement(s3a, R8);
+  const r3a = await executeWith(s3a, R8, token2); // the plan of 199.2 is still valid
   await s3a.close();
   check(accepted(r3a), "199.3: council_resume execute -> accepted: true", stubFirst(r3a));
   check(launchLeft().length === 0, "199.3: launch/ empty", launchLeft().join(","));

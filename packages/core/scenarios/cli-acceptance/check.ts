@@ -93,7 +93,7 @@ function run(home: string, args: string[], o: RunOpts = {}): Promise<Result> {
   mkdirSync(state, { recursive: true });
   const env: Record<string, string> = {
     PATH: `${bin}:/usr/bin:/bin`, HOME: homedir(), SHELL: fakeShell, COUNCIL_HOME: home, COUNCIL_DEV: "1", COUNCIL_LANG: o.lang ?? "en",
-    STUB_MODE: o.mode ?? "good", STUB_LOG: join(logs, `${tag}.log`), STUB_STATE: state, STUB_PIDFILE: join(pidDir, `${tag}.pid`),
+    STUB_MODE: o.mode ?? "good", STUB_LOG: join(logs, `${tag}.log`), STUB_ARGV_LOG: join(logs, `${tag}.argv`), STUB_STATE: state, STUB_PIDFILE: join(pidDir, `${tag}.pid`),
     ...(o.limits ? { CLI_ACCEPT_STAND_LIMITS: JSON.stringify(o.limits) } : {}),
   };
   return new Promise((res, rej) => {
@@ -203,6 +203,11 @@ try {
   ok(`exactly one real entry: checkedAt ${e.checkedAt}, os, osenVersion, version 9.9.9, sha256 equal to the install record, modelCalls ${e.modelCalls} <= 7`);
   assert.equal(turnPids(pass).length, PROBES, "the stub is launched once per probe");
   ok("the stub was launched 7 times in total, no more");
+  const argvLines = readFileSync(join(logs, `${pass.tag}.argv`), "utf8").split("\n").filter(Boolean);
+  const UPDATE_OFF = "-c check_for_update_on_startup=false";
+  assert.ok(argvLines.includes(`exec --help ${UPDATE_OFF}`), argvLines.join("\n"));
+  assert.ok(argvLines.includes(`features list ${UPDATE_OFF}`), argvLines.join("\n"));
+  ok("acceptance reads of codex help and features list carry -c check_for_update_on_startup=false (stub argv log)");
   assert.equal((await run(h3, ["list"])).out, listBefore);
   assert.equal(treeHash(join(h3, "sessions")), sessionsBefore);
   ok("council list output and the sessions folder are the same before and after the acceptance");

@@ -161,7 +161,7 @@ describe("property: the launch deadline of a resume with a replacement", () => {
       // scenarioPath is asked once per active participant
       const late = deadlineMs + offset - delay * plan.active.length;
       if (offset > 0) {
-        await expect(attempt(late), label).rejects.toMatchObject({ reason: "stale_plan" });
+        await expect(attempt(late), label).rejects.toMatchObject({ reason: "launch_expired" });
         expect(readFileSync(path).equals(before), `${label}: journal changed`).toBe(true);
         expect(readdirSync(launchDir), `${label}: launch/ changed`).toEqual([]);
         await attempt(deadlineMs - delay * plan.active.length - 1000); // the retry inside the deadline

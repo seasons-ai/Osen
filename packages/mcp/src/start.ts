@@ -101,8 +101,14 @@ export async function launchExecutor(ctx: ToolContext, id: string, payload: Prep
     const end = Date.now() + timeoutMs;
     while (!isReady(acceptedFile)) {
       if (failure !== null) {
+        const refused = rejection(failure);
+        // the executor refused because the launch deadline had passed: the server's own timeout, not a change of the plan
+        if (refused?.reason === "launch_expired") {
+          ctx.logger.error(`Executor of session ${id} did not respond in ${timeoutMs} ms`);
+          throw new ToolError(m.startExecutorTimeout(Math.round(timeoutMs / 1000)));
+        }
         ctx.logger.error(`Executor of session ${id} failed before ${waitingFor}`, failure);
-        throw rejection(failure) ?? new ToolError(m.startExecutorFailed(failure));
+        throw refused ?? new ToolError(m.startExecutorFailed(failure));
       }
       // the executor may accept right at the deadline: allow one more poll step; the loop condition just above is the last readiness check
       if (Date.now() >= end + pollMs) {

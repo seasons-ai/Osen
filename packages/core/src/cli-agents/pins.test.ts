@@ -441,6 +441,33 @@ describe("Переключение и откат", () => {
     expect(ru.textNoPath).toBe("Файл claude 1.0.0 отсутствует");
   });
 
+  it("switch and rollback: file without the execute bit: use and rollback are refused, pin unchanged", () => {
+    const inst = (v: string) => claude().installed.find((i: { version: string }) => i.version === v);
+    const check = (r: ReturnType<typeof usePin>, version: string, file: string, notExec: string) => {
+      if (r.ok) throw new Error("expected a refusal");
+      expect(r.code).toBe(2);
+      for (const part of [version, file, notExec]) expect(r.text).toContain(part);
+      expect(r.textNoPath).toContain(version);
+      expect(r.textNoPath).toContain(notExec);
+      expect(r.textNoPath).not.toContain(dir);
+    };
+    const file11 = installedPath(dir, "claude", inst("1.1.0"));
+    chmodSync(file11, 0o644);
+    const bytes = readFileSync(pinsPath(dir));
+    check(usePin(dir, "claude", "1.1.0", { record, now }), "1.1.0", file11, "not executable");
+    expect(readFileSync(pinsPath(dir)).equals(bytes)).toBe(true);
+    chmodSync(file11, 0o755);
+    expect(usePin(dir, "claude", "1.1.0", { record, now }).ok).toBe(true);
+    const file10 = installedPath(dir, "claude", inst("1.0.0"));
+    chmodSync(file10, 0o644);
+    const bytes2 = readFileSync(pinsPath(dir));
+    check(rollbackPin(dir, "claude", { now }), "1.0.0", file10, "not executable");
+    expect(readFileSync(pinsPath(dir)).equals(bytes2)).toBe(true);
+    expect(claude()).toMatchObject({ active: "1.1.0", previous: "1.0.0" });
+    setProcessLanguage("ru");
+    check(rollbackPin(dir, "claude", { now }), "1.0.0", file10, "не исполняемый");
+  });
+
   it("use and rollback leave sessions/ and config.json byte-identical", () => {
     mkdirSync(join(dir, "sessions", "s1"), { recursive: true });
     writeFileSync(join(dir, "sessions", "s1", "journal.jsonl"), '{"a":1}\n');
