@@ -1,6 +1,7 @@
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { writeExecutable } from "../executable.testutil.ts";
 import { declaredFlags, parseCodexFeatures } from "./flags.ts";
 import type { CliAgent, CliRuntime } from "./types.ts";
 
@@ -41,9 +42,7 @@ ${o.sleep ? `sleep ${o.sleep}` : ""}
 cat "$D/out"; cat "$D/err" >&2
 exit ${o.code ?? 0}
 `;
-  const path = join(root, "stub.sh");
-  writeFileSync(path, sh);
-  chmodSync(path, 0o755);
+  const path = writeExecutable(join(root, "stub.sh"), sh);
   const runtime: CliRuntime = {
     agent, path, env: { PATH: process.env.PATH },
     flags: o.flags ?? (agent === "claude" ? claudeFlags : codexFlags),
