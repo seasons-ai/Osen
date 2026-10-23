@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -188,6 +188,34 @@ describe("loadTemplates: neutral frame", () => {
 
   it("no built-in", () => {
     expect(() => loadTemplates({ builtinDir: tmp(), userDir: tmp() })).toThrow("Нейтральная рамка не найдена");
+  });
+
+  it("an error in a template does not block the rest: unreadable user frame", () => {
+    const variants: ((path: string) => void)[] = [(p) => mkdirSync(p)];
+    if (process.getuid?.() !== 0) variants.push((p) => { writeFileSync(p, "Моя"); chmodSync(p, 0o000); });
+    for (const make of variants) {
+      const d = dirs();
+      put(d.ru, "a.json", tpl());
+      put(d.userDir, "b.json", tpl({ id: "b" }));
+      make(join(d.userDir, "neutral.md"));
+      for (const [language, prefix] of [["ru", "не удалось прочитать — "], ["en", "could not read — "]] as const) {
+        setProcessLanguage(language);
+        try {
+          const c = loadTemplates({ ...d, language: "ru" });
+          expect(c.templates.map((t) => t.id).sort()).toEqual(["arch", "b"]);
+          expect(c.neutralFraming).toBe("Нейтральная рамка");
+          expect(c.errors).toHaveLength(1);
+          expect(c.errors[0]).toMatchObject({ source: "user", file: "neutral.md" });
+          expect(c.errors[0]!.reason.startsWith(prefix)).toBe(true);
+        } finally {
+          setProcessLanguage("ru");
+        }
+      }
+      chmodSync(join(d.userDir, "neutral.md"), 0o755);
+    }
+    const noBuiltin = { builtinDir: tmp(), userDir: tmp() };
+    mkdirSync(join(noBuiltin.userDir, "neutral.md"));
+    expect(() => loadTemplates(noBuiltin)).toThrow("Нейтральная рамка не найдена");
   });
 
   it("no language folder or its neutral.md: rejected with the path, another language is not substituted", () => {
