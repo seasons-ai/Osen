@@ -92,7 +92,7 @@ const T: Record<"ru" | "en", Texts> = {
       ratio: "часть документа сжата сильнее чем в 200 раз", parts: "в документе больше 10000 частей", unpacked: "документ распаковывается больше чем в 512 МиБ",
       chars: "текст документа больше 20000000 знаков", cells: "в таблице больше 1000000 ячеек",
     },
-    nonText: "нетекстовый файл (не UTF-8 или бинарные данные)", nonTextSkipped: "нетекстовый файл",
+    nonText: "двоичный файл неизвестного формата", nonTextSkipped: "двоичный файл неизвестного формата",
   },
   en: {
     unavailable: "text could not be extracted — the system utility textutil is unavailable",
@@ -103,7 +103,7 @@ const T: Record<"ru" | "en", Texts> = {
       ratio: "a document part is compressed more than 200 times", parts: "document has more than 10000 parts", unpacked: "document unpacks to more than 512 MiB",
       chars: "document text is longer than 20000000 characters", cells: "spreadsheet has more than 1000000 cells",
     },
-    nonText: "not a text file (not UTF-8 or binary data)", nonTextSkipped: "not a text file",
+    nonText: "binary file of an unknown format", nonTextSkipped: "binary file of an unknown format",
   },
 };
 
@@ -396,10 +396,10 @@ async function suite(lang: "ru" | "en") {
   const zipF = join(fx, "plain.zip");
   writeFileSync(zipF, makeZip([{ name: "a.txt", data: "hi" }]));
   const r7 = await run(["--topic", "t", "--attach", zipF, ...parts(okPair), "--max-rounds", "1"]);
-  assert.equal(r7.code, 2, dump(r7.r));
-  assert.equal(r7.r.err, `${t.rejected}\n  «${basename(zipF)}»: ${t.nonText}\n`, dump(r7.r));
-  assert.ok(!r7.r.err.includes(t.reason.damaged));
-  ok(`${tag} 7: a plain ZIP is refused as a non-text file ("${t.nonText}"), not as damaged`);
+  assert.equal(r7.code, 0, dump(r7.r));
+  assert.deepEqual((created(sessionId(r7.r)).materials as { name: string }[]).map((x) => x.name), ["plain.zip/a.txt"], dump(r7.r));
+  assert.ok(!r7.r.err.includes(t.reason.damaged) && !r7.r.err.includes(t.nonText));
+  ok(`${tag} 7: a plain ZIP is expanded as an archive (change 215), neither refused as damaged nor as "${t.nonText}"`);
 
   // ---- XLSX / PPTX ----
   const noCall = () => promptLines().length;
@@ -645,7 +645,7 @@ async function main() {
   mkdirSync(join(fx, "encdir"), { recursive: true });
   writeFileSync(join(fx, "encdir", "README.md"), "Описание проекта.\n");
   writeFileSync(join(fx, "encdir", "secret.docx"), makeCfb({ streams: ["EncryptedPackage", "EncryptionInfo"] }));
-  writeFileSync(join(fx, "nostream.bin"), makeCfb({ streams: ["Workbook"] }));
+  writeFileSync(join(fx, "nostream.bin"), makeCfb({ streams: ["Contents"] }));
   writeFileSync(join(fx, "loop.doc"), makeCfb({ streams: ["WordDocument"], loop: true }));
   const srcBefore = Object.fromEntries(allFiles(fx).map((f) => [f, sha(readFileSync(f))]));
   const keep = ["report.docx", "report-macro.docm", "broken.docx", "sheet.xlsx", "sheet-macro.xlsm", "deck.pptx", "big.xlsx", "note.rtf", "legacy.bin", "fake.rtf", "secret.docx", "nostream.bin", "loop.doc", "encdir/README.md", "encdir/secret.docx"].map((n) => join(fx, n));

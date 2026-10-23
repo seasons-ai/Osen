@@ -52,7 +52,8 @@ export function extractDocument(bytes: Uint8Array, limits: Pick<DocLimits, "char
     // A ZIP with [Content_Types].xml is an OPC package (every OOXML format): from here on its trouble is a damaged document.
     const type = mimetype(zip) ?? mainType(zip);
     const format = type === undefined ? undefined : FORMATS.find((f) => f.test(type));
-    if (!format) throw new DocError("unsupported");
+    // iWork is a ZIP too: it is named here, before the caller treats an "unsupported" ZIP as a folder (change 215)
+    if (!format) throw zip.entries.has("Index/Document.iwa") ? new DocError("kind", "iwork") : new DocError("unsupported");
     checkZip(zip, limits);
     format.check?.(zip);
     // A DTD or an entity declaration in any XML part makes the document damaged, even in parts the builder never parses.
@@ -73,8 +74,11 @@ export function extractDocument(bytes: Uint8Array, limits: Pick<DocLimits, "char
   }
 }
 
-// CFB files: the first stream name found decides the kind, in this order. Change 216 appends Workbook/Book and PowerPoint Document here.
-export const CFB_KINDS: { stream: string; kind: "encrypted" | "doc" }[] = [{ stream: "EncryptedPackage", kind: "encrypted" }, { stream: "WordDocument", kind: "doc" }];
+// CFB files: the first stream name found decides the kind, in this order (xls and ppt are refused with their kind reason, change 216).
+export const CFB_KINDS: { stream: string; kind: "encrypted" | "doc" | "xls" | "ppt" }[] = [
+  { stream: "EncryptedPackage", kind: "encrypted" }, { stream: "WordDocument", kind: "doc" },
+  { stream: "Workbook", kind: "xls" }, { stream: "Book", kind: "xls" }, { stream: "PowerPoint Document", kind: "ppt" },
+];
 
 /** The kind of a file handled by a system tool: "rtf", "doc", or undefined when the bytes are neither RTF nor CFB (the ZIP path goes on). Throws DocError. */
 export function systemKind(bytes: Uint8Array): "rtf" | "doc" | undefined {
@@ -86,5 +90,6 @@ export function systemKind(bytes: Uint8Array): "rtf" | "doc" | undefined {
   const found = CFB_KINDS.find((k) => streams.includes(k.stream));
   if (!found) throw new DocError("unsupported");
   if (found.kind === "encrypted") throw new DocError("encrypted");
+  if (found.kind !== "doc") throw new DocError("kind", found.kind);
   return found.kind;
 }

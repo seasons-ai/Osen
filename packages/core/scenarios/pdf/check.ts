@@ -376,8 +376,8 @@ async function main() {
 
   // ---- 10. Texts without recognition promises ----
   const help = spawnSync(process.execPath, [entry, "--help"], { env: cliEnv, encoding: "utf8" });
-  assert.ok(help.stdout.includes("Из PDF берётся текстовый слой") && help.stdout.includes("распознавание изображений не выполняется"), `council --help:\n${help.stdout.slice(0, 300)}`);
-  ok("council --help: \"Из PDF берётся текстовый слой\" and \"распознавание изображений не выполняется\"");
+  assert.ok(help.stdout.includes("Из PDF берётся текстовый слой") && help.stdout.includes("PDF в том числе сканы"), `council --help:\n${help.stdout.slice(0, 300)}`);
+  ok("council --help: \"Из PDF берётся текстовый слой\" and \"PDF в том числе сканы\"");
 
   // ---- 11. Built extractor ----
   const built = join(repo, "apps/desktop/out/main/pdf-extract.mjs");

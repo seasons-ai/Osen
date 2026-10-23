@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { fstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { materialsMessages } from "../messages/materials.ts";
+import type { FileKindId } from "./kinds.ts";
 import { DOC_LIMITS, type DocFailure, type DocLimits } from "./limits.ts";
 
 export { DOC_LIMITS, type DocLimits, type DocFailure } from "./limits.ts";
@@ -77,5 +78,6 @@ export function documentReason(failure: { code: DocFailure; detail?: string }, l
     case "failed": return m.docFailed(failure.detail ?? m.docStartError);
     case "odf_kind": return m.docOdfKind(failure.detail ?? "");
     case "drm": return m.docDrm;
+    case "kind": return m.kindReason((failure.detail ?? "unknown") as FileKindId);
   }
 }

@@ -46,6 +46,7 @@ describe("Limits and reasons", () => {
       textutil_unavailable: "не удалось извлечь текст — системная утилита textutil недоступна",
       odf_kind: "формат не поддерживается — OpenDocument",
       drm: "книга защищена DRM — содержимое недоступно",
+      kind: "двоичный файл неизвестного формата",
     };
     for (const [code, text] of Object.entries(reasons)) expect(documentReason({ code: code as DocFailure })).toBe(text);
     expect(documentReason({ code: "failed", detail: "exit 3" })).toBe("не удалось извлечь текст документа — exit 3");

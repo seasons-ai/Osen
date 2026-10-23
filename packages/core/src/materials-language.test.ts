@@ -151,12 +151,12 @@ describe("Core messages in the selected language: materials, PDF, links", () => 
       expect(en).toEqual([
         `«${paths[0]}»: path not found`,
         `«${paths[1]}»: environment files (.env, .env.*) cannot be attached — secrets protection`,
-        `«${paths[2]}»: not a text file (not UTF-8 or binary data)`,
+        `«${paths[2]}»: binary file of an unknown format`,
       ]);
       expect(ru).toEqual([
         `«${paths[0]}»: путь не найден`,
         `«${paths[1]}»: файлы окружения (.env, .env.*) прикладывать нельзя — защита секретов`,
-        `«${paths[2]}»: нетекстовый файл (не UTF-8 или бинарные данные)`,
+        `«${paths[2]}»: двоичный файл неизвестного формата`,
       ]);
     });
 
@@ -170,13 +170,13 @@ describe("Core messages in the selected language: materials, PDF, links", () => 
       expect(skipped("en")).toEqual([
         { name: "папка/.env", reason: "environment file — secrets protection" },
         { name: "папка/.hid", reason: "hidden name" },
-        { name: "папка/b.bin", reason: "not a text file" },
+        { name: "папка/b.bin", reason: "binary file of an unknown format" },
         { name: "папка/skipme", reason: "in the ignore list" },
       ]);
       expect(skipped("ru")).toEqual([
         { name: "папка/.env", reason: "файл окружения — защита секретов" },
         { name: "папка/.hid", reason: "скрытое имя" },
-        { name: "папка/b.bin", reason: "нетекстовый файл" },
+        { name: "папка/b.bin", reason: "двоичный файл неизвестного формата" },
         { name: "папка/skipme", reason: "в списке игнорирования" },
       ]);
     });

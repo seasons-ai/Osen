@@ -76,7 +76,7 @@ async function main() {
   const tools = (await client.listTools()).tools;
   const cs = tools.find((t) => t.name === "council_start")!;
   const desc = `${cs.description ?? ""}\n${JSON.stringify(cs.inputSchema)}`;
-  assert.ok(desc.includes("PDF с текстовым слоем"), "the council_start description does not contain \"PDF с текстовым слоем\"");
+  assert.ok(desc.includes("PDF в том числе сканы"), "the council_start description does not contain \"PDF в том числе сканы\"");
   const s = json(await start([join(fx, "text.pdf")]), "council_start");
   assert.equal(s.materials.count, 1);
   assert.equal(s.materials.chars, EXPECTED.length);
@@ -89,11 +89,11 @@ async function main() {
   assert.deepEqual([m.chars, m.sha256], [EXPECTED.length, sha256Of(EXPECTED)]);
   const snapshot = join(sd, "materials", "m1.txt");
   assert.equal(readFileSync(snapshot, "utf8"), EXPECTED);
-  ok(`MCP: council_start with text.pdf — materials.count 1, chars ${EXPECTED.length}; session finished (${fin.status}); the journal has the text sha256; m1.txt equals the text; the description contains "PDF с текстовым слоем"`);
+  ok(`MCP: council_start with text.pdf — materials.count 1, chars ${EXPECTED.length}; session finished (${fin.status}); the journal has the text sha256; m1.txt equals the text; the description contains "PDF в том числе сканы"`);
 
   // ---- 10. Text without recognition promises ----
-  assert.ok(desc.includes("сканированные PDF не принимаются"), "no \"сканированные PDF не принимаются\"");
-  ok("MCP: the attachments description contains \"сканированные PDF не принимаются\" (the tool's own description does not have this phrase — it is in the parameter description)");
+  assert.ok(!desc.includes("сканированные PDF не принимаются"), "the description still says \"сканированные PDF не принимаются\" (scans are accepted since change 214)");
+  ok("MCP: the attachments description no longer says \"сканированные PDF не принимаются\" (scans are accepted since change 214, change 216)");
 
   // ---- 6. Refusals ----
   const nSessions = sessions().length;

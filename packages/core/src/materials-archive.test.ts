@@ -238,7 +238,7 @@ describe("ZIP archive as a folder", () => {
     expect(names(set)).toEqual(["legacy.zip/note.dat"]);
     expect(set.materials[0]!.text).toContain("Первая строка");
     expect(reasonOf(set, "legacy.zip/secret.docx")).toBe(m().docEncrypted);
-    expect(reasonOf(set, "legacy.zip/sheet.xls")).toBe(m().notText);
+    expect(reasonOf(set, "legacy.zip/sheet.xls")).toBe(m().kindReason("xls"));
   }, SLOW);
 
   it("a damaged DOCX entry is skipped with the document reason, the rest is collected", () => {

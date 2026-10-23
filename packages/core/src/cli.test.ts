@@ -6,6 +6,7 @@ import { chmodSync, existsSync } from "node:fs";
 import { afterAll, describe, it, expect } from "vitest";
 import { EXIT, help, includePaths, main } from "./cli.ts";
 import { cliMessages } from "./messages/cli.ts";
+import { materialsMessages } from "./messages/materials.ts";
 import type { CliIo } from "./cli.ts";
 import type { CliLocation } from "./cli-agents/discovery.ts";
 import { configPath, initialRegistry } from "./registry/config.ts";
@@ -640,7 +641,7 @@ describe("owner materials: --attach and --materials-chars", () => {
     expect(r.out).toContain("Пропущено: 3");
     expect(r.out).toContain("  docs/.cache — скрытое имя");
     expect(r.out).toContain("  docs/node_modules — в списке игнорирования");
-    expect(r.out).toContain("  docs/bin.dat — нетекстовый файл");
+    expect(r.out).toContain("  docs/bin.dat — двоичный файл неизвестного формата");
     expect(r.out.indexOf("Материалы:")).toBeLessThan(r.out.indexOf("Сессия "));
     const s = created(home);
     expect(s.origin).toBe("cli");
@@ -800,6 +801,7 @@ describe("owner materials: --attach and --materials-chars", () => {
     expect(bad.err).toContain("Материалы не приняты:");
     expect(bad.err).toContain("PDF зашифрован");
     const help = await run(["--help"]);
+    expect(help.out).toContain(materialsMessages("ru").supportedFormats);
     expect(help.out).toContain("Из PDF берётся текстовый слой (на файл не больше 100 МиБ, 2000 страниц, 30 секунд, 512 МиБ памяти и 20000000 знаков)");
   }, 30_000);
 

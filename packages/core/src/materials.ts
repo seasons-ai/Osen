@@ -8,6 +8,7 @@ import { FOLDER_LIMITS, folderStats } from "./protocol/folder.ts";
 import type { FolderFile } from "./protocol/folder.ts";
 import { CFB_SIGNATURE } from "./documents/cfb.ts";
 import { DOC_LIMITS, documentReason, readDocumentText } from "./documents/extract.ts";
+import { nonTextReason, TAIL_BYTES } from "./documents/kinds.ts";
 import { expandArchive } from "./materials-archive.ts";
 import { pdfReason, readPdfText } from "./pdf/extract.ts";
 import { imageSignature, type ImageFormat } from "./ocr/image-header.ts";
@@ -119,8 +120,16 @@ export function decodeText(bytes: Buffer): string | undefined {
   return /[\x00-\x08\x0e-\x1f\x7f]/.test(text) ? undefined : text;
 }
 
-// string — text, undefined — non-text, { refused } — the PDF, document or image was refused with a reason, { image } — an image whose recognition is deferred (defer)
-function readText(abs: string, defer = false): string | { refused: string } | { image: ImageFormat } | { archive: true } | undefined {
+// The last TAIL_BYTES of the file (DMG trailer); read only for a file that is not text
+function readTail(fd: number): Buffer | undefined {
+  const size = fstatSync(fd).size;
+  if (size < TAIL_BYTES) return undefined;
+  const tail = Buffer.alloc(TAIL_BYTES);
+  return readSync(fd, tail, 0, TAIL_BYTES, size - TAIL_BYTES) === TAIL_BYTES ? tail : undefined;
+}
+
+// string — text, { refused } — not text or the PDF, document or image was refused with a reason, { image } — an image whose recognition is deferred (defer)
+function readText(abs: string, defer = false): string | { refused: string } | { image: ImageFormat } | { archive: true } {
   const fd = openSync(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     if (!fstatSync(fd).isFile()) throw new Error(materialsMessages().notRegularFile);
@@ -145,7 +154,7 @@ function readText(abs: string, defer = false): string | { refused: string } | { 
     if (rtf || (n >= 8 && head.subarray(0, 8).equals(CFB_SIGNATURE))) {
       const r = readDocumentText(fd);
       if (r.ok) return r.text;
-      if (r.code === "unsupported" || (r.code === "bytes" && !rtf)) return undefined;
+      if (r.code === "unsupported") return { refused: nonTextReason(head.subarray(0, n), readTail(fd)) };
       return { refused: documentReason(r) };
     }
     const image = imageSignature(head.subarray(0, n), fstatSync(fd).size);
@@ -155,7 +164,8 @@ function readText(abs: string, defer = false): string | { refused: string } | { 
       return r.ok ? r.text : { refused: imageReason(r) };
     }
     // ponytail: a large text file is read entirely before the limit check; a streaming count — if folders with gigabyte logs become normal
-    return decodeFileText(head.subarray(0, n), () => readFileSync(fd));
+    const text = decodeFileText(head.subarray(0, n), () => readFileSync(fd));
+    return typeof text === "string" ? text : { refused: nonTextReason(head.subarray(0, n), readTail(fd), text?.refused) };
   } finally {
     closeSync(fd);
   }
@@ -304,9 +314,8 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
         else if (!seen.has(abs)) {
           try {
             const text = readText(abs, true);
-            if (text === undefined) skip(m.notText);
-            else if (typeof text === "object" && "image" in text) out.push({ rel: eRel, abs, image: text.image });
-            else if (typeof text === "object") skip("refused" in text ? text.refused : m.notText);
+            if (typeof text === "object" && "image" in text) out.push({ rel: eRel, abs, image: text.image });
+            else if (typeof text === "object") skip((text as { refused: string }).refused); // defer: an archive is never returned here
             else {
               seen.add(abs);
               out.push({ rel: eRel, text });
@@ -370,8 +379,7 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
         reasons.push(m.pathNamed(p, m.notFileNorFolder));
       } else if (!seen.has(abs)) {
         const text = readText(abs);
-        if (text === undefined) reasons.push(m.pathNamed(p, m.notTextExplicit));
-        else if (typeof text === "object" && "archive" in text) {
+        if (typeof text === "object" && "archive" in text) {
           const r = expandArchive(abs, archivePrefix(base), options);
           if ("refused" in r) for (const reason of r.refused) reasons.push(m.pathNamed(p, reason));
           else {
@@ -379,7 +387,7 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
             found.push(...r.materials);
             skipped.push(...r.skipped);
           }
-        } else if (typeof text === "object") reasons.push(m.pathNamed(p, "refused" in text ? text.refused : m.notTextExplicit));
+        } else if (typeof text === "object") reasons.push(m.pathNamed(p, (text as { refused: string }).refused)); // an image is deferred only in folders
         else addFile(abs, base, text);
       }
     } catch (e) {

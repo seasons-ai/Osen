@@ -269,7 +269,14 @@ async function suite(lang: "ru" | "en") {
   skipLine(await preview(join(fx, "d2")), "d2/huge.zip", m.zipTooLarge(100));
   await refuse("empty", put("empty.zip", makeZip([])), m.archiveEmpty);
   ok(`${tag} 7a: a 150 MiB ZIP is refused explicitly and skipped in a folder with "${m.zipTooLarge(100)}"; an empty archive with "${m.archiveEmpty}"`);
-  if (lang === "en") console.log("skipped: iWork: skipped until change 216");
+  const iwork = makeZip([{ name: "Index/Document.iwa", data: "x" }, { name: "Index/a.iwa", data: "y" }]);
+  await refuse("iwork", put("deck.zip", iwork), m.kindReason("iwork"));
+  put("d3/a.md", "a");
+  put("d3/deck.zip", iwork);
+  const out7b = await preview(join(fx, "d3"));
+  assert.ok(out7b.includes(t.summary(1, 1)), out7b);
+  skipLine(out7b, "d3/deck.zip", m.kindReason("iwork"));
+  ok(`${tag} 7b: an iWork ZIP (Index/Document.iwa) named .zip is refused with "${m.kindReason("iwork")}" and not expanded; in a folder it is skipped with it`);
 
   // ---- 8. Content decides, not the extension ----
   const out8 = await preview(put("x.zip", makeDocx({ body: p(SPEC) })), put("y.docx", makeZip([{ name: "a.txt", data: "a" }])));

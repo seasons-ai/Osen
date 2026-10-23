@@ -1,5 +1,6 @@
 import { defineMessages } from "../i18n/catalog.ts";
 import { plural } from "../i18n/format.ts";
+import type { FileKindId } from "../documents/kinds.ts";
 
 // Refusal and skip reasons for materials, PDF and links. Numbers and limits are substituted as they are; ru keeps its earlier invariable word forms.
 const chars = (n: number) => `${n} ${plural(n, { one: "character", other: "characters" }, "en")}`;
@@ -7,6 +8,38 @@ const pages = (n: number) => `${n} ${plural(n, { one: "page", other: "pages" }, 
 const seconds = (n: number) => `${n} ${plural(n, { one: "second", other: "seconds" }, "en")}`;
 const bytes = (n: number) => `${n} ${plural(n, { one: "byte", other: "bytes" }, "en")}`;
 const redirects = (n: number) => `${n} ${plural(n, { one: "redirect", other: "redirects" }, "en")}`;
+
+// Reason per kind of a file that did not become text (change 216); one record per FileKindId.
+const audioEn = (name: string) => `${name} audio — transcription is not performed`;
+const audioRu = (name: string) => `аудио ${name} — расшифровка не выполняется`;
+const archiveEn = (name: string) => `${name} archive — only ZIP is unpacked`;
+const archiveRu = (name: string) => `архив ${name} — раскрывается только ZIP`;
+const KIND_REASONS_EN: Record<FileKindId, string> = {
+  mp3: audioEn("MP3"), aac: audioEn("AAC"), m4a: audioEn("M4A"), wav: audioEn("WAV"), aiff: audioEn("AIFF"), flac: audioEn("FLAC"), ogg: audioEn("OGG"),
+  video: "video — the content is not passed on",
+  rar: archiveEn("RAR"), "7z": archiveEn("7z"), tar: archiveEn("tar"), gzip: archiveEn("gzip"), bzip2: archiveEn("bzip2"), xz: archiveEn("xz"), zstd: archiveEn("zstd"),
+  dmg: "DMG disk image — only ZIP is unpacked",
+  program: "program — not a material",
+  sqlite: "SQLite database — not supported",
+  font: "font — not a material",
+  xls: "Excel 97 spreadsheet — save it as XLSX",
+  ppt: "PowerPoint 97 presentation — save it as PPTX",
+  iwork: "Apple iWork document (Pages, Numbers, Keynote) — export it to DOCX, XLSX, PPTX or PDF",
+  unknown: "binary file of an unknown format",
+};
+const KIND_REASONS_RU: Record<FileKindId, string> = {
+  mp3: audioRu("MP3"), aac: audioRu("AAC"), m4a: audioRu("M4A"), wav: audioRu("WAV"), aiff: audioRu("AIFF"), flac: audioRu("FLAC"), ogg: audioRu("OGG"),
+  video: "видео — содержимое не передаётся",
+  rar: archiveRu("RAR"), "7z": archiveRu("7z"), tar: archiveRu("tar"), gzip: archiveRu("gzip"), bzip2: archiveRu("bzip2"), xz: archiveRu("xz"), zstd: archiveRu("zstd"),
+  dmg: "образ диска DMG — раскрывается только ZIP",
+  program: "программа — не материал",
+  sqlite: "база SQLite — не поддерживается",
+  font: "шрифт — не материал",
+  xls: "таблица Excel 97 — сохраните как XLSX",
+  ppt: "презентация PowerPoint 97 — сохраните как PPTX",
+  iwork: "документ Apple iWork (Pages, Numbers, Keynote) — экспортируйте в DOCX, XLSX, PPTX или PDF",
+  unknown: "двоичный файл неизвестного формата",
+};
 
 export const materialsMessages = defineMessages({
   en: {
@@ -20,12 +53,12 @@ export const materialsMessages = defineMessages({
     rulesTooLarge: (mib: number) => `larger than ${mib} MiB`,
     notExcluded: "the path is not among those excluded by .gitignore rules — nothing to return",
     symlink: "symbolic link",
-    notText: "not a text file",
     pathNamed: (p: string, reason: string) => `«${p}»: ${reason}`,
     pathThroughSymlink: (link: string) => `path goes through a symbolic link ${link}; give a path without links`,
     notFileNorFolder: "not a regular file and not a folder",
-    notTextExplicit: "not a text file (not UTF-8 or binary data)",
+    kindReason: (kind: FileKindId) => KIND_REASONS_EN[kind],
     encodingUnknown: "encoding not recognized — UTF-8, UTF-16 with BOM or Windows-1251 is required",
+    supportedFormats: "text (UTF-8, UTF-16, Windows-1251), PDF including scans, DOCX/DOCM, XLSX/XLSM, PPTX/PPTM, ODT/ODS/ODP, EPUB, RTF, DOC, pictures through text recognition, ZIP as a folder",
     pathNotFound: "path not found",
     materialsOverLimit: (total: number, limit: number, largest: string) => `Materials: size ${chars(total)} exceeds the limit ${limit}. Largest files: ${largest}`,
     idMismatch: (n: number, id: string) => `Material ${n}: id «${id}» instead of m${n}`,
@@ -134,12 +167,12 @@ export const materialsMessages = defineMessages({
     rulesTooLarge: (mib: number) => `больше ${mib} МиБ`,
     notExcluded: "путь не найден среди исключённых правилами .gitignore — возвращать нечего",
     symlink: "символическая ссылка",
-    notText: "нетекстовый файл",
     pathNamed: (p: string, reason: string) => `«${p}»: ${reason}`,
     pathThroughSymlink: (link: string) => `путь проходит через символическую ссылку ${link}; укажите путь без ссылок`,
     notFileNorFolder: "не обычный файл и не папка",
-    notTextExplicit: "нетекстовый файл (не UTF-8 или бинарные данные)",
+    kindReason: (kind: FileKindId) => KIND_REASONS_RU[kind],
     encodingUnknown: "кодировка не распознана — нужен UTF-8, UTF-16 с BOM или Windows-1251",
+    supportedFormats: "текст (UTF-8, UTF-16, Windows-1251), PDF в том числе сканы, DOCX/DOCM, XLSX/XLSM, PPTX/PPTM, ODT/ODS/ODP, EPUB, RTF, DOC, картинки через распознавание текста, ZIP как папка",
     pathNotFound: "путь не найден",
     materialsOverLimit: (total: number, limit: number, largest: string) => `Материалы: объём ${total} символов превышает лимит ${limit}. Крупнейшие файлы: ${largest}`,
     idMismatch: (n: number, id: string) => `Материал ${n}: идентификатор «${id}» вместо m${n}`,
