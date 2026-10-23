@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -143,5 +143,50 @@ describe("connections", () => {
     await api.connect("claude-desktop");
     await api.connect("claude-desktop");
     expect(lines).toEqual(["Connections: connect claude-desktop -> ok changed=true state=connected", "Connections: connect claude-desktop -> ok changed=false state=connected"]);
+  });
+  it("Клиент отвечает долго: a slow codex does not block the event loop", async () => {
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    const stub = join(bin, "codex");
+    writeFileSync(stub, `#!/bin/sh\nsleep 0.3\nprintf '%s' '{"name":"osen","transport":{"type":"stdio","command":"x","args":["y"]}}'\n`);
+    chmodSync(stub, 0o755);
+    const { api } = make({ env: { PATH: `${bin}:/usr/bin:/bin` }, shell: "/usr/bin/false", deps: undefined }) // no login-shell PATH: only the stub codex can be found;
+    let last = Date.now();
+    let maxGap = 0;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      maxGap = Math.max(maxGap, now - last);
+      last = now;
+    }, 20);
+    let v: Awaited<ReturnType<typeof api.view>>;
+    try {
+      v = await api.view();
+      // a blocked loop never ran the overdue tick, so count the open gap too
+      maxGap = Math.max(maxGap, Date.now() - last);
+    } finally {
+      clearInterval(timer);
+    }
+    expect(v.clients.find((c) => c.client === "codex")).toMatchObject({ state: "foreign" });
+    expect(maxGap).toBeLessThan(150);
+  });
+
+  it("a view requested during an action reads the state after the action", async () => {
+    let transport: { type: string; command: string; args: string[] } | null = null;
+    const sleep = () => new Promise<void>((r) => setTimeout(r, 60));
+    const exec = async (bin: string, args: string[]) => {
+      await sleep();
+      if (bin !== "codex") return { ok: false, stdout: "", stderr: "" };
+      if (args[0] === "mcp" && args[1] === "get") {
+        return transport ? { ok: true, stdout: JSON.stringify({ name: "osen", transport }), stderr: "" } : { ok: false, stdout: "", stderr: "Error: No MCP server named 'osen' found." };
+      }
+      if (args[1] === "add") { const [command = "", ...rest] = args.slice(4); transport = { type: "stdio", command, args: rest }; }
+      if (args[1] === "remove") transport = null;
+      return { ok: true, stdout: "", stderr: "" };
+    };
+    const { api } = make({ deps: { hasCommand: (bin: string) => bin === "codex", exec } as ConnectionsOptions["deps"] });
+    const action = api.connect("codex");
+    await new Promise((r) => setTimeout(r, 10));
+    const [, v] = await Promise.all([action, api.view()]);
+    expect(v.clients.find((c) => c.client === "codex")?.state).toBe("connected");
   });
 });

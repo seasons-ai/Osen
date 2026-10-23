@@ -184,7 +184,7 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
   for (const { id, title } of CLIENTS) {
     const desktop = id === "claude-desktop";
     const cmd: ServerCommand = { command: desktop ? deps.nodePath ?? process.execPath : "node", args: [main] };
-    const st = status(id, cmd, cdeps);
+    const st = await status(id, cmd, cdeps);
     if (st.state === "not_installed") { deps.out(m.notFound(title)); continue; }
     found++;
     const problemsBefore = problems;
@@ -242,10 +242,10 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
     if (st.state === "corrupt") { mismatch(vLine, st); continue; }
     if (un) {
       if (st.state === "not_connected") vLine(m.notInstalled);
-      else if (st.state === "connected") done(disconnect(id, cmd, cdeps, { dryRun: dry }));
+      else if (st.state === "connected") done(await disconnect(id, cmd, cdeps, { dryRun: dry }));
       else mismatch(vLine, st);
     } else if (st.state === "connected") vLine(m.alreadyInstalled);
-    else if (st.state === "not_connected") done(connect(id, cmd, cdeps, { dryRun: dry }));
+    else if (st.state === "not_connected") done(await connect(id, cmd, cdeps, { dryRun: dry }));
     else mismatch(vLine, st);
 
     // legacy model-council entries: removed on install only if osen was set up for the agent without mismatches
@@ -260,9 +260,9 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
     }
     const lvLine = (act: string) => deps.out(`${title} · ${m.server} ${LEGACY_NAME} · ${act} · ${st.file} · node ${main}`);
     const lopts = { name: LEGACY_NAME, dryRun: dry };
-    const ls = status(id, cmd, cdeps, lopts);
+    const ls = await status(id, cmd, cdeps, lopts);
     if (ls.state === "connected") {
-      const r = disconnect(id, cmd, cdeps, lopts);
+      const r = await disconnect(id, cmd, cdeps, lopts);
       if (r.ok) { changed = true; lvLine(will(m.willRemove, m.removed)); } else fail(lvLine, r);
     } else if (ls.state === "corrupt" || ls.state === "foreign" || ls.state === "stale_path") {
       if (ls.state === "corrupt") bad(lvLine, reasonText(m, ls.reason!, ls.file));

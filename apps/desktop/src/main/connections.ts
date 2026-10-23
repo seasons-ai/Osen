@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
@@ -69,16 +69,23 @@ export function createConnections(o: ConnectionsOptions) {
       home,
       desktopApps: apps,
       hasCommand: o.deps?.hasCommand ?? ((bin: Bin) => find(bin) !== null),
-      exec: o.deps?.exec ?? ((bin, args) => {
+      exec: o.deps?.exec ?? (async (bin, args) => {
         const abs = find(bin);
         if (!abs) return { ok: false, stdout: "", stderr: `${bin}: not found in PATH` };
+        let timer: NodeJS.Timeout | undefined;
         try {
-          const stdout = execFileSync(abs, args, { env: { ...o.env, HOME: home, PATH: path } as NodeJS.ProcessEnv, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 });
-          return { ok: true, stdout, stderr: "" };
+          const pending = run(abs, args, { env: { ...o.env, HOME: home, PATH: path } as NodeJS.ProcessEnv, encoding: "utf8", timeout: 20_000 });
+          pending.child.stdin?.end();
+          // execFile settles on the child's close: a CLI that ignores SIGTERM would hold the serial chain forever, so bound the wait
+          const late = new Promise<null>((r) => { timer = setTimeout(() => r(null), 21_000); timer.unref(); });
+          const done = await Promise.race([pending, late]);
+          if (!done) { pending.child.kill("SIGKILL"); pending.child.stdout?.destroy(); pending.child.stderr?.destroy(); pending.catch(() => {}); return { ok: false, stdout: "", stderr: `${bin}: no answer within 20 s` }; }
+          return { ok: true, stdout: done.stdout, stderr: "" };
         } catch (e) {
-          const x = e as { stdout?: string; stderr?: string; message: string };
-          return { ok: false, stdout: String(x.stdout ?? ""), stderr: String(x.stderr ?? x.message) };
-        }
+          const x = e as { stdout?: string; stderr?: string; message: string; killed?: boolean; code?: unknown };
+          // killed without an error code = the time limit (maxBuffer also kills, but sets a code); its output is empty: name the limit so the row has a reason
+          return { ok: false, stdout: String(x.stdout ?? ""), stderr: x.killed && x.code == null ? `${bin}: no answer within 20 s` : String(x.stderr ?? x.message) };
+        } finally { clearTimeout(timer); }
       }),
     };
     return { deps, path };
@@ -86,11 +93,11 @@ export function createConnections(o: ConnectionsOptions) {
 
   const commandOptions = () => ({ home, wrapper: o.councilWrapper ?? NO_WRAPPER, env: o.env, ...(o.shell ? { shell: o.shell } : {}), ...(o.timeoutMs ? { timeoutMs: o.timeoutMs } : {}), ...(o.language ? { language: o.language() } : {}) });
 
-  const clientView = (id: ClientId, deps: ConnectDeps): ClientStatusView => {
+  const clientView = async (id: ClientId, deps: ConnectDeps): Promise<ClientStatusView> => {
     const file = settingsFile(id, home);
     const entryKey = file.endsWith(".toml") ? "mcp_servers.osen" : "mcpServers.osen";
     try {
-      const s = status(id, o.serverCommand ?? NO_COMMAND, deps);
+      const s = await status(id, o.serverCommand ?? NO_COMMAND, deps);
       return { client: id, state: s.state, file: s.file, entryKey, entry: s.entry ?? null, reason: s.reason ?? null };
     } catch (e) {
       return { client: id, state: "error", file, entryKey, entry: null, reason: { code: "exception", detail: e instanceof Error ? e.message : String(e) } };
@@ -104,10 +111,19 @@ export function createConnections(o: ConnectionsOptions) {
     } catch (e) {
       command = { state: "error", link: join(home, ".local", "bin", "council"), reason: e instanceof Error ? e.message : String(e) };
     }
-    return { clients: CLIENTS.map((id) => clientView(id, deps)), command, serverCommand: o.serverCommand };
+    return { clients: await Promise.all(CLIENTS.map((id) => clientView(id, deps))), command, serverCommand: o.serverCommand };
   };
 
-  const view = async (): Promise<ConnectionsView> => viewWith((await makeDeps()).deps);
+  // view and client actions run one at a time, so a view never reads the state before a running action wrote it.
+  // A failed operation rejects its own caller only; the chain keeps going.
+  let queue: Promise<unknown> = Promise.resolve();
+  const serial = <T>(fn: () => Promise<T>): Promise<T> => {
+    const next = queue.then(fn, fn);
+    queue = next.catch(() => undefined);
+    return next;
+  };
+
+  const view = (): Promise<ConnectionsView> => serial(async () => viewWith((await makeDeps()).deps));
 
   const known = (id: unknown, action: string): ClientId => {
     if (typeof id === "string" && (CLIENTS as readonly string[]).includes(id)) return id as ClientId;
@@ -117,16 +133,18 @@ export function createConnections(o: ConnectionsOptions) {
 
   const act = (action: Action) => async (raw: unknown): Promise<ClientActionReply> => {
     const id = known(raw, action);
-    const { deps } = await makeDeps();
-    let result: ClientActionReply["result"];
-    if (!o.serverCommand) {
-      result = { ok: false, client: id, refusal: "no_server_command", state: clientView(id, deps).state };
-    } else {
-      result = ACTIONS[action](id, o.serverCommand, deps);
-    }
-    const code = !result.ok && "reason" in result && result.reason ? ` reason=${result.reason.code}` : "";
-    logger.info(`Connections: ${action} ${id} -> ${result.ok ? `ok changed=${result.changed} state=${result.state}` : `refused ${result.refusal} state=${result.state}${code}`}`);
-    return { result, view: await viewWith(deps) };
+    return serial(async () => {
+      const { deps } = await makeDeps();
+      let result: ClientActionReply["result"];
+      if (!o.serverCommand) {
+        result = { ok: false, client: id, refusal: "no_server_command", state: (await clientView(id, deps)).state };
+      } else {
+        result = await ACTIONS[action](id, o.serverCommand, deps);
+      }
+      const code = !result.ok && "reason" in result && result.reason ? ` reason=${result.reason.code}` : "";
+      logger.info(`Connections: ${action} ${id} -> ${result.ok ? `ok changed=${result.changed} state=${result.state}` : `refused ${result.refusal} state=${result.state}${code}`}`);
+      return { result, view: await viewWith(deps) };
+    });
   };
 
   return {
@@ -138,7 +156,7 @@ export function createConnections(o: ConnectionsOptions) {
       const id = known(raw, "check");
       const { deps, path } = await makeDeps();
       // the RECORDED command is checked, not the one main would write
-      const entry = status(id, o.serverCommand ?? NO_COMMAND, deps).entry ?? null;
+      const entry = (await status(id, o.serverCommand ?? NO_COMMAND, deps)).entry ?? null;
       const r = await checkConnection(entry, { extraEnv: { PATH: path } });
       logger.info(`Connections: check ${id} -> ${r.ok ? `ok tools=${r.tools.length} ms=${r.durationMs}` : `${r.reason} ms=${r.durationMs}`}`);
       return r;
