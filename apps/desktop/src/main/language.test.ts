@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getProcessLanguage, setProcessLanguage } from "@model-council/core/i18n";
 import { initialRegistry, resetDiscoveryCache, writeRegistry } from "@model-council/core";
+import { writeExecutable } from "../../../../packages/core/src/executable.testutil.ts";
 import { inertTransition } from "./cli-transition.testutil.ts";
 import { createSettings } from "./settings.ts";
 import type { BridgeEvent } from "../shared/bridge.ts";
@@ -209,8 +210,7 @@ describe("language state: CLI discovery reset", () => {
     dirs.push(dataDir);
     const bin = join(dataDir, "fakebin");
     mkdirSync(bin);
-    writeFileSync(join(bin, "claude"), '#!/bin/sh\necho "9.9.9 (fake)"\n');
-    chmodSync(join(bin, "claude"), 0o755);
+    writeExecutable(join(bin, "claude"), '#!/bin/sh\necho "9.9.9 (fake)"\n');
     const base = initialRegistry(["claude", "codex"]);
     writeRegistry(dataDir, { ...base, providers: base.providers.map((p) => (p.id === "codex" ? { ...p, path: "/nonexistent/codex" } : p)) });
     const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: dataDir };

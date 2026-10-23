@@ -7,6 +7,7 @@ import { setProcessLanguage } from "@model-council/core/i18n";
 import { installedPath, pinsPath, readPins, versionDir } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { CandidatesReport } from "../../../../packages/core/src/cli-agents/candidates.ts";
 import { VERIFIED_FILE } from "../../../../packages/core/src/cli-agents/verified-record.ts";
+import { writeExecutable } from "../../../../packages/core/src/executable.testutil.ts";
 import { settings as catalog } from "../shared/messages/settings.ts";
 import { REMINDER_FILE, createCliTransition, readReminder, reminderPath } from "./cli-transition.ts";
 import type { CliTransitionApi, CliTransitionDeps } from "./cli-transition.ts";
@@ -46,8 +47,7 @@ function make(over: Partial<CliTransitionDeps> = {}): CliTransitionApi {
         async fetch(agent, version, d) {
           const exe = join(d, "bin", agent);
           mkdirSync(join(d, "bin"), { recursive: true });
-          writeFileSync(exe, fetchScript.replaceAll("@V", version));
-          chmodSync(exe, 0o755);
+          writeExecutable(exe, fetchScript.replaceAll("@V", version));
           return { executable: exe, source: `fake:${agent}@${version}` };
         },
       },
@@ -452,7 +452,7 @@ describe("Requirement: Срок планового перехода", () => {
     expect(out[0]).toBe(out[1]);
     expect(out[0]).not.toMatch(/[А-Яа-яЁё]/);
     dir = mkdtempSync(join(tmpdir(), "cli-transition-")); // for afterEach
-  });
+  }, 60_000);
 });
 
 describe("Requirement: Переход и откат из карточки", () => {

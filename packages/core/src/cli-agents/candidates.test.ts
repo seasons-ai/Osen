@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeExecutable } from "../executable.testutil.ts";
 import { setProcessLanguage } from "../i18n/process-language.ts";
 import { ReleaseListError, CANDIDATES_DIR, CANDIDATE_LIMIT, candidatesJson, checkCandidate, checkCandidates } from "./candidates.ts";
 import type { CandidateDeps } from "./candidates.ts";
@@ -447,15 +448,16 @@ describe("Команда cli candidates: прерывание, потомки п
       async fetch(_agent, version, d) {
         const exe = join(d, "bin", "codex");
         mkdirSync(join(d, "bin"), { recursive: true });
-        writeFileSync(exe, `#!/bin/sh\ncase "$1" in --version) echo "codex-cli ${version}";; *) sleep 15 & echo $! > ${pidfile}; wait;; esac\n`);
-        chmodSync(exe, 0o755);
+        writeExecutable(exe, `#!/bin/sh\ncase "$1" in --version) echo "codex-cli ${version}";; *) sleep 15 & echo $! > ${pidfile}; wait;; esac\n`);
         return { executable: exe, source: `fake:codex@${version}` };
       },
     };
     delete deps.run; // the real runner
     const started = Date.now();
     const p = checkCandidates(dir, ["codex"], deps);
-    while (!(existsSync(pidfile) && readFileSync(pidfile, "utf8").trim()) && Date.now() - started < 8000) await new Promise((r) => setTimeout(r, 25));
+    const pidWritten = () => existsSync(pidfile) && readFileSync(pidfile, "utf8").trim() !== "";
+    while (!pidWritten() && Date.now() - started < 20_000) await new Promise((r) => setTimeout(r, 25));
+    if (!pidWritten()) throw new Error("waited 20000 ms for: help child pid written");
     const pid = Number(readFileSync(pidfile, "utf8").trim());
     try {
       const abortedAt = Date.now();
@@ -468,7 +470,7 @@ describe("Команда cli candidates: прерывание, потомки п
       expect(alive(pid)).toBe(false);
       expect(existsSync(join(dir, CANDIDATES_DIR))).toBe(false);
     } finally { try { process.kill(pid, "SIGKILL"); } catch {} }
-  }, 20_000);
+  }, 60_000);
 });
 
 describe("Временные установки кандидатов: Две проверки одновременно", () => {

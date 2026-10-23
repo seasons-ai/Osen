@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliLocation } from "../cli-agents/discovery.ts";
 import { FAKE_MODELS, startFakeServer } from "../http/fake-server.ts";
 import type { FakeServer } from "../http/fake-server.ts";
+import { writeExecutable } from "../executable.testutil.ts";
 import { configPath } from "./config.ts";
 import type { CliProvider, HttpProvider, Provider, Registry } from "./config.ts";
 import { ensureRegistry, inspectProvider, inspectProviders } from "./providers.ts";
@@ -23,9 +24,7 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
 function stub(name: string, body: string): string {
   const p = join(dir, name);
-  writeFileSync(p, `#!/bin/sh\n${body}\n`);
-  chmodSync(p, 0o755);
-  return p;
+  return writeExecutable(p, `#!/bin/sh\n${body}\n`);
 }
 function fakeClaude(o: { version?: string; helpFile?: string; helpFails?: boolean } = {}) {
   const help = o.helpFails ? "exit 1" : `/bin/cat '${o.helpFile ?? fixture("claude-2.1.288-help.txt")}'`;

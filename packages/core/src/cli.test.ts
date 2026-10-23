@@ -13,6 +13,7 @@ import { configPath, initialRegistry } from "./registry/config.ts";
 import { createHash } from "node:crypto";
 import { makeEncryptedPdf, makePdf } from "./pdf/fixture.ts";
 import { createSession } from "./engine.ts";
+import { writeExecutable } from "./executable.testutil.ts";
 import { createScriptedDriver, readScenario } from "./participants/scripted.ts";
 import { resolveDataDir } from "./store/data-dir.ts";
 import { runStoredSession } from "./store/run.ts";
@@ -413,7 +414,7 @@ function cliStub(agent: "claude" | "codex", o: { help?: string } = {}) {
   writeFileSync(join(root, "amend"), amend);
   writeFileSync(join(root, "agree"), agree);
   const path = join(root, agent);
-  writeFileSync(path, `#!/bin/sh
+  writeExecutable(path, `#!/bin/sh
 D="$(dirname "$0")"
 case "$1" in
   --version) echo '${agent === "claude" ? "2.1.288 (Claude Code)" : "codex-cli 0.159.2"}'; exit 0;;
@@ -426,7 +427,6 @@ cat > "$D/stdin"
 n=$(cat "$D/count" 2>/dev/null || echo 0); echo $((n+1)) > "$D/count"
 if [ "$n" = 0 ] && [ -s "$D/amend" ]; then cat "$D/amend"; else cat "$D/agree"; fi
 `);
-  chmodSync(path, 0o755);
   const loc = (extra: Partial<CliLocation> = {}) => async (a: "claude" | "codex"): Promise<CliLocation> =>
     a === agent ? { agent, found: true, path, version: agent === "claude" ? "2.1.288" : "0.159.2", searchPath: process.env.PATH ?? "", ...extra } : { agent: a, found: false, searchPath: "", reason: `Команда ${a} не найдена` };
   return { root, path, loc, file: (n: string) => join(root, n) };
@@ -2642,9 +2642,10 @@ describe("run-prepared: the launch deadline is rechecked after slow provider che
       writeFileSync(ownerFile, JSON.stringify({ text: "old" }));
       writeFileSync(stopRequestPath(home, "f1"), "x\n");
       const before = readFileSync(eventsPath(home, "f1"));
+      const stub = cliStub("claude"); // written (and warmed) before the 5 s deadline starts
       const deadline = new Date(Date.now() + 5000).toISOString();
       const file = launch(home, scenario, deadline);
-      const r = await run(["run-prepared", file], { env: dev(home), inspectDeps: deps(cliStub("claude"), home, deadline, true) });
+      const r = await run(["run-prepared", file], { env: dev(home), inspectDeps: deps(stub, home, deadline, true) });
       expect(slept.under, "the slow check under the lock was reached before the deadline").toBe(true);
       expect(r.code).not.toBe(0);
       expect(JSON.parse(r.err.split("\n")[0]!)).toEqual({ code: "launch_expired", message: cliMessages().launchExpired(deadline) });

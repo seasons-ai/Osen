@@ -1,8 +1,9 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { main } from "./cli.ts";
+import { writeExecutable } from "./executable.testutil.ts";
 import { pinsPath } from "./cli-agents/pins.ts";
 import type { PackageSource } from "./cli-agents/pins.ts";
 import type { VerifiedEntry, VerifiedRecord } from "./cli-agents/verified-record.ts";
@@ -24,8 +25,7 @@ const source: PackageSource = {
     const bin = join(dir, "node_modules", "pkg", "bin");
     mkdirSync(bin, { recursive: true });
     const exe = join(bin, agent);
-    writeFileSync(exe, `#!/bin/sh\necho "${version} (Claude Code)"\n`);
-    chmodSync(exe, 0o755);
+    writeExecutable(exe, `#!/bin/sh\necho "${version} (Claude Code)"\n`);
     return { executable: exe, source: `fake:${agent}@${version}` };
   },
 };
