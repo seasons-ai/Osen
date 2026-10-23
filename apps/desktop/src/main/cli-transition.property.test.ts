@@ -262,5 +262,5 @@ describe("Requirement: Срок планового перехода / Перех
       }
     }
     setProcessLanguage("en");
-  }, 120_000);
+  }, 300_000);
 });

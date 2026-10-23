@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger, ProviderStatus } from "@model-council/core";
 import { writeExecutable } from "../../../../packages/core/src/executable.testutil.ts";

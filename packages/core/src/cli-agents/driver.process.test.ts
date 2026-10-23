@@ -54,9 +54,10 @@ async function expectRejected(s: Stub): Promise<ParticipantCallError> {
   return e;
 }
 
-const waitFor = async (cond: () => boolean, ceilingMs = 20_000): Promise<boolean> => {
+const waitFor = async (what: string, cond: () => boolean, ceilingMs = 20_000): Promise<boolean> => {
   for (let t = 0; t < ceilingMs; t += 50) { if (cond()) return true; await new Promise((r) => setTimeout(r, 50)); }
-  return cond();
+  if (!cond()) throw new Error(`waited ${ceilingMs} ms for: ${what}`);
+  return true;
 };
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const pidOf = (s: Stub, name: string) => Number(readFileSync(s.proto(name), "utf8"));
@@ -88,12 +89,12 @@ describe("Stub processes in contract checks", () => {
     const s = stub("claude", { sleep: 30 });
     const ac = new AbortController();
     const { p, chunks } = start(s, ac.signal);
-    expect(await waitFor(() => s.has("ls"))).toBe(true);
+    expect(await waitFor("stub started", () => s.has("ls"))).toBe(true);
     ac.abort();
     const e = await rejection(p);
     expect(e.kind).toBe("timeout");
     expect(chunks).toEqual([]);
-    expect(await waitFor(() => !alive(pidOf(s, "pid")))).toBe(true);
+    expect(await waitFor("stub gone", () => !alive(pidOf(s, "pid")))).toBe(true);
     expect(existsSync(turnDirOf(s))).toBe(false);
   }, 60_000);
 
@@ -101,12 +102,12 @@ describe("Stub processes in contract checks", () => {
     const s = stub("claude", { sleep: 30, child: true });
     const ac = new AbortController();
     const { p } = start(s, ac.signal);
-    expect(await waitFor(() => s.has("ls") && s.has("child"))).toBe(true);
+    expect(await waitFor("stub and child started", () => s.has("ls") && s.has("child"))).toBe(true);
     const [pid, child] = [pidOf(s, "pid"), pidOf(s, "child")];
     expect(alive(child)).toBe(true);
     ac.abort();
     await rejection(p);
-    expect(await waitFor(() => !alive(pid) && !alive(child))).toBe(true);
+    expect(await waitFor("stub and child gone", () => !alive(pid) && !alive(child))).toBe(true);
     expect(existsSync(turnDirOf(s))).toBe(false);
   }, 60_000);
 
@@ -114,12 +115,12 @@ describe("Stub processes in contract checks", () => {
     const s = stub("claude", { sleep: 30, child: "ignores-term" });
     const ac = new AbortController();
     const { p } = start(s, ac.signal);
-    expect(await waitFor(() => s.has("ls") && s.has("child") && readFileSync(s.proto("child"), "utf8").trim() !== "")).toBe(true);
+    expect(await waitFor("stub and child pid written", () => s.has("ls") && s.has("child") && readFileSync(s.proto("child"), "utf8").trim() !== "")).toBe(true);
     const [pid, child] = [pidOf(s, "pid"), pidOf(s, "child")];
     try {
       ac.abort();
       await rejection(p);
-      expect(await waitFor(() => !alive(pid) && !alive(child))).toBe(true);
+      expect(await waitFor("stub and child gone", () => !alive(pid) && !alive(child))).toBe(true);
     } finally { try { process.kill(child, "SIGKILL"); } catch { /* already gone */ } }
   }, 60_000);
 });

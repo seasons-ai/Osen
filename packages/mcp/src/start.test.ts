@@ -1,4 +1,4 @@
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -110,7 +110,8 @@ describe("council_start", () => {
   it("2. topic only: participants and limit from the registry, neutral frame", async () => {
     const dataDir = tmp();
     const inspectDeps = { locate: cliStub("claude"), listModels: async () => ({ models: [], confirmed: true }) };
-    const both = async (a: "claude" | "codex") => (a === "claude" ? inspectDeps.locate(a) : cliStub("codex")(a));
+    const codex = cliStub("codex");
+    const both = async (a: "claude" | "codex") => (a === "claude" ? inspectDeps.locate(a) : codex(a));
     const deps = { ...inspectDeps, locate: both };
     // the CLI stubs cannot be handed to a separate process: the executor runs in this one
     const ctx = ctxOf({ dataDir, inspectDeps: deps, spawnExecutor: async (file, errPath) => main(["run-prepared", file], { stdout: () => {}, stderr: (t) => appendFileSync(errPath, t), env: { COUNCIL_HOME: dataDir }, inspectDeps: deps }) });
