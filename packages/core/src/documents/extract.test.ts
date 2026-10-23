@@ -27,8 +27,8 @@ afterEach(() => {
 });
 
 describe("Limits and reasons", () => {
-  it("constants and twelve reason wordings", () => {
-    expect(DOC_LIMITS).toMatchObject({ bytes: 104857600, ms: 30000, rssBytes: 536870912, chars: 20000000, parts: 10000, unpackedBytes: 536870912, ratio: 200 });
+  it("constants and seventeen reason wordings", () => {
+    expect(DOC_LIMITS).toMatchObject({ bytes: 104857600, ms: 30000, rssBytes: 536870912, chars: 20000000, parts: 10000, unpackedBytes: 536870912, ratio: 200, cells: 1000000 });
     const reasons: Record<DocFailure, string> = {
       bytes: "документ больше 100 МиБ",
       timeout: "извлечение текста документа дольше 30 секунд",
@@ -37,14 +37,21 @@ describe("Limits and reasons", () => {
       zip_parts: "в документе больше 10000 частей",
       zip_size: "документ распаковывается больше чем в 512 МиБ",
       zip_ratio: "часть документа сжата сильнее чем в 200 раз",
+      cells: "в таблице больше 1000000 ячеек",
       encrypted: "документ зашифрован — пароль не запрашивается",
       damaged: "документ повреждён",
       no_text: "в документе нет текста",
       unsupported: "формат документа не поддерживается",
       failed: "не удалось извлечь текст документа — ошибка запуска",
+      textutil_unavailable: "не удалось извлечь текст — системная утилита textutil недоступна",
+      odf_kind: "формат не поддерживается — OpenDocument",
+      drm: "книга защищена DRM — содержимое недоступно",
+      kind: "двоичный файл неизвестного формата",
     };
     for (const [code, text] of Object.entries(reasons)) expect(documentReason({ code: code as DocFailure })).toBe(text);
     expect(documentReason({ code: "failed", detail: "exit 3" })).toBe("не удалось извлечь текст документа — exit 3");
+    expect(documentReason({ code: "damaged", detail: "OEBPS/c1.xhtml" })).toBe("документ повреждён — OEBPS/c1.xhtml");
+    expect(documentReason({ code: "odf_kind", detail: "graphics" })).toBe("формат не поддерживается — рисунок OpenDocument");
   });
 });
 
@@ -134,6 +141,8 @@ describe("Parent safeguard", () => {
     setDocumentExtractorRuntime({ script: pdfData("child-exit3.ts") });
     expect(extractDocumentText(docx)).toEqual({ ok: false, code: "failed", detail: "exit 3" });
     expect(documentReason({ code: "failed", detail: "exit 3" })).toBe("не удалось извлечь текст документа — exit 3");
+    expect(documentReason({ code: "damaged", detail: "OEBPS/c1.xhtml" })).toBe("документ повреждён — OEBPS/c1.xhtml");
+    expect(documentReason({ code: "odf_kind", detail: "graphics" })).toBe("формат не поддерживается — рисунок OpenDocument");
   }, SLOW);
 
   const supervise = (extra: object, worker: string, env: Record<string, string> = {}) => {

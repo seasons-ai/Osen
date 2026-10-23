@@ -16,6 +16,7 @@ import { TURN_FIXTURE_DIR, anonymizeTurnOutput, findPersonalData, listTurnFixtur
 import type { CliAgent, CliRuntime } from "../../src/cli-agents/types.ts";
 import { collectSessionMaterials } from "../../src/materials.ts";
 import { createSession } from "../../src/engine.ts";
+import { setOcrRuntime } from "../../src/ocr/run.ts";
 import { buildTurnPrompt } from "../../src/protocol/context.ts";
 import { foldEvents } from "../../src/protocol/fold.ts";
 import { inspectProvider } from "../../src/registry/providers.ts";
@@ -143,6 +144,8 @@ async function main(argv: string[]): Promise<number> {
   mkdirSync(outDir, { recursive: true });
 
   const agents: { agent: CliAgent; model: string }[] = [{ agent: "claude", model: "haiku" }, { agent: "codex", model: "default" }];
+  // the material only builds a prompt of a realistic size: images of the repository root are skipped as "no helper" instead of starting osen-ocr for each (change 217)
+  setOcrRuntime({ helper: join(work, "no-ocr-helper") });
   const { prompt, note } = buildPrompt(agents.map((a) => ({ providerId: a.agent, model: a.model })), num(values["max-tokens"]));
   console.log(`mode: ${stub ? "stub" : "real"}; ${note}; prompt ${prompt.length} chars; raw output folder: ${rawDir}`);
 

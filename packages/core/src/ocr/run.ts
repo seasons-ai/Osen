@@ -10,7 +10,10 @@ export const OCR_LIMITS = { bytes: 50 * 2 ** 20, pixels: 100_000_000, ms: 30_000
 
 export type OcrFailure = "missing" | "start" | "bytes" | "pixels" | "damaged" | "no_text" | "timeout" | "memory" | "chars" | "failed";
 export type OcrResult = { ok: true; text: string } | { ok: false; code: OcrFailure; detail?: string };
-export interface OcrRequest { mode: "image"; ms: number; rssBytes: number }
+export type OcrPdfResult = { ok: true; pages: { n: number; text: string }[] } | { ok: false; code: OcrFailure | "page_timeout"; detail?: string };
+export interface OcrImageRequest { mode: "image"; ms: number; rssBytes: number }
+export interface OcrPdfRequest { mode: "pdf"; pages: number[]; pageMs: number; ms: number; rssBytes: number }
+export type OcrRequest = OcrImageRequest | OcrPdfRequest;
 
 // No network, no file writes; reading is open because the system frameworks of Vision live on disk.
 const PROFILE = "(version 1)(allow default)(deny network*)(deny file-write*)";
@@ -29,7 +32,9 @@ function helperPath(): string {
 }
 
 /** The only launch point of the helper: empty environment, no file paths in arguments, bytes on stdin. */
-export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult {
+export function runOcrHelper(request: OcrImageRequest, bytes: Uint8Array): OcrResult;
+export function runOcrHelper(request: OcrPdfRequest, bytes: Uint8Array): OcrPdfResult;
+export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult | OcrPdfResult {
   const helper = helperPath();
   if (!existsSync(helper)) return { ok: false, code: "missing" };
   // ponytail: a synchronous call holds the event loop for up to ms + 2 s per image; an asynchronous collection is separate work, if images become heavy.
@@ -41,7 +46,7 @@ export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult 
   if (code === "ETIMEDOUT") return { ok: false, code: "timeout" };
   if (code === "ENOBUFS") return { ok: false, code: "chars" };
   if (r.error) return { ok: false, code: "start" };
-  let reply: { ok?: unknown; lines?: unknown; code?: unknown } | undefined;
+  let reply: { ok?: unknown; lines?: unknown; pages?: unknown; code?: unknown } | undefined;
   try {
     const parsed: unknown = JSON.parse(r.stdout.toString("utf8"));
     if (typeof parsed === "object" && parsed !== null && typeof (parsed as { ok?: unknown }).ok === "boolean") reply = parsed;
@@ -49,6 +54,21 @@ export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult 
   // a helper killed by a signal (crash) was started: its reason is a failure, not a launch error
   if (!reply && r.signal) return { ok: false, code: "failed", detail: r.signal };
   if (!reply) return r.status !== 0 ? { ok: false, code: "start" } : { ok: false, code: "failed", detail: materialsMessages().docBadReply };
+  if (request.mode === "pdf") {
+    if (reply.ok === true) {
+      if (!Array.isArray(reply.pages)) return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
+      const raw = reply.pages as ({ n?: unknown; lines?: unknown } | null)[];
+      // a malformed page would become silently empty: the whole reply is refused instead
+      const valid = (l: unknown): l is OcrLine => typeof l === "object" && l !== null && typeof (l as OcrLine).t === "string";
+      if (!raw.every((p) => typeof p?.n === "number" && Array.isArray(p.lines) && p.lines.every(valid))) {
+        return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
+      }
+      return { ok: true, pages: raw.map((p) => ({ n: p!.n as number, text: orderLines(p!.lines as OcrLine[]) })) };
+    }
+    const c = typeof reply.code === "string" ? reply.code : "";
+    if (c === "damaged" || c === "no_text" || c === "timeout" || c === "memory" || c === "page_timeout") return { ok: false, code: c };
+    return { ok: false, code: "failed", detail: c || materialsMessages().docBadReply };
+  }
   if (reply.ok === true && Array.isArray(reply.lines)) {
     const text = orderLines(reply.lines as OcrLine[]);
     if (text.length > DOC_LIMITS.chars) return { ok: false, code: "chars" };

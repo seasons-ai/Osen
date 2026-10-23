@@ -1,4 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { materialsMessages } from "@model-council/core";
+import { sessionSetup } from "../../shared/messages/session-setup.ts";
 import { afterEach } from "vitest";
 import { previewTime } from "./setup.ts";
 import { formatDate, setProcessLanguage } from "@model-council/core/i18n";
@@ -780,5 +784,17 @@ describe("Numbers, dates and plural forms of the preparation screens by language
     expect(materialsLeftHint(mv(1, 1, 21), "en")).toContain("within the limit of 21 characters.");
     expect([0, 1, 2, 21].map((n) => materialsFolderLine({ files: 1, chars: n }, "en").split(" — ")[0])).toEqual(["Folder: 1 file, 0 characters", "Folder: 1 file, 1 character", "Folder: 1 file, 2 characters", "Folder: 1 file, 21 characters"]);
     expect([0, 1, 2, 21].map((n) => setupMessages("en").draftsNote(1, "X", n).split("; ")[1])).toEqual(["the phase adds up to 0 calls", "the phase adds up to 1 call", "the phase adds up to 2 calls", "the phase adds up to 21 calls"]);
+  });
+});
+
+describe("one list of supported material formats", () => {
+  const root = join(import.meta.dirname, "../../../../..");
+  it("the catalog list appears verbatim in the skill and in docs/materials.md", () => {
+    expect(readFileSync(join(root, "skill/osen/SKILL.md"), "utf8")).toContain(materialsMessages("en").supportedFormats);
+    expect(readFileSync(join(root, "docs/materials.md"), "utf8")).toContain(materialsMessages("en").supportedFormats);
+  });
+  it("the setup hint names only categories", () => {
+    expect(sessionSetup("ru").materialsNote).toBe("текст файлов, документов, PDF и картинок уходит в каждый ход");
+    expect(sessionSetup("en").materialsNote).toBe("the text of files, documents, PDFs and pictures goes into every turn");
   });
 });

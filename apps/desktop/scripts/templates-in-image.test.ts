@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { createRequire } from "node:module";
-import { appIconLine, bundleIdentityLine, docExtractLine, fuseLine, htmlWorkerLine, missingTemplateFiles } from "./templates-in-image.ts";
+import { appIconLine, bundleIdentityLine, docExtractLine, fuseLine, htmlWorkerLine, missingTemplateFiles, parse5Line } from "./templates-in-image.ts";
 
 const req = createRequire(import.meta.url);
 const { FuseV1Options: F } = req("@electron/fuses");
@@ -55,6 +55,24 @@ it("document extraction: doc-extract.mjs only inside app.asar fails, unpacked (w
   expect(docExtractLine(join(dir, "main"), listing)).toEqual({ ok: false, text: "Document text extraction is unpacked next to app.asar, missing: chunks/zip-x.js" });
   fill(join(dir, "main"), ["chunks/zip-x.js"]);
   expect(docExtractLine(join(dir, "main"), listing)).toEqual({ ok: true, text: "Document text extraction is unpacked next to app.asar" });
+});
+
+it("parse5 boundary: marker in doc-extract through a chunk passes; reachable from index.js or missing from doc-extract fails", () => {
+  const MARK = "abrupt-closing-of-empty-comment";
+  const main = join(dir, "main");
+  fill(main, ["council.mjs", "osen-mcp.mjs", "chunks/html.js"]);
+  writeFileSync(join(main, "doc-extract.mjs"), 'import "./chunks/html.js";\n');
+  writeFileSync(join(main, "chunks/html.js"), `"${MARK}"`);
+  writeFileSync(join(main, "index.js"), 'import "./chunks/other.js";\n');
+  writeFileSync(join(main, "chunks/other.js"), "x");
+  expect(parse5Line(main).ok).toBe(true);
+  writeFileSync(join(main, "chunks/other.js"), 'import "./html.js";\n');
+  const bad = parse5Line(main);
+  expect(bad.ok).toBe(false);
+  expect(bad.text).toContain("reachable from index.js");
+  writeFileSync(join(main, "chunks/other.js"), "x");
+  writeFileSync(join(main, "chunks/html.js"), "x");
+  expect(parse5Line(main).text).toContain("missing from doc-extract.mjs");
 });
 
 const plist = (id: string, name: string) => `<?xml version="1.0" encoding="UTF-8"?>

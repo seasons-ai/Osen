@@ -60,3 +60,16 @@ describe("XML parser", () => {
     }
   });
 });
+
+describe("onClose", () => {
+  it("sees every closed element, self-closing ones too, and drops the ones it accepts", () => {
+    const seen: string[] = [];
+    const root = parseXml("<a>x<b>1</b>y<c/><d><b>2</b></d></a>", (el) => { seen.push(el.name); return el.name === "b" || el.name === "c"; });
+    expect(seen).toEqual(["b", "c", "b", "d", "a"]);
+    expect(root.children).toEqual(["xy", { name: "d", attrs: {}, children: [] }]);
+  });
+
+  it("without the callback the tree is unchanged", () => {
+    expect(parseXml("<a><b/></a>").children).toHaveLength(1);
+  });
+});

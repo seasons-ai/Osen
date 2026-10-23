@@ -36,7 +36,8 @@ function entities(s: string): string {
   return out + s.slice(from);
 }
 
-export function parseXml(text: string): XmlElement {
+// onClose runs when an element is complete (also a self-closing one); returning true drops it from its parent, which keeps big parts streamable.
+export function parseXml(text: string, onClose?: (el: XmlElement) => boolean): XmlElement {
   if (text.includes("<!DOCTYPE") || text.includes("<!ENTITY")) damaged();
   const stack: XmlElement[] = [];
   let root: XmlElement | undefined;
@@ -74,6 +75,7 @@ export function parseXml(text: string): XmlElement {
       if (e < 0) damaged();
       const top = stack.pop();
       if (!top || text.slice(lt + 2, e).trimEnd() !== top.name) damaged();
+      if (onClose?.(top!) && stack.length > 0) stack[stack.length - 1]!.children.pop();
       pos = e + 1;
     } else {
       let i = lt + 1;
@@ -108,7 +110,7 @@ export function parseXml(text: string): XmlElement {
       if (!selfClosing) {
         stack.push(el);
         if (stack.length > MAX_DEPTH) damaged();
-      }
+      } else if (onClose?.(el) && parent) parent.children.pop();
       pos = i + 1;
     }
   }

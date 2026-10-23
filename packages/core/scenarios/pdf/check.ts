@@ -7,20 +7,22 @@ import "../language-ru.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, copyFileSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, ftruncateSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import net from "node:net";
 import { join, resolve } from "node:path";
 import { PDF_LIMITS, extractPdfText, sha256Of } from "../../src/index.ts";
-import { makeEncryptedPdf, makeImageOnlyPdf, makeMalformedPdf, makePdf } from "../../src/pdf/fixture.ts";
+import { makeEncryptedPdf, makeImageOnlyPdf, makeMalformedPdf, makePdf, makeScanPdf } from "../../src/pdf/fixture.ts";
 
 const repo = resolve(import.meta.dirname, "../../../..");
 const EXPECTED = "Первая страница\n\nВторая страница";
 const SECRET = "stand-secret-value";
 const REASON = {
   locked: "PDF зашифрован — пароль не запрашивается",
-  scan: "в PDF нет текстового слоя — распознавание не выполняется",
+  scan: "в PDF не найден текст",
   broken: "PDF повреждён",
+  blank201: "в PDF больше 200 страниц без текстового слоя",
 };
+const MARKER = "HELPER-WAS-LAUNCHED";
 
 function makeFixtures(fx: string) {
   mkdirSync(fx, { recursive: true });
@@ -29,6 +31,10 @@ function makeFixtures(fx: string) {
   w("scan.pdf", makeImageOnlyPdf());
   w("locked.pdf", makeEncryptedPdf());
   w("broken.pdf", makeMalformedPdf());
+  // Real recognition needs bin/osen-ocr-fixture (npm run build:ocr); makeScanPdf throws a clear message when it is missing.
+  w("ocr.pdf", makeScanPdf([["Scan page one"], ["Страница скана два"]]));
+  w("mixed.pdf", makeScanPdf(["Первая страница", ["Scanned middle page"], "Третья страница"]));
+  w("blank201.pdf", makePdf(Array.from({ length: 201 }, () => "")));
   w("pages2001.pdf", makePdf(Array.from({ length: 2001 }, () => "слово")));
   const fd = openSync(join(fx, "big.pdf"), "w");
   writeSync(fd, "%PDF-");
@@ -39,6 +45,10 @@ function makeFixtures(fx: string) {
   w("proj/broken.pdf", makeMalformedPdf());
   w("proj/scan.pdf", makeImageOnlyPdf());
   w("proj/locked.pdf", makeEncryptedPdf());
+  w("proj/blank201.pdf", makePdf(Array.from({ length: 201 }, () => "")));
+  w("mix6/ocr.pdf", makeScanPdf([["Scan page one"], ["Страница скана два"]]));
+  w("mix6/text.pdf", makePdf(["Первая страница", "Вторая страница"]));
+  w("mix6/note.txt", "Обычная заметка рядом.\n");
   w("proj/.env", `SECRET=${SECRET}\n`);
 }
 
@@ -79,9 +89,9 @@ function proc(command: string, args: string[], env: Record<string, string>): Pro
   return r;
 }
 const cliEnv = { ...baseEnv, COUNCIL_HOME: cliHome };
-const cli = (args: string[]) => proc(process.execPath, [entry, ...args], cliEnv);
+const cli = (args: string[], extra: Record<string, string> = {}) => proc(process.execPath, [entry, ...args], { ...cliEnv, ...extra });
 const dump = (p: Proc) => `\n--- stdout ---\n${p.out}\n--- stderr ---\n${p.err}`;
-async function run(args: string[]) { const p = cli(args); const code = await p.exited; return { code, p }; }
+async function run(args: string[], extra: Record<string, string> = {}) { const p = cli(args, extra); const code = await p.exited; return { code, p }; }
 async function until(what: string, fn: () => unknown, p: Proc, ms = 15000) {
   for (const t0 = Date.now(); Date.now() - t0 < ms; await sleep(50)) if (fn()) return;
   throw new Error(`timed out waiting for: ${what}${dump(p)}`);
@@ -105,6 +115,15 @@ function pair(name: string, marks: string[]): string[] {
     scenario(`${name}-p2`, [1, 2, 3].map((i) => ({ stance: "agree", expectPrompt: m(i) }))),
   ];
 }
+/** Helper stub: drains stdin and prints the given line; the sandbox forbids file writes, so a stub cannot leave traces. */
+function stubHelper(name: string, body: string, mode = 0o755) {
+  const f = join(scen, name);
+  writeFileSync(f, `#!/bin/sh\n${body}\n`);
+  chmodSync(f, mode);
+  return f;
+}
+const printing = (name: string, obj: unknown) => stubHelper(name, `C=$(/bin/cat)\nprintf '%s\\n' '${JSON.stringify(obj)}'`);
+const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const parts = (p: string[]) => ["--participant", p[0]!, "--participant", p[1]!];
 
 const sessionId = (p: Proc) => /^Сессия (\S+) ·/m.exec(p.out)?.[1] ?? assert.fail(`no "Сессия" line${dump(p)}`);
@@ -129,7 +148,7 @@ async function subStand(what: string, script: string, dataDir: string) {
   if (code !== 0) throw new Error(`part "${what}" exited with code ${code}${p.err ? `\n${p.err}` : ""}`);
   const line = lines.find((l) => l.startsWith("RESULT "));
   assert.ok(line, `part "${what}" printed no RESULT`);
-  const res = JSON.parse(line.slice(7)) as { checks: number; sha256: string; chars: number; snapshot: string };
+  const res = JSON.parse(line.slice(7)) as { checks: number; sha256: string; chars: number; snapshot: string; scanSha256: string; scanChars: number; scanSnapshot: string };
   checks += res.checks;
   return res;
 }
@@ -189,12 +208,12 @@ async function main() {
     assert.ok(r.p.err.includes("Материалы не приняты:") && r.p.err.includes(reason), `${f}.pdf: rejection text${dump(r.p)}`);
     assert.equal(journals().length, n, `${f}.pdf: a session appeared`);
   }
-  ok("terminal, explicit locked/scan/broken: code 2, \"Материалы не приняты:\" and its own reason, no new sessions");
+  ok("terminal, explicit locked/scan/broken/blank201 (real helper, 201 blank pages are refused before it starts): code 2, \"Материалы не приняты:\" and its own reason, no new sessions");
   const rf = await run(["--topic", "Папка с PDF", "--attach", join(fx, "proj"), ...parts(pair("t6f", ["Хорошая страница", "Описание проекта"])), "--max-rounds", "3"]);
   assert.equal(rf.code, 0, dump(rf.p));
   assert.match(rf.p.out, /^Материалы: 2, /m, dump(rf.p));
   const skippedText = rf.p.out.slice(rf.p.out.indexOf("Пропущено:"));
-  assert.match(skippedText, /^Пропущено: 4$/m, dump(rf.p));
+  assert.match(skippedText, /^Пропущено: 5$/m, dump(rf.p));
   const skippedLines = skippedText.split("\n").filter((l) => l.startsWith("  "));
   for (const [f, reason] of Object.entries(REASON)) assert.ok(skippedLines.some((l) => l.includes(`proj/${f}.pdf`) && l.includes(reason)), `missing "${f}.pdf — ${reason}":\n${skippedText}`);
   const envLine = skippedLines.find((l) => l.includes("proj/.env"));
@@ -202,7 +221,108 @@ async function main() {
   const idf = sessionId(rf.p);
   const names = (ofType(idf, "session_created")[0]!.session.materials as { name: string }[]).map((m) => m.name);
   assert.ok(names.some((n) => n.endsWith("README.md")) && names.some((n) => n.endsWith("good.pdf")) && names.length === 2, `collected: ${names}`);
-  ok(`terminal, folder: "Пропущено: 4" — three PDFs with their own reasons and "${envLine.trim()}"; README.md and good.pdf collected`);
+  ok(`terminal, folder: "Пропущено: 5" — four PDFs with their own reasons and "${envLine.trim()}"; README.md and good.pdf collected`);
+
+
+  // ---- Scanned PDFs (real osen-ocr unless a stub is named) ----
+  const ocrBytes = new Uint8Array(readFileSync(join(fx, "ocr.pdf")));
+  const rec = extractPdfText(ocrBytes);
+  assert.ok(rec.ok, `real recognition of ocr.pdf failed (run: npm run build:ocr): ${JSON.stringify(rec)}`);
+  const SCAN = rec.text, scanPages = SCAN.split("\n\n");
+  assert.equal(scanPages.length, 2, `pages of the recognized text: ${JSON.stringify(SCAN)}`);
+  assert.ok(norm(scanPages[0]!).includes("scan page one") && norm(scanPages[1]!).includes("страница скана два"), `recognized: ${JSON.stringify(SCAN)}`);
+  const nS = journals().length;
+  const rs1 = await run(["--topic", "Что в скане?", "--attach", join(fx, "ocr.pdf"), ...parts(pair("s1", scanPages)), "--max-rounds", "3"]);
+  assert.equal(rs1.code, 0, `code ${rs1.code}${dump(rs1.p)}`);
+  assert.match(rs1.p.out, new RegExp(`^Материалы: 1, объём ${SCAN.length} символов`, "m"), dump(rs1.p));
+  const ids1 = sessionId(rs1.p);
+  const sm = ofType(ids1, "session_created")[0]!.session.materials[0];
+  assert.ok(String(sm.name).endsWith("ocr.pdf"));
+  assert.deepEqual([sm.chars, sm.sha256], [SCAN.length, sha256Of(SCAN)]);
+  const scanSnap = join(sdir(ids1), "materials", "m1.txt");
+  assert.equal(readFileSync(scanSnap, "utf8"), SCAN, "m1.txt of the scan");
+  assert.ok(ofType(ids1, "turn_completed").length >= 2 && !ofType(ids1, "turn_failed").length, `turns of the scan session${dump(rs1.p)}`);
+  assert.equal(journals().length, nS + 1);
+  ok(`terminal, scan ocr.pdf (real osen-ocr): code 0, "Материалы: 1, объём ${SCAN.length}", two pages joined by an empty line, the journal sha256/chars and m1.txt equal the in-process recognition, turns passed with the recognized pages in the request`);
+
+  // Scan: stop a slow session, delete the source, resume from the snapshot.
+  copyFileSync(join(fx, "ocr.pdf"), join(fx, "ocr-copy.pdf"));
+  const w0 = scanPages[0]!, w1 = scanPages[1]!;
+  const slowScan = [
+    scenario("s1r-p1", [0, 1, 2, 3, 4, 5].map((i) => ({ stance: i < 3 ? "amend" : "agree", solution: i < 3 ? "Предварительное решение." : null, expectPrompt: w0 }))),
+    scenario("s1r-p2", [{ delayMs: 5000, stance: "object", expectPrompt: w1 }, ...[1, 2, 3, 4].map(() => ({ stance: "agree", expectPrompt: w1 }))]),
+  ];
+  const r1r = cli(["--topic", "Что в скане после удаления?", "--attach", join(fx, "ocr-copy.pdf"), ...parts(slowScan), "--max-rounds", "2"]);
+  await until("session line (scan)", () => /^Сессия \S+ ·/m.test(r1r.out), r1r);
+  const id1r = sessionId(r1r);
+  await until("turn_completed of turn 1 (scan)", () => ofType(id1r, "turn_completed").length >= 1, r1r);
+  assert.equal((await run(["stop", id1r])).code, 0);
+  assert.equal(await r1r.exited, 4, `exit code of the stopped scan session${dump(r1r)}`);
+  const h1r = hashTree(join(sdir(id1r), "materials")), sha1r = ofType(id1r, "session_created")[0]!.session.materials[0].sha256;
+  assert.equal(sha1r, sha256Of(SCAN));
+  rmSync(join(fx, "ocr-copy.pdf"));
+  const turns1r = ofType(id1r, "turn_completed").length;
+  const rr = await run(["resume", id1r, "--rounds", "2"]);
+  assert.equal(rr.code, 0, `resume of the scan: code ${rr.code}${dump(rr.p)}`);
+  assert.ok(ofType(id1r, "turn_completed").length > turns1r && !ofType(id1r, "turn_failed").length, `scan resume produced no new turns or has turn_failed${dump(rr.p)}`);
+  assert.deepEqual(hashTree(join(sdir(id1r), "materials")), h1r, "scan snapshot changed");
+  assert.equal(ofType(id1r, "session_created")[0]!.session.materials[0].sha256, sha256Of(SCAN));
+  ok("scan: stopped session (code 4), source deleted, resume: code 0, new turns with the recognized pages in the request (expectPrompt), snapshot hash and sha256 unchanged");
+
+  const nM = journals().length;
+  const rm = await run(["--topic", "Что в смешанном PDF?", "--attach", join(fx, "mixed.pdf"), ...parts(pair("s2", ["Первая страница", "Третья страница"])), "--max-rounds", "3"]);
+  assert.equal(rm.code, 0, dump(rm.p));
+  const mixed = readFileSync(join(sdir(sessionId(rm.p)), "materials", "m1.txt"), "utf8").split("\n\n");
+  assert.equal(mixed.length, 3, JSON.stringify(mixed));
+  assert.equal(mixed[0], "Первая страница");
+  assert.ok(norm(mixed[1]!).includes("scanned middle page"), JSON.stringify(mixed));
+  assert.equal(mixed[2], "Третья страница");
+  assert.equal(journals().length, nM + 1);
+  ok("terminal, mixed.pdf: pages in order 1, 2 (recognized), 3; the text-layer pages are exactly the PDF.js text");
+
+  const launched = printing("launched.sh", { ok: true, pages: [{ n: 1, lines: [{ t: MARKER, x: 0, y: 0, w: 0.5, h: 0.1 }] }] });
+  const withHelper = (helper: string, lang = "ru") => ({ COUNCIL_OCR_HELPER: helper, COUNCIL_LANG: lang });
+  const refuse = async (f: string, reason: string, extra: Record<string, string>, head = "Материалы не приняты:") => {
+    const n = journals().length;
+    const r = await run(["--topic", "t", "--attach", join(fx, f), ...parts(okPair), "--max-rounds", "1"], extra);
+    assert.equal(r.code, 2, `${f}: code ${r.code}${dump(r.p)}`);
+    assert.ok(r.p.err.includes(head) && r.p.err.includes(reason), `${f}: expected «${reason}»${dump(r.p)}`);
+    assert.ok(![r.p.out, r.p.err].some((t) => t.includes("%PDF") || t.includes("Traceback")), `${f}: noise in the output`);
+    assert.equal(journals().length, n, `${f}: a session appeared`);
+  };
+
+  await refuse("scan.pdf", "PDF has no text", { COUNCIL_LANG: "en" }, "Materials not accepted:");
+  ok("terminal, image-only scan.pdf with COUNCIL_LANG=en: code 2, \"Materials not accepted:\", \"PDF has no text\"; no session");
+
+  await refuse("blank201.pdf", REASON.blank201, withHelper(launched));
+  const rf4 = await run(["--topic", "Папка с PDF", "--attach", join(fx, "proj"), ...parts(pair("t4f", ["Хорошая страница"])), "--max-rounds", "3"]);
+  assert.equal(rf4.code, 0, dump(rf4.p));
+  assert.ok(rf4.p.out.split("\n").some((l) => l.includes("proj/blank201.pdf") && l.includes(REASON.blank201)), `folder, blank201:${dump(rf4.p)}`);
+  const names4 = (ofType(sessionId(rf4.p), "session_created")[0]!.session.materials as { name: string }[]).map((m) => m.name);
+  assert.ok(names4.some((n) => n.endsWith("README.md")) && names4.some((n) => n.endsWith("good.pdf")) && names4.length === 2, `folder collected: ${names4}`);
+  ok(`terminal, 201 blank pages with a helper stub that prints ${MARKER}: code 2 «${REASON.blank201}» for the file; in the folder (real helper: the stub would turn the image-only scan into text) it is skipped with that reason; the stub's marker never appears (checked at the end over all output and journals)`);
+
+  await refuse("ocr.pdf", "распознавание текста PDF дольше 5 секунд на страницу", withHelper(printing("page-timeout.sh", { ok: false, code: "page_timeout" })));
+  await refuse("ocr.pdf", "распознавание текста PDF дольше 300 секунд", withHelper(printing("timeout.sh", { ok: false, code: "timeout" })));
+  ok("terminal, helper stubs answering page_timeout and timeout: code 2 with «дольше 5 секунд на страницу» and «дольше 300 секунд», no session, no partial text");
+
+  const missing = join(work, "no-such-helper");
+  const noExec = stubHelper("no-exec.sh", "exit 0", 0o644);
+  await refuse("ocr.pdf", "распознавание текста недоступно — нет помощника osen-ocr", withHelper(missing));
+  await refuse("ocr.pdf", "text recognition is unavailable — the osen-ocr helper is missing", withHelper(missing, "en"), "Materials not accepted:");
+  await refuse("ocr.pdf", "распознавание текста недоступно — не удалось запустить помощника osen-ocr", withHelper(noExec));
+  for (const [what, helper, reason] of [["missing", missing, "нет помощника osen-ocr"], ["without the exec bit", noExec, "не удалось запустить помощника osen-ocr"]] as const) {
+    const r6 = await run(["--topic", "Папка со сканом", "--attach", join(fx, "mix6"), ...parts(pair(`t6${what[0]}`, ["Первая страница", "Обычная заметка"])), "--max-rounds", "3"], withHelper(helper));
+    assert.equal(r6.code, 0, dump(r6.p));
+    assert.match(r6.p.out, /^Материалы: 2, /m, dump(r6.p));
+    assert.ok(r6.p.out.split("\n").some((l) => l.includes("mix6/ocr.pdf") && l.includes(reason)), `${what}:${dump(r6.p)}`);
+    const names6 = (ofType(sessionId(r6.p), "session_created")[0]!.session.materials as { name: string }[]).map((m) => m.name);
+    assert.ok(names6.some((n) => n.endsWith("text.pdf")) && names6.some((n) => n.endsWith("note.txt")) && names6.length === 2, `${what}: ${names6}`);
+  }
+  ok("terminal, helper missing (ru and en) and a stub without the exec bit: code 2 with the matching reason; in a folder the scan is skipped while the text-layer PDF and the .txt are still read");
+
+  await refuse("locked.pdf", REASON.locked, withHelper(launched));
+  ok(`terminal, locked.pdf with the ${MARKER} stub: «${REASON.locked}», the helper is not reached`);
 
   // ---- 7. Link and script ----
   let connections = 0;
@@ -256,14 +376,43 @@ async function main() {
 
   // ---- 10. Texts without recognition promises ----
   const help = spawnSync(process.execPath, [entry, "--help"], { env: cliEnv, encoding: "utf8" });
-  assert.ok(help.stdout.includes("Из PDF берётся текстовый слой") && help.stdout.includes("распознавание изображений не выполняется"), `council --help:\n${help.stdout.slice(0, 300)}`);
-  ok("council --help: \"Из PDF берётся текстовый слой\" and \"распознавание изображений не выполняется\"");
+  assert.ok(help.stdout.includes("Из PDF берётся текстовый слой") && help.stdout.includes("PDF в том числе сканы"), `council --help:\n${help.stdout.slice(0, 300)}`);
+  ok("council --help: \"Из PDF берётся текстовый слой\" and \"PDF в том числе сканы\"");
 
   // ---- 11. Built extractor ----
   const built = join(repo, "apps/desktop/out/main/pdf-extract.mjs");
   const electron = join(repo, "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron");
   const arg = JSON.stringify({ pages: PDF_LIMITS.pages, chars: PDF_LIMITS.chars, ms: PDF_LIMITS.ms, rssBytes: PDF_LIMITS.rssBytes });
   const textOf = (r: ReturnType<typeof spawnSync>) => { const j = JSON.parse(r.stdout.toString().trim()); return j.ok ? j.text : `REJECTED ${JSON.stringify(j)}`; };
+  // The old refusal reason must be gone from the sources, docs and mockups (the literal is split so this file does not match itself).
+  const OLD = ["в PDF нет", " текстового слоя", " — распознавание не выполняется"].join("");
+  const hits: string[] = [];
+  const walk = (d: string) => {
+    for (const e of readdirSync(d, { withFileTypes: true })) {
+      if (e.name === "node_modules" || e.name === "out" || e.name === "bin" || e.name === "release" || e.name === "dist" || e.name.startsWith(".")) continue;
+      const f = join(d, e.name);
+      if (e.isDirectory()) walk(f);
+      else if (e.isFile() && statSync(f).size < 4 * 2 ** 20 && readFileSync(f, "utf8").includes(OLD)) hits.push(f);
+    }
+  };
+  for (const d of ["packages", "docs", "design"]) if (existsSync(join(repo, d))) walk(join(repo, d));
+  assert.deepEqual(hits, [], "the old «no text layer» reason is still present");
+  ok("the old no-text-layer refusal reason is absent from packages/, docs/, design/");
+  const sourceScan = spawnSync(process.execPath, [join(repo, "packages/core/src/pdf/pdf-extract.ts"), arg], { input: ocrBytes, env: {}, timeout: 30000, maxBuffer: 2 ** 26 });
+  assert.equal(sourceScan.status, 0, sourceScan.stderr.toString());
+  const sourceReply = sourceScan.stdout.toString();
+  const sj = JSON.parse(sourceReply);
+  assert.ok(sj.ok === true && sj.pages === 2 && JSON.stringify(sj.blank) === "[1,2]" && Array.isArray(sj.parts), sourceReply);
+  if (existsSync(built)) {
+    const rbn = spawnSync(process.execPath, [built, arg], { input: ocrBytes, env: {}, timeout: 30000, maxBuffer: 2 ** 26 });
+    assert.equal(rbn.stdout.toString(), sourceReply, "built stage reply ≠ source stage reply for the scan (plain Node)");
+    ok("built pdf-extract.mjs on ocr.pdf, plain Node: the stage reply {ok,pages,parts,blank} equals the source reply byte for byte (recognition itself runs in the main process)");
+    if (existsSync(electron)) {
+      const rbe = spawnSync(electron, [built, arg], { input: ocrBytes, env: { ELECTRON_RUN_AS_NODE: "1" }, timeout: 30000, maxBuffer: 2 ** 26 });
+      assert.equal(rbe.stdout.toString(), sourceReply, "built stage reply ≠ source stage reply for the scan (Electron)");
+      ok("built pdf-extract.mjs on ocr.pdf, Electron with ELECTRON_RUN_AS_NODE=1: same stage reply");
+    }
+  }
   if (existsSync(built)) {
     const rn = spawnSync(process.execPath, [built, arg], { input: bytes, env: {}, timeout: 30000, maxBuffer: 2 ** 26 });
     assert.equal(rn.status, 0, rn.stderr.toString());
@@ -290,10 +439,20 @@ async function main() {
   assert.ok(readFileSync(snap1).equals(readFileSync(mcp.snapshot)) && readFileSync(snap1).equals(readFileSync(desk.snapshot)), "snapshots differ byte by byte");
   ok(`parity: sha256 ${shaExp.slice(0, 12)}… and chars ${EXPECTED.length} are identical in the terminal, MCP and app; three snapshots are byte-equal`);
 
+  const shaScan = sha256Of(SCAN);
+  for (const [what, r] of [["terminal", { scanSha256: sm.sha256, scanChars: sm.chars, scanSnapshot: scanSnap }], ["MCP", mcp], ["app", desk]] as const) {
+    assert.equal(r.scanSha256, shaScan, `${what}: scan sha256 ${r.scanSha256} ≠ ${shaScan}`);
+    assert.equal(r.scanChars, SCAN.length, `${what}: scan chars`);
+    assert.equal(readFileSync(r.scanSnapshot, "utf8"), SCAN, `${what}: scan snapshot ≠ recognized text`);
+  }
+  ok(`parity of the scan: sha256 ${shaScan.slice(0, 12)}… and chars ${SCAN.length} are identical in the terminal, MCP and app; snapshots equal the in-process recognition`);
+
   // ---- Final checks ----
   const secretZones = [...captured, ...allFiles(cliHome).map((f) => readFileSync(f, "utf8"))];
   assert.ok(!secretZones.some((t) => t.includes(SECRET)), "the .env control string was found in the output or files of the terminal part");
   ok("the .env control string is absent from the output, journals, snapshots and app.log of the terminal part");
+  assert.ok(!secretZones.some((t) => t.includes(MARKER)), `${MARKER} reached the output or a journal: a helper stub was launched where it must not be`);
+  ok(`${MARKER} (printed by the stub helper) is absent from all output, journals and snapshots of the terminal part`);
   for (const [f, h] of Object.entries(srcBefore)) assert.equal(sha(readFileSync(f)), h, `${f} changed`);
   ok("source files (PDFs, proj folder) are byte-identical after all parts");
   server.close();
@@ -301,7 +460,7 @@ async function main() {
 }
 
 let failed = false;
-const guard = setTimeout(() => { console.error(`FAILED: the stand did not finish within 180 seconds\nStand left in place: ${work}`); for (const k of kids) k.kill("SIGKILL"); process.exit(1); }, 180000);
+const guard = setTimeout(() => { console.error(`FAILED: the stand did not finish within 300 seconds\nStand left in place: ${work}`); for (const k of kids) k.kill("SIGKILL"); process.exit(1); }, 300000);
 try {
   await main();
   console.log(`Result: all checks passed (${checks})${skips ? `, skipped ${skips}` : ", skipped 0"}`);

@@ -10,6 +10,7 @@ import {
 } from "./extract.ts";
 import { makeEncryptedPdf, makeImageOnlyPdf, makeMalformedPdf, makePdf } from "./fixture.ts";
 import { extractText } from "./pdf-text.ts";
+import type { PdfResult } from "./extract.ts";
 
 const here = import.meta.dirname;
 const data = (name: string): string => join(here, "testdata", name);
@@ -29,7 +30,7 @@ afterEach(() => {
 });
 
 describe("Limits and reasons", () => {
-  it("constants and nine reason wordings", () => {
+  it("constants and sixteen reason wordings", () => {
     expect(PDF_LIMITS).toEqual({ bytes: 104857600, pages: 2000, ms: 30000, rssBytes: 536870912, chars: 20000000 });
     const reasons: Record<PdfFailure, string> = {
       bytes: "PDF больше 100 МиБ",
@@ -39,11 +40,19 @@ describe("Limits and reasons", () => {
       chars: "текст PDF больше 20000000 знаков",
       encrypted: "PDF зашифрован — пароль не запрашивается",
       damaged: "PDF повреждён",
-      no_text: "в PDF нет текстового слоя — распознавание не выполняется",
+      no_text: "в PDF не найден текст",
       failed: "не удалось извлечь текст PDF — ошибка запуска",
+      ocr_pages: "в PDF больше 200 страниц без текстового слоя",
+      ocr_missing: "распознавание текста недоступно — нет помощника osen-ocr",
+      ocr_start: "распознавание текста недоступно — не удалось запустить помощника osen-ocr",
+      ocr_page_timeout: "распознавание текста PDF дольше 5 секунд на страницу",
+      ocr_timeout: "распознавание текста PDF дольше 300 секунд",
+      ocr_memory: "распознавание текста PDF заняло больше 512 МиБ памяти",
+      ocr_failed: "не удалось распознать текст PDF — ответ не разобран",
     };
     for (const [code, text] of Object.entries(reasons)) expect(pdfReason({ code: code as PdfFailure })).toBe(text);
     expect(pdfReason({ code: "failed", detail: "exit 3" })).toBe("не удалось извлечь текст PDF — exit 3");
+    expect(pdfReason({ code: "ocr_failed", detail: "bad_request" })).toBe("не удалось распознать текст PDF — bad_request");
   });
 });
 
@@ -69,22 +78,29 @@ describe("Local PDF text", () => {
     while (sets.length < 70) {
       sets.push(Array.from({ length: 1 + rnd(6) }, () => Array.from({ length: rnd(4) }, line).join("\n")));
     }
-    let skipped = 0;
+    let withText = 0;
     for (const pages of sets) {
       const r = await extractText(makePdf(pages), inProcess);
-      if (pages.every((p) => p === "")) {
-        skipped++;
-        expect(r).toEqual({ ok: false, code: "no_text" });
-        continue;
+      const blank = pages.flatMap((p, i) => (p === "" ? [i + 1] : []));
+      if (blank.length === 0) {
+        withText++;
+        expect(r).toEqual({ ok: true, text: pages.join("\n\n"), pages: pages.length });
+      } else {
+        expect(r).toEqual({ ok: true, pages: pages.length, parts: pages, blank });
       }
-      expect(r.ok && r.text).toBe(pages.join("\n\n"));
     }
-    expect(sets.length - skipped).toBeGreaterThanOrEqual(60);
+    expect(withText).toBeGreaterThanOrEqual(20);
   }, 60_000);
+
+  it("PDF.js stage: blank pages between non-blank ones are numbered, all-blank lists every page", async () => {
+    expect(await extractText(makePdf(["а", "", "в", "", ""]), inProcess)).toEqual({ ok: true, pages: 5, parts: ["а", "", "в", "", ""], blank: [2, 4, 5] });
+    expect(await extractText(makePdf(["", ""]), inProcess)).toEqual({ ok: true, pages: 2, parts: ["", ""], blank: [1, 2] });
+    expect(await extractText(makePdf(["а", "б"]), inProcess)).toEqual({ ok: true, text: "а\n\nб", pages: 2 });
+  }, SLOW);
 });
 
 describe("Refusals", () => {
-  it("encrypted, without a text layer, and damaged PDF", () => {
+  it("encrypted, without text even after recognition, and damaged PDF", () => {
     for (const [make, code] of [[makeEncryptedPdf, "encrypted"], [makeImageOnlyPdf, "no_text"], [makeMalformedPdf, "damaged"]] as const) {
       const bytes = make();
       const copy = bytes.slice();
@@ -132,7 +148,7 @@ describe("Boundaries", () => {
   it("a large response is not truncated", async () => {
     const page = (n: number): string => Array.from({ length: 10 }, (_, i) => `строка ${n}.${i} ${"слово ".repeat(15)}`.trim()).join("\n");
     const pdf = makePdf(Array.from({ length: 400 }, (_, n) => page(n)));
-    const mine = await extractText(pdf.slice(), inProcess);
+    const mine = await extractText(pdf.slice(), inProcess) as PdfResult;
     const r = extractPdfText(pdf);
     expect(r).toMatchObject({ ok: true });
     expect(r.ok && r.text.length).toBeGreaterThan(300_000);

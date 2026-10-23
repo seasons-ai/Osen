@@ -2,11 +2,12 @@ import { spawnSync } from "node:child_process";
 import { fstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { materialsMessages } from "../messages/materials.ts";
+import type { FileKindId } from "./kinds.ts";
 import { DOC_LIMITS, type DocFailure, type DocLimits } from "./limits.ts";
 
 export { DOC_LIMITS, type DocLimits, type DocFailure } from "./limits.ts";
 export type DocumentResult = { ok: true; text: string; format: string } | { ok: false; code: DocFailure; detail?: string };
-export interface DocumentExtractorRuntime { command: string; script: string; env: Record<string, string> }
+export interface DocumentExtractorRuntime { command: string; script: string; env: Record<string, string>; tools?: { sandbox: string; textutil: string } }
 
 const defaultRuntime = (): DocumentExtractorRuntime => ({ command: process.execPath, script: join(import.meta.dirname, "doc-extract.ts"), env: {} });
 let runtime = defaultRuntime();
@@ -15,18 +16,21 @@ export function setDocumentExtractorRuntime(next?: Partial<DocumentExtractorRunt
   runtime = { ...defaultRuntime(), ...next };
 }
 
+export function documentExtractorRuntime(): DocumentExtractorRuntime { return runtime; }
+
 export function extractDocumentText(bytes: Uint8Array, limits: DocLimits = DOC_LIMITS): DocumentResult {
   if (bytes.length > limits.bytes) return { ok: false, code: "bytes" };
-  const { ms, rssBytes, chars, parts, unpackedBytes, ratio } = limits;
+  const { ms, rssBytes, chars, parts, unpackedBytes, ratio, cells } = limits;
   // ponytail: a synchronous call holds the event loop for up to ms + 2 s per file; an asynchronous collection is separate work, if documents become heavy.
-  const r = spawnSync(runtime.command, [runtime.script, JSON.stringify({ ms, rssBytes, chars, parts, unpackedBytes, ratio })], {
+  const r = spawnSync(runtime.command, [runtime.script, JSON.stringify({ ms, rssBytes, chars, parts, unpackedBytes, ratio, cells, ...(runtime.tools ? { tools: runtime.tools } : {}) })], {
     input: bytes, env: runtime.env, timeout: ms + 2000, killSignal: "SIGKILL",
     maxBuffer: chars * 4 + 2 ** 20, stdio: ["pipe", "pipe", "ignore"],
   });
   const code = (r.error as NodeJS.ErrnoException | undefined)?.code;
   if (code === "ETIMEDOUT") return { ok: false, code: "timeout" };
   if (code === "ENOBUFS") return { ok: false, code: "chars" };
-  if (r.error) return { ok: false, code: "failed", detail: code ?? materialsMessages().docStartError };
+  // EPIPE: the extractor answered (a limit) and exited before reading all input; its reply on stdout still counts
+  if (r.error && code !== "EPIPE") return { ok: false, code: "failed", detail: code ?? materialsMessages().docStartError };
   if (r.status !== 0) return { ok: false, code: "failed", detail: r.signal ?? `exit ${r.status}` };
   try {
     const result = JSON.parse(r.stdout.toString("utf8")) as DocumentResult;
@@ -35,7 +39,7 @@ export function extractDocumentText(bytes: Uint8Array, limits: DocLimits = DOC_L
   return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
 }
 
-const NOT_CACHED: readonly DocFailure[] = ["timeout", "memory", "failed"];
+const NOT_CACHED: readonly DocFailure[] = ["timeout", "memory", "failed", "textutil_unavailable"];
 const CACHE_CHARS = 20_000_000;
 const cache = new Map<string, DocumentResult>();
 let cacheChars = 0;
@@ -65,10 +69,15 @@ export function documentReason(failure: { code: DocFailure; detail?: string }, l
     case "zip_parts": return m.docParts(limits.parts);
     case "zip_size": return m.docUnpacked(limits.unpackedBytes / 2 ** 20);
     case "zip_ratio": return m.docRatio(limits.ratio);
+    case "cells": return m.docCells(limits.cells);
     case "encrypted": return m.docEncrypted;
-    case "damaged": return m.docDamaged;
+    case "damaged": return failure.detail === undefined ? m.docDamaged : m.docDamagedPart(failure.detail);
     case "no_text": return m.docNoText;
     case "unsupported": return m.docUnsupported;
+    case "textutil_unavailable": return m.docTextutilUnavailable;
     case "failed": return m.docFailed(failure.detail ?? m.docStartError);
+    case "odf_kind": return m.docOdfKind(failure.detail ?? "");
+    case "drm": return m.docDrm;
+    case "kind": return m.kindReason((failure.detail ?? "unknown") as FileKindId);
   }
 }

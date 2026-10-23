@@ -6,7 +6,8 @@
 import "../../../../packages/core/scenarios/language-ru.ts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { createRequire, syncBuiltinESMExports } from "node:module";
+import { copyFileSync, existsSync, mkdirSync, utimesSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { BUILTIN_TEMPLATES_DIR, createLogger, ensureDataDir, loadTemplates, readRegistry, readSession, runStoredSession, sha256Of, writeRegistry } from "../../../../packages/core/src/index.ts";
 import type { Registry } from "../../../../packages/core/src/index.ts";
@@ -30,8 +31,9 @@ const EXPECTED = "Первая страница\n\nВторая страница
 const SECRET = "stand-secret-value";
 const REASON = {
   locked: "PDF зашифрован — пароль не запрашивается",
-  scan: "в PDF нет текстового слоя — распознавание не выполняется",
+  scan: "в PDF не найден текст",
   broken: "PDF повреждён",
+  blank201: "в PDF больше 200 страниц без текстового слоя",
 };
 const env = { ...process.env, COUNCIL_DEV: "1", COUNCIL_HOME: dir };
 let n = 0;
@@ -80,6 +82,15 @@ async function good<T>(a: string, ...args: unknown[]): Promise<T> {
 const two = [{ providerId: "scripted", model: "p1", role: null }, { providerId: "scripted", model: "p2", role: null }];
 const sessionsDir = join(dir, "sessions");
 
+// Count helper launches: core starts it with spawnSync("/usr/bin/sandbox-exec", ...) through a live ESM binding of node:child_process.
+let launches = 0;
+{
+  const cp = createRequire(import.meta.url)("node:child_process") as typeof import("node:child_process");
+  const real = cp.spawnSync;
+  cp.spawnSync = ((command: string, ...rest: unknown[]) => { if (command === "/usr/bin/sandbox-exec") launches++; return (real as (...a: unknown[]) => unknown)(command, ...rest); }) as typeof cp.spawnSync;
+  syncBuiltinESMExports();
+}
+
 let result: object | undefined;
 async function main() {
   const before = tree(fx);
@@ -124,18 +135,70 @@ async function main() {
     assert.ok(bad.error?.includes(reason), `${f}.pdf: error «${bad.error}»`);
     assert.deepEqual(bad.items, base.items, `${f}.pdf: the list changed`);
   }
-  ok("app: after a text file, locked/scan/broken give view.error with a reason, the earlier material stays in the list");
+  ok("app: after a text file, locked/scan/broken/blank201 give view.error with a reason, the earlier material stays in the list");
   await good("clearMaterials");
   const fv = await good<MaterialsView>("attachMaterials", [join(fx, "proj")]);
   views.push(fv);
   assert.equal(fv.error, null);
-  assert.equal(fv.skipped.length, 4, JSON.stringify(fv.skipped));
+  assert.equal(fv.skipped.length, 5, JSON.stringify(fv.skipped));
   for (const [f, reason] of Object.entries(REASON)) assert.ok(fv.skipped.some((x) => x.name.endsWith(`proj/${f}.pdf`) && x.reason.includes(reason)), `no ${f}.pdf: ${JSON.stringify(fv.skipped)}`);
   const envSk = fv.skipped.find((x) => x.name.endsWith("proj/.env"));
   assert.ok(envSk?.reason);
   const names = fv.items.map((i) => i.name);
   assert.ok(fv.items.length === 2 && names.some((x) => x.endsWith("README.md")) && names.some((x) => x.endsWith("good.pdf")), `collected: ${names}`);
-  ok(`app, folder: view.skipped has three PDFs with reasons and .env ("${envSk.reason}"), the list has README.md and good.pdf`);
+  ok(`app, folder: view.skipped has four PDFs with reasons and .env ("${envSk.reason}"), the list has README.md and good.pdf`);
+
+  // ---- 8. A scan: one helper launch per unchanged file ----
+  await good("clearMaterials");
+  const l0 = launches;
+  const sv = await good<MaterialsView>("attachMaterials", [join(fx, "ocr.pdf")]);
+  views.push(sv);
+  assert.equal(sv.error, null);
+  assert.equal(sv.items.length, 1);
+  assert.equal(launches - l0, 1, `helper launches on the first collection: ${launches - l0}`);
+  const spv = await good<MaterialsPreviewView>("previewMaterials", false);
+  views.push(spv);
+  await good("clearMaterials");
+  await good<MaterialsView>("attachMaterials", [join(fx, "ocr.pdf")]);
+  assert.equal(launches - l0, 1, `helper launches after collecting the unchanged scan again: ${launches - l0}`);
+  ok("app: attachMaterials(ocr.pdf), the preview and a second collection of the unchanged scan start the helper exactly once");
+  const copy = join(dir, "ocr-copy.pdf");
+  copyFileSync(join(fx, "ocr.pdf"), copy);
+  await good("clearMaterials");
+  await good<MaterialsView>("attachMaterials", [copy]);
+  assert.equal(launches - l0, 2, `a new file must start the helper: ${launches - l0}`);
+  await good("clearMaterials");
+  await good<MaterialsView>("attachMaterials", [copy]);
+  assert.equal(launches - l0, 2);
+  utimesSync(copy, new Date(), new Date(Date.now() + 60_000));
+  await good("clearMaterials");
+  await good<MaterialsView>("attachMaterials", [copy]);
+  assert.equal(launches - l0, 3, `a changed file must start the helper again: ${launches - l0}`);
+  ok("app: a new file launches the helper once more, a repeat does not, a changed modification time launches it again (3 launches in total)");
+  await good("clearMaterials");
+  const sp = await good<MaterialsView>("attachMaterials", [join(fx, "ocr.pdf")]);
+  views.push(sp);
+  const spp = await good<MaterialsPreviewView>("previewMaterials", false);
+  prompts.length = 0;
+  const rsn = await call("startSession", { templateId: null, topic: "Что в скане?", participants: two, maxRounds: 3, useMaterials: true, preparedHandle: spp.handle });
+  assert.ok(rsn.ok && (rsn.value as { id: string | null }).id !== null, `start: ${rsn.ok ? (rsn.value as { error?: string }).error : rsn.error}`);
+  const sid = (rsn.value as { id: string }).id;
+  await Promise.allSettled(runs);
+  const sj = readFileSync(join(sessionsDir, sid, "events.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l)).find((e) => e.type === "session_created").session.materials[0];
+  const scanSnapshot = join(sessionsDir, sid, "materials", "m1.txt");
+  const scanText = readFileSync(scanSnapshot, "utf8");
+  assert.equal(scanText.split("\n\n").length, 2, JSON.stringify(scanText));
+  assert.deepEqual([sj.chars, sj.sha256], [scanText.length, sha256Of(scanText)]);
+  assert.ok(prompts.length > 0 && prompts.every((p) => p.includes(scanText)), "requests to participants do not contain the recognized text");
+  assert.equal(sp.items[0]!.chars, scanText.length, "attached material chars ≠ snapshot");
+  assert.equal(sj.chars, scanText.length);
+  assert.equal(sj.sha256, sha256Of(scanText));
+  for (const [what, pv2] of [["first preview", spv], ["launch preview", spp]] as const) {
+    assert.ok(pv2.initial?.includes(scanText), `${what}: the recognized text is not in "Owner's materials" exactly`);
+    assert.equal(pv2.materials.items[0]!.chars, scanText.length, `${what}: materials chars`);
+  }
+  ok("app: the preview of ocr.pdf (text, chars) equals the attached material, the session snapshot and the journal chars/sha256 exactly");
+  ok(`app: startSession by the accepted scan - ${prompts.length} requests contain the recognized text, the journal sha256 equals m1.txt`);
 
   // ---- leaks and sources ----
   const log = readFileSync(join(dir, "logs", "app.log"), "utf8");
@@ -144,7 +207,7 @@ async function main() {
   ok("the .env control string is neither in the bridge responses, nor in app.log, nor in the session files");
   assert.deepEqual(tree(fx), before, "the source files changed");
   ok("the source files (PDFs, the proj folder) are byte-for-byte unchanged");
-  result = { checks: n, sha256: m.sha256, chars: m.chars, snapshot };
+  result = { checks: n, sha256: m.sha256, chars: m.chars, snapshot, scanSha256: sj.sha256, scanChars: sj.chars, scanSnapshot };
 }
 
 let failed = false;

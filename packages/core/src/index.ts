@@ -12,6 +12,7 @@ export * from "./protocol/parse.ts";
 export * from "./participants/scripted.ts";
 export * from "./engine.ts";
 export * from "./materials.ts";
+export { materialsMessages } from "./messages/materials.ts";
 export * from "./pdf/extract.ts";
 export * from "./documents/extract.ts";
 export * from "./ocr/run.ts";
