@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import type { ZipPart } from "./documents/fixture.ts";
 import { makePdf } from "./pdf/fixture.ts";
 import { setProcessLanguage } from "./i18n/process-language.ts";
 import { materialsMessages } from "./messages/materials.ts";
+import { setOcrRuntime } from "./ocr/run.ts";
 import { archiveEntryPath, expandArchive } from "./materials-archive.ts";
 import { collectMaterials, collectSessionMaterials, MaterialsError, type CollectOptions } from "./materials.ts";
 import { readWorkspaceSnapshot, workspaceDir, writeWorkspaceSnapshot } from "./store/journal.ts";
@@ -16,7 +17,7 @@ const opts: CollectOptions = { materialsChars: 100_000, materialsIgnore: ["node_
 const m = () => materialsMessages();
 let root: string;
 beforeEach(() => { root = realpathSync(mkdtempSync(join(tmpdir(), "materials-archive-"))); });
-afterEach(() => { setProcessLanguage("ru"); rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { setOcrRuntime(); setProcessLanguage("ru"); rmSync(root, { recursive: true, force: true }); });
 
 function put(rel: string, content: string | Uint8Array): string {
   const f = join(root, rel);
@@ -213,6 +214,16 @@ describe("ZIP archive as a folder", () => {
     const set = collectMaterials([f], opts);
     expect(names(set)).toEqual(["pdf.zip/a.txt", "pdf.zip/doc.pdf"]);
     expect(set.materials[1]!.text).toContain("Hello archive");
+  }, SLOW);
+
+  it("PDF в архиве без помощника: the fallback text is not cached, a helper that appears adds the recognized page", () => {
+    const f = zipAt("late.zip", [{ name: "doc.pdf", data: makePdf(["текст", ""]) }]);
+    setOcrRuntime({ helper: "/nonexistent/osen-ocr" });
+    expect(collectMaterials([f], opts).materials.map((x) => x.text)).toEqual(["текст"]);
+    const helper = put("helper.sh", `#!/bin/sh\nC=$(/bin/cat)\nprintf '%s\\n' '{"ok":true,"pages":[{"n":2,"lines":[{"t":"скан","x":0,"y":0,"w":0.5,"h":0.1}]}]}'\n`);
+    chmodSync(helper, 0o755);
+    setOcrRuntime({ helper });
+    expect(collectMaterials([f], opts).materials.map((x) => x.text)).toEqual(["текст\n\nскан"]);
   }, SLOW);
 
   it("text entries are decoded with the encodings of change 212 (UTF-16 with BOM, Windows-1251)", () => {
