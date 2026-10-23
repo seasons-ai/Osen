@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { locateCli, parseVersion, pinnedEnv, resetDiscoveryCache } from "./discovery.ts";
-import { writeExecutable } from "../executable.testutil.ts";
+import { linkExecutable } from "../executable.testutil.ts";
 import { installPin, pinsPath, usePin } from "./pins.ts";
 import type { PackageSource } from "./pins.ts";
 import { VERIFIED_FILE, addLocalEntry } from "./verified-record.ts";
@@ -22,9 +22,13 @@ afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 function script(dir: string, name: string, body: string): string {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, name);
-  return writeExecutable(file, `#!/bin/sh\n${body}\n`);
+  return linkExecutable(file, `#!/bin/sh\n${body}\n`);
 }
-const bin = (out: string, name = "claude") => script(join(tmp, "bin"), name, `echo '${out}'`);
+const bin = (out: string, name = "claude") => {
+  const file = script(join(tmp, "bin"), name, 'while IFS= read -r l; do echo "$l"; done < "$0.out"');
+  writeFileSync(`${file}.out`, `${out}\n`);
+  return file;
+};
 const noLogin = { loginShellPath: async () => undefined };
 
 describe("locateCli", () => {
@@ -131,7 +135,7 @@ describe("locateCli search order and pins", () => {
     async fetch(agent, version, d) {
       const exe = join(d, "node_modules", "pkg", "bin", agent);
       mkdirSync(join(d, "node_modules", "pkg", "bin"), { recursive: true });
-      writeExecutable(exe, `#!/bin/sh\necho "$CLAUDE_CONFIG_DIR|$DISABLE_UPDATES" > "$0.env"; echo "${version}"\n`);
+      linkExecutable(exe, `#!/bin/sh\necho "$CLAUDE_CONFIG_DIR|$DISABLE_UPDATES" > "$0.env"; echo "${version}"\n`);
       return { executable: exe, source: `fake:${agent}@${version}` };
     },
   };
