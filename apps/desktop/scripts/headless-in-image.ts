@@ -215,7 +215,8 @@ async function startMcp(contents: string, env: NodeJS.ProcessEnv) {
   send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: LATEST_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "headless-check", version: "1" } } });
   send({ jsonrpc: "2.0", method: "notifications/initialized" });
   const initialized = await until(() => out.includes('"id":1') || spawnError !== "", 30000);
-  return { child, send, initialized, exitCode: () => code, err: () => `${spawnError}${stderr ? ` (stderr: ${stderr.trim().slice(0, 200)})` : ""}` };
+  const reply = (id: number) => out.split("\n").find((l) => l.includes(`"id":${id}`)) ?? "";
+  return { child, send, initialized, reply, exitCode: () => code, err:() => `${spawnError}${stderr ? ` (stderr: ${stderr.trim().slice(0, 200)})` : ""}` };
 }
 
 /** Start of bin/osen-mcp sweeps launch/ files older than 60 s, keeps fresh ones and logs the sweep. */
@@ -281,9 +282,11 @@ exec "${stubDir}/claude-real" "$@"
     const before = new Set(launchLeft());
     const mine = () => launchLeft().filter((f) => !before.has(f));
     mcp.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "council_start", arguments: { topic: "Entry points check", participants: [{ providerId: "claude", model: "default" }, { providerId: "scripted", model: "consensus/p1.json" }], maxRounds: 3 } } });
-    await until(() => mine().length > 0, 12000); // the server inspects the fresh stub first (macOS scans a new executable), then starts the executor
+    // the server inspects the fresh stub first (macOS scans a new executable; under load it took over 10 s), then starts the executor;
+    // a council_start reply before any launch file means the start was refused or failed, so the wait ends there
+    await until(() => mine().length > 0 || mcp.reply(2) !== "", 60000);
     const during = mine();
-    if (during.length === 0) return { ok: false, text: `${label}: no launch file in launch/ while the server waits ${mcp.err()}` };
+    if (during.length === 0) return { ok: false, text: `${label}: no launch file in launch/ while the server waits; council_start reply: ${mcp.reply(2).slice(0, 300) || "none in 60 s"} ${mcp.err()}` };
     mcp.child.kill("SIGTERM");
     mcp.child.stdin.end();
     await until(() => mcp.exitCode() !== "none", 10000);
