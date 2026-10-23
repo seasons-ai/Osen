@@ -23,6 +23,8 @@ import { linkExecutable } from "../executable.testutil.ts";
 //   term_ignorer_stop: like good, but the stop turn starts that child before streaming
 // STUB_LOG (optional): every turn launch appends its pid, one line per launch.
 // STUB_ARGV_LOG (optional): every launch appends its full argv (space-joined, one line), before any mode is applied.
+// STUB_SWAP_AT (optional, with STUB_LOG): the turn launch with this 1-based number replaces the stub's own file through a temporary
+//   file and rename (a new inode, so a hard-linked prototype stays intact); the new file is the same script plus a comment.
 // Options (writeAcceptanceStub): version line for --version, help text for --help, features text for `features list`; each answers only when given.
 // They are read from <script>.json (always written, so the script text is identical for every call and can be hard-linked);
 // a missing or unreadable json makes the stub print its path to stderr and exit 1.
@@ -33,6 +35,7 @@ const prompt = fs.readFileSync(0, "utf8");
 const mode = process.env.STUB_MODE || "good";
 const isClaude = process.argv.includes("--print");
 if (process.env.STUB_LOG) fs.appendFileSync(process.env.STUB_LOG, process.pid + "\\n");
+if (process.env.STUB_SWAP_AT && fs.readFileSync(process.env.STUB_LOG, "utf8").split("\\n").filter(Boolean).length === Number(process.env.STUB_SWAP_AT)) { fs.writeFileSync(__filename + ".swap", fs.readFileSync(__filename, "utf8") + "\\n// swapped\\n", { mode: 0o755 }); fs.renameSync(__filename + ".swap", __filename); }
 const afterStop = process.env.STUB_STATE ? path.join(process.env.STUB_STATE, "after-stop") : "";
 if (mode === "resume_fail" && afterStop && fs.existsSync(afterStop) && !prompt.includes("very long essay")) { process.stderr.write("resumed turn failed"); process.exit(1); }
 const emit = (text) => {
