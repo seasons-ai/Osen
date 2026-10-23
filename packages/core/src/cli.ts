@@ -390,7 +390,7 @@ function formatShow(events: SessionEvent[], status: StoredStatus, partial: Journ
 export function resumeRevalidator(plan: ResumePlan, driverOptions: Parameters<typeof resumeDrivers>[1], deadline: string, now: () => number = Date.now): () => Promise<void> {
   return async () => {
     if (plan.replacements.length) await resumeDrivers(plan, driverOptions);
-    if (now() > Date.parse(deadline)) throw new ResumeRejectedError("stale_plan", cliMessages().launchExpired(deadline));
+    if (now() > Date.parse(deadline)) throw new ResumeRejectedError("launch_expired", cliMessages().launchExpired(deadline));
   };
 }
 

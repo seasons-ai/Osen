@@ -618,6 +618,27 @@ describe("Requirement: Переход и откат из карточки", () =
     expect(JSON.parse(kept).agents.claude).toMatchObject({ active: "7.1.0", previous: "7.0.0" });
   });
 
+  it("switch and rollback: file without the execute bit is refused with the text without the path (scenario «Файл без бита исполнения»)", async () => {
+    await seedPins();
+    const file = (version: string) => {
+      const r = readPins(dir);
+      if (r.state !== "loaded") throw new Error("no pins");
+      return installedPath(dir, "claude", r.pins.agents.claude!.installed.find((i) => i.version === version)!);
+    };
+    const t = make();
+    chmodSync(file("7.1.0"), 0o644);
+    let kept = pinsBytes(dir);
+    expect(() => t.switchCli("claude", "7.1.0")).toThrow("The file of claude 7.1.0 is not executable; the pin is unchanged");
+    expect(pinsBytes(dir)).toBe(kept);
+    chmodSync(file("7.1.0"), 0o755);
+    t.switchCli("claude", "7.1.0");
+    chmodSync(file("7.0.0"), 0o644);
+    kept = pinsBytes(dir);
+    expect(() => t.rollbackCli("claude")).toThrow("The file of claude 7.0.0 is not executable; the pin is unchanged");
+    expect(pinsBytes(dir)).toBe(kept);
+    expect(JSON.parse(kept).agents.claude).toMatchObject({ active: "7.1.0", previous: "7.0.0" });
+  });
+
   it("a running session refuses both actions; pins stay byte for byte", async () => {
     await seedPins();
     const t = make();

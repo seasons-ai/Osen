@@ -2,6 +2,7 @@
 # Stand stub of the codex CLI: never calls a model. Settings come from stub.env next to this file.
 # HANG_PID (stub.env, optional): `exec --help` hangs with two children and writes their pids to $HANG_PID and $HANG_PID.sleep.
 . "$(dirname "$0")/stub.env"
+echo "$*" >> "$COUNTER.argv"
 case "$1 $2" in
   "--version ") echo x >> "$COUNTER.version"; echo "codex-cli $VERSION" ;;
   "exec --help") echo x >> "$COUNTER.help"
