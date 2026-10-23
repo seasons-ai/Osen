@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +15,8 @@ import { readOutput } from "./process.ts";
 import type { AcceptancePlan, ProbeContext, ProbeId, ProbeResult } from "./acceptance.ts";
 
 // Real runProbe against a node stub that stands in for the CLI; the stub mode is set through STUB_MODE.
+// acceptance re-checks the install file against the plan sha256, so plans carry the stub's real sum
+const shaOf = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 const codexFlags = declaredFlags(fx("codex-0.159.2-exec-help.txt"));
 const codexFeatures = parseCodexFeatures(fx("codex-0.159.2-features.txt"));
@@ -163,7 +166,7 @@ describe("Stop probe", () => {
 describe("Full acceptance with the real probes", () => {
   const dataDir = () => join(root, "data");
   const inspect = async () => ({ flags: codexFlags, features: codexFeatures });
-  const planFor = (mode: string): AcceptancePlan => ({ ...ctxFor("codex", mode).plan, sha256: "a".repeat(64) });
+  const planFor = (mode: string): AcceptancePlan => ({ ...ctxFor("codex", mode).plan, sha256: shaOf(stubPath) });
 
   it("the good CLI passes all seven probes and writes real with 7 calls", async () => {
     mkdirSync(dataDir(), { recursive: true });
@@ -258,7 +261,7 @@ describe("Reading the CLI help and feature list in its own process group", () =>
   }, LONG_TIMEOUT);
 
   const dataDir = () => join(root, "data");
-  const planFor = (): AcceptancePlan => ({ ...ctxFor("codex", "good").plan, sha256: "a".repeat(64) });
+  const planFor = (): AcceptancePlan => ({ ...ctxFor("codex", "good").plan, sha256: shaOf(stubPath) });
 
   it.each(["help_hang", "features_hang"])("runAcceptance stopped while the stub hangs in %s: interrupted, code 1, the reader's child is gone, nothing recorded", async (mode) => {
     mkdirSync(dataDir(), { recursive: true });
@@ -267,7 +270,7 @@ describe("Reading the CLI help and feature list in its own process group", () =>
     const stub = writeAcceptanceStub(join(root, "inspect"), { help: fx("codex-0.159.2-exec-help.txt"), features: fx("codex-0.159.2-features.txt") });
     const controller = new AbortController();
     const poll = setInterval(() => { if (existsSync(pidFile)) { clearInterval(poll); controller.abort(); } }, 20);
-    const out = await runAcceptance(dataDir(), { ...planFor(), path: stub }, { env: { PATH: "/usr/bin:/bin", STUB_MODE: mode, STUB_PIDFILE: pidFile }, language: "en", signal: controller.signal })
+    const out = await runAcceptance(dataDir(), { ...planFor(), path: stub, sha256: shaOf(stub) }, { env: { PATH: "/usr/bin:/bin", STUB_MODE: mode, STUB_PIDFILE: pidFile }, language: "en", signal: controller.signal })
       .finally(() => clearInterval(poll));
     expect(out).toMatchObject({ code: 1, interrupted: true, recorded: false, calls: 0, outcomes: [] });
     expect(await gone(childPid())).toBe(true);

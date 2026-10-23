@@ -100,6 +100,18 @@ describe("ZIP archive as a folder", () => {
     expect(reasonOf(set, "e.zip/cfg/.env.local")).toBe(m().envSkipped);
   }, SLOW);
 
+  for (const lang of ["ru", "en"] as const) {
+    it(`.ENV and .Env.local entries in another case are skipped, their text is not extracted (${lang})`, () => {
+      setProcessLanguage(lang);
+      const f = zipAt(`c-${lang}.zip`, [{ name: ".ENV", data: "SECRET_TOKEN=abc123" }, { name: "cfg/.Env.local", data: "SECRET_TOKEN=def456" }, { name: "a.txt", data: "a" }]);
+      const set = collectSessionMaterials([f], opts);
+      expect(names(set)).toEqual([`c-${lang}.zip/a.txt`]);
+      expect(reasonOf(set, `c-${lang}.zip/.ENV`)).toBe(m().envSkipped);
+      expect(reasonOf(set, `c-${lang}.zip/cfg/.Env.local`)).toBe(m().envSkipped);
+      expect(JSON.stringify(set)).not.toMatch(/abc123|def456/);
+    }, SLOW);
+  }
+
   it("encrypted entries and symlink entries are skipped, the rest is collected", () => {
     const f = zipAt("s.zip", [
       { name: "a.txt", data: "a" }, { name: "b.txt", data: "b" }, { name: "enc.txt", data: "z", encrypted: true },

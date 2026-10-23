@@ -12,6 +12,7 @@ import type { Usage } from "../protocol/schema.ts";
 import { CODEX_UPDATE_OFF, HELP_ARGS, planLaunch } from "./args.ts";
 import { TURN_RESPONSE_JSON_SCHEMA } from "./driver.ts";
 import { pinnedEnv } from "./discovery.ts";
+import { checkPinFile } from "./launch-guard.ts";
 import { classifyFailure } from "./errors.ts";
 import { declaredFlags, parseCodexFeatures } from "./flags.ts";
 import { installedPath, pinConfigDir, readPins } from "./pins.ts";
@@ -316,7 +317,7 @@ export const runProbe: ProbeRunner = async (probe, ctx) => {
 };
 
 export interface ProbeOutcome { probe: ProbeId; ok: boolean; reason?: string }
-export interface AcceptanceOutcome { code: 0 | 1 | 5; outcomes: ProbeOutcome[]; calls: number; recorded: boolean; interrupted: boolean; fixture?: string; fixtureError?: string; text: string }
+export interface AcceptanceOutcome { code: 0 | 1 | 2 | 5; outcomes: ProbeOutcome[]; calls: number; recorded: boolean; interrupted: boolean; fixture?: string; fixtureError?: string; text: string }
 
 type InspectLimits = { timeoutMs?: number; maxBytes?: number };
 
@@ -355,7 +356,16 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
     opts.onProbe?.(o);
   };
 
+  // the file may be swapped after the plan: re-check its sha256 before the help read, each probe and the real record
+  const changed = async (): Promise<AcceptanceOutcome | undefined> => {
+    const f = await checkPinFile(plan.path, plan.sha256);
+    if (f.ok) return undefined;
+    return done({ code: 2, recorded: false, interrupted: false, text: m.fileChanged(plan.agent, plan.version, plan.sha256, f.code === "missing" ? m.fileGone : f.actual, calls) });
+  };
+
   if (signal?.aborted) return interrupted();
+  const before = await changed();
+  if (before) return before;
   let failure: { probe: ProbeId; reason: string } | undefined;
   let flags: ReadonlySet<string> = new Set();
   let features: ReadonlySet<string> | undefined;
@@ -377,6 +387,8 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
     if (calls + 1 > plan.bound) {
       r = { ok: false, reason: m.callLimit(plan.bound), calls: 0 };
     } else {
+      const swapped = await changed();
+      if (swapped) return swapped;
       try {
         r = await (deps.runProbe ?? runProbe)(probe, ctx);
       } catch (e) {
@@ -400,6 +412,8 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
   if (failure) {
     return done({ code: 5, recorded: false, interrupted: false, text: m.failed(m.probeName(failure.probe), failure.reason) });
   }
+  const last = await changed();
+  if (last) return last;
   const added = addLocalEntry(dataDir, {
     agent: plan.agent,
     version: plan.version,
