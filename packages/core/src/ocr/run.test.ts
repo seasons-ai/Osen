@@ -52,6 +52,11 @@ describe("runOcrHelper protocol (stub helpers)", () => {
     expect(r).toEqual({ ok: false, code: "failed", detail: materialsMessages().docBadReply });
   });
 
+  it.each([[null], [{ x: 0 }], [7]])("refuses an image reply with an invalid line %j as not parsed, without throwing", (bad) => {
+    const r = run(printing({ ok: true, lines: [line("fine"), bad] }));
+    expect(r).toEqual({ ok: false, code: "failed", detail: materialsMessages().docBadReply });
+  });
+
   it("treats blank recognized lines as no text", () => {
     expect(run(printing({ ok: true, lines: [line("   ")] }))).toEqual({ ok: false, code: "no_text" });
   });

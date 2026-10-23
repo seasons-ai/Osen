@@ -805,6 +805,25 @@ describe("owner materials: --attach and --materials-chars", () => {
     expect(help.out).toContain("Из PDF берётся текстовый слой (на файл не больше 100 МиБ, 2000 страниц, 30 секунд, 512 МиБ памяти и 20000000 знаков)");
   }, 30_000);
 
+  it("--help lists every description extension on en and ru, without spreadsheets", async () => {
+    const list = "md, markdown, mdx, txt, rst, adoc, pdf, docx, docm, dotx, dotm, pptx, pptm, potx, potm, ppsx, ppsm, odt, ott, odp, otp, epub, rtf, doc";
+    const prev = getProcessLanguage();
+    try {
+      for (const lang of ["en", "ru"] as const) {
+        setProcessLanguage(lang);
+        const out = (await run(["--help"])).out;
+        expect(out).toContain(`${lang === "en" ? "descriptions" : "описания"} (${list})`);
+      }
+    } finally {
+      setProcessLanguage(prev);
+    }
+  });
+
+  it("supportedFormats is the same verbatim list on en and ru", () => {
+    expect(materialsMessages("en").supportedFormats).toBe("text (UTF-8, UTF-16, Windows-1251), PDF including scans, DOCX/DOCM/DOTX/DOTM, XLSX/XLSM/XLTX/XLTM, PPTX/PPTM/POTX/POTM/PPSX/PPSM, ODT/ODS/ODP/OTT/OTS/OTP, EPUB, RTF, DOC, pictures through text recognition, ZIP as a folder");
+    expect(materialsMessages("ru").supportedFormats).toBe("текст (UTF-8, UTF-16, Windows-1251), PDF в том числе сканы, DOCX/DOCM/DOTX/DOTM, XLSX/XLSM/XLTX/XLTM, PPTX/PPTM/POTX/POTM/PPSX/PPSM, ODT/ODS/ODP/OTT/OTS/OTP, EPUB, RTF, DOC, картинки через распознавание текста, ZIP как папка");
+  });
+
   it("11. --help describes the flags", async () => {
     const r = await run(["--help"]);
     for (const s of ["--attach", "--materials-chars", "отказ материалов"]) expect(r.out).toContain(s);

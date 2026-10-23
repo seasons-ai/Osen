@@ -107,6 +107,14 @@ describe("DOCX text", () => {
     expect(text({ ...spec, macro: true })).toBe(text(spec));
   });
 
+  it("gives DOTX and DOTM the same text as DOCX, the macro is not read", () => {
+    const spec = { body: p("same") + table([["1", "2"]]) };
+    for (const mainType of ["application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml", "application/vnd.ms-word.template.macroEnabledTemplate.main+xml"]) {
+      expect(text({ ...spec, mainType })).toBe(text(spec));
+      expect(text({ ...spec, mainType, macro: true })).toBe(text(spec));
+    }
+  });
+
   it("falls back to word/document.xml without _rels/.rels and strips control characters", () => {
     const zip = openZip(makeZip([{ name: "word/document.xml", data: `<w:document xmlns:w="w"><w:body>${p("a\u0001b\u000bc")}</w:body></w:document>` }]));
     expect(docxText(zip)).toBe("abc");

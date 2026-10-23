@@ -59,6 +59,11 @@ export const KIND_FIXTURES: readonly KindFixture[] = [
   { name: "xls-book", kind: "xls", bytes: makeCfb({ streams: ["Book"] }) },
   { name: "ppt", kind: "ppt", bytes: makeCfb({ streams: ["PowerPoint Document"] }) },
   { name: "iwork", kind: "iwork", bytes: makeZip([{ name: "Index/Document.iwa", data: "x" }, { name: "Metadata/Properties.plist", data: "y" }]) },
+  { name: "xlsb", kind: "xlsb", bytes: makeZip([
+    { name: "[Content_Types].xml", data: '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/xl/workbook.bin" ContentType="application/vnd.ms-excel.sheet.binary.macroEnabled.main"/></Types>' },
+    { name: "_rels/.rels", data: '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.bin"/></Relationships>' },
+    { name: "xl/workbook.bin", data: "\x83\x01\x00" },
+  ]) },
   { name: "cfb-other", kind: "unknown", bytes: makeCfb({ streams: ["Contents"] }) },
   { name: "java-class", kind: "unknown", bytes: file([0xca, 0xfe, 0xba, 0xbe, ...u32be(52)]) },
   { name: "nul-bytes", kind: "unknown", bytes: file([]) },

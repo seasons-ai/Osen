@@ -10,6 +10,7 @@ import { folderMap, folderStats } from "./protocol/folder.ts";
 import { loadPreparedMaterials, savePreparedMaterials } from "./store/prepared-materials.ts";
 import { PDF_LIMITS } from "./pdf/extract.ts";
 import { makeOdf, odsTable, odtP } from "./documents/odf-fixture.ts";
+import { makeDocx, makePptx, p, para, sp } from "./documents/fixture.ts";
 import { makeEpub, xhtml } from "./documents/epub-fixture.ts";
 import { makeEncryptedPdf, makeImageOnlyPdf, makeMalformedPdf, makePdf } from "./pdf/fixture.ts";
 
@@ -384,6 +385,15 @@ describe("collectSessionMaterials", () => {
     const { taken, left } = selectMaterials(src, [join(root, "d")], 25);
     expect(taken.map((x) => x.name)).toEqual(["d/a.pptx", "d/b.pptm"]);
     expect(left).toEqual([{ name: "d/c.xlsx", reason: "не описание — из папки больше лимита берутся только описания" }]);
+  });
+
+  it("template and slideshow packages are descriptions in a folder over the limit, next to source code", () => {
+    put("d/tpl.dotx", makeDocx({ body: p("template text"), mainType: "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml" }));
+    put("d/show.ppsx", makePptx({ slides: [{ shapes: sp([para("show text")]) }], mainType: "application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml" }));
+    put("d/code.ts", x(500));
+    const r = collectSessionMaterials([join(root, "d")], lim(400));
+    expect(r.materials.map((m) => m.name).sort()).toEqual(["d/show.ppsx", "d/tpl.dotx"]);
+    expect(r.left.map((l) => l.name)).toEqual(["d/code.ts"]);
   });
 
   it("folder over the limit without descriptions: files closer to the root are taken while they fit", () => {

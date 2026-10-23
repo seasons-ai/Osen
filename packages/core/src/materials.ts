@@ -476,8 +476,12 @@ export function verifyMaterials(materials: readonly CollectedMaterial[], limit: 
 
 export interface LeftMaterial { name: string; reason: string }
 
-const DOC_EXT = /\.(md|markdown|mdx|txt|rst|adoc|pdf|docx|docm|pptx|pptm|odt|odp|epub)$/i;
-const LEGACY_DOC_EXT = /\.(rtf|doc)$/i;
+/** Extensions treated as descriptions when a folder is over the limit; also printed in `council --help`. */
+export const DESCRIPTION_EXTENSIONS = [
+  "md", "markdown", "mdx", "txt", "rst", "adoc", "pdf", "docx", "docm", "dotx", "dotm", "pptx", "pptm", "potx", "potm",
+  "ppsx", "ppsm", "odt", "ott", "odp", "otp", "epub", "rtf", "doc",
+] as const;
+const DOC_EXT = new RegExp(`\\.(${DESCRIPTION_EXTENSIONS.join("|")})$`, "i");
 const total = (ms: readonly CollectedMaterial[]) => ms.reduce((s, m) => s + m.chars, 0);
 
 /** "Always included": without "/" in the name — an explicitly attached file; otherwise only if the file path is named and explicit. roots — absolute paths. */
@@ -505,7 +509,7 @@ export function selectMaterials(
   const taken = new Set<CollectedMaterial>(pinned);
   if (total(folder) <= left) folder.forEach((m) => taken.add(m));
   else {
-    const docs = folder.filter((m) => DOC_EXT.test(m.name) || LEGACY_DOC_EXT.test(m.name));
+    const docs = folder.filter((m) => DOC_EXT.test(m.name));
     const candidates = new Set(docs.length > 0 ? docs : folder);
     const byDepth = [...candidates].map((m, i) => ({ m, i, depth: m.name.split("/").length })).sort((x, y) => x.depth - y.depth || x.i - y.i);
     for (const { m } of byDepth) {
