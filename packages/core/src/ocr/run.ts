@@ -31,6 +31,8 @@ function helperPath(): string {
   return join(import.meta.dirname, "bin/osen-ocr");
 }
 
+const valid = (l: unknown): l is OcrLine => typeof l === "object" && l !== null && typeof (l as OcrLine).t === "string";
+
 /** The only launch point of the helper: empty environment, no file paths in arguments, bytes on stdin. */
 export function runOcrHelper(request: OcrImageRequest, bytes: Uint8Array): OcrResult;
 export function runOcrHelper(request: OcrPdfRequest, bytes: Uint8Array): OcrPdfResult;
@@ -59,7 +61,6 @@ export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult 
       if (!Array.isArray(reply.pages)) return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
       const raw = reply.pages as ({ n?: unknown; lines?: unknown } | null)[];
       // a malformed page would become silently empty: the whole reply is refused instead
-      const valid = (l: unknown): l is OcrLine => typeof l === "object" && l !== null && typeof (l as OcrLine).t === "string";
       if (!raw.every((p) => typeof p?.n === "number" && Array.isArray(p.lines) && p.lines.every(valid))) {
         return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
       }
@@ -70,6 +71,7 @@ export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult 
     return { ok: false, code: "failed", detail: c || materialsMessages().docBadReply };
   }
   if (reply.ok === true && Array.isArray(reply.lines)) {
+    if (!reply.lines.every(valid)) return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
     const text = orderLines(reply.lines as OcrLine[]);
     if (text.length > DOC_LIMITS.chars) return { ok: false, code: "chars" };
     return /\S/.test(text) ? { ok: true, text } : { ok: false, code: "no_text" };

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { linkExecutable } from "../../../core/src/executable.testutil.ts";
 import { checkHost, hostsAfter } from "./hosts.ts";
 import type { Host } from "./hosts.ts";
 
@@ -23,11 +24,14 @@ beforeEach(() => {
 afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 
 // Installs a stub host binary: logs argv, prints the fixture, exits with the code.
+// Per-test data lives in `<path>.<key>` files read via $0, so the script text depends only on
+// `extra` and the binary is a hard link to one warmed prototype (macOS first-launch check once).
 function stub(host: Host, output: string, code = 0, extra = ""): void {
-  writeFileSync(join(tmp, `${host}.out`), output);
   const file = join(bin, host);
-  writeFileSync(file, `#!/bin/sh\necho "$*" >> '${log}'\n${extra}cat '${join(tmp, `${host}.out`)}'\nexit ${code}\n`);
-  chmodSync(file, 0o755);
+  writeFileSync(`${file}.log`, log);
+  writeFileSync(`${file}.out`, output);
+  writeFileSync(`${file}.code`, String(code));
+  linkExecutable(file, `#!/bin/sh\necho "$*" >> "$(cat "$0.log")"\n${extra}cat "$0.out"\nexit "$(cat "$0.code")"\n`);
 }
 const run = (host: Host) => checkHost(host, root, { env: { PATH: `${bin}:/bin:/usr/bin`, HOME: home } });
 const calls = () => readFileSync(log, "utf8").trim().split("\n");

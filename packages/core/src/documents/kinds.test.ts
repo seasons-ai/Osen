@@ -12,7 +12,7 @@ import { fileKind, KIND_SIGNATURES, nonTextReason, type FileKindId } from "./kin
 
 const SLOW = 60_000;
 const opts: CollectOptions = { materialsChars: 100_000, materialsIgnore: [] };
-const KINDS: FileKindId[] = ["mp3", "aac", "m4a", "wav", "aiff", "flac", "ogg", "video", "rar", "7z", "tar", "gzip", "bzip2", "xz", "zstd", "dmg", "program", "sqlite", "font", "xls", "ppt", "iwork", "unknown"];
+const KINDS: FileKindId[] = ["mp3", "aac", "m4a", "wav", "aiff", "flac", "ogg", "video", "rar", "7z", "tar", "gzip", "bzip2", "xz", "zstd", "dmg", "program", "sqlite", "font", "xls", "ppt", "iwork", "xlsb", "unknown"];
 const EN: Record<FileKindId, string> = {
   mp3: "MP3 audio — transcription is not performed", aac: "AAC audio — transcription is not performed", m4a: "M4A audio — transcription is not performed",
   wav: "WAV audio — transcription is not performed", aiff: "AIFF audio — transcription is not performed", flac: "FLAC audio — transcription is not performed",
@@ -21,7 +21,7 @@ const EN: Record<FileKindId, string> = {
   bzip2: "bzip2 archive — only ZIP is unpacked", xz: "xz archive — only ZIP is unpacked", zstd: "zstd archive — only ZIP is unpacked",
   dmg: "DMG disk image — only ZIP is unpacked", program: "program — not a material", sqlite: "SQLite database — not supported", font: "font — not a material",
   xls: "Excel 97 spreadsheet — save it as XLSX", ppt: "PowerPoint 97 presentation — save it as PPTX",
-  iwork: "Apple iWork document (Pages, Numbers, Keynote) — export it to DOCX, XLSX, PPTX or PDF", unknown: "binary file of an unknown format",
+  iwork: "Apple iWork document (Pages, Numbers, Keynote) — export it to DOCX, XLSX, PPTX or PDF", xlsb: "Excel binary workbook (XLSB) — save it as XLSX", unknown: "binary file of an unknown format",
 };
 const RU: Record<FileKindId, string> = {
   mp3: "аудио MP3 — расшифровка не выполняется", aac: "аудио AAC — расшифровка не выполняется", m4a: "аудио M4A — расшифровка не выполняется",
@@ -31,7 +31,7 @@ const RU: Record<FileKindId, string> = {
   bzip2: "архив bzip2 — раскрывается только ZIP", xz: "архив xz — раскрывается только ZIP", zstd: "архив zstd — раскрывается только ZIP",
   dmg: "образ диска DMG — раскрывается только ZIP", program: "программа — не материал", sqlite: "база SQLite — не поддерживается", font: "шрифт — не материал",
   xls: "таблица Excel 97 — сохраните как XLSX", ppt: "презентация PowerPoint 97 — сохраните как PPTX",
-  iwork: "документ Apple iWork (Pages, Numbers, Keynote) — экспортируйте в DOCX, XLSX, PPTX или PDF", unknown: "двоичный файл неизвестного формата",
+  iwork: "документ Apple iWork (Pages, Numbers, Keynote) — экспортируйте в DOCX, XLSX, PPTX или PDF", xlsb: "двоичная книга Excel (XLSB) — сохраните как XLSX", unknown: "двоичный файл неизвестного формата",
 };
 const ALL_REASONS = new Set([...Object.values(EN), ...Object.values(RU)]);
 
@@ -77,7 +77,7 @@ describe("Kind table", () => {
 
   it("fileKind names the table kinds from the first bytes", () => {
     for (const f of KIND_FIXTURES) {
-      if (["xls", "ppt", "iwork", "unknown"].includes(f.kind)) continue;
+      if (["xls", "ppt", "iwork", "xlsb", "unknown"].includes(f.kind)) continue;
       const b = Buffer.from(f.bytes);
       expect(fileKind(b.subarray(0, 8192), b.subarray(b.length - 512)), f.name).toBe(f.kind);
     }
