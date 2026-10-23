@@ -9,7 +9,7 @@ import type { AgentPins } from "../../../../packages/core/src/cli-agents/pins.ts
 import type { VerifiedEntry } from "../../../../packages/core/src/cli-agents/verified-record.ts";
 import { REMINDER_FILE, computeTransition, createCliTransition, reminderPath } from "./cli-transition.ts";
 import type { LastCheck } from "./cli-transition.ts";
-import { installVersions, pinsBytes, record } from "./cli-transition.testutil.ts";
+import { installVersions, linkedVersionSource, pinsBytes, record } from "./cli-transition.testutil.ts";
 import type { CliSource } from "../shared/settings.ts";
 import { SettingsError } from "./settings.ts";
 
@@ -125,7 +125,7 @@ describe("Requirement: Напоминание о плановом переход
     try {
       record(dir, "claude", ACTIVE, "real");
       record(dir, "claude", "5.1.0", "real");
-      await installVersions(dir, "claude", [{ version: ACTIVE }, { version: "5.1.0" }], () => new Date(NOW - 50 * DAY));
+      await installVersions(dir, "claude", [{ version: ACTIVE }, { version: "5.1.0" }], () => new Date(NOW - 50 * DAY), linkedVersionSource);
       const before = pinsBytes(dir);
       const names = readdirSync(dir).sort();
       const t = createCliTransition({ dataDir: dir, logger: { info() {}, error() {} }, now: () => new Date(NOW), running: () => false, onChecked() {}, candidateDeps: () => inertTransitionDeps() });
@@ -149,7 +149,7 @@ describe("Requirement: Напоминание о плановом переход
     let futureRuns = 0;
     const template = mkdtempSync(join(tmpdir(), "cli-prop-tpl-"));
     record(template, "claude", ACTIVE, "real");
-    await installVersions(template, "claude", [{ version: ACTIVE }], () => new Date(NOW - 50 * DAY));
+    await installVersions(template, "claude", [{ version: ACTIVE }], () => new Date(NOW - 50 * DAY), linkedVersionSource);
     for (let seed = 1; seed <= 200; seed++) {
       const r = mulberry32(seed);
       const dir = mkdtempSync(join(tmpdir(), "cli-prop-gate-"));
@@ -215,7 +215,7 @@ describe("Requirement: Срок планового перехода / Перех
         setProcessLanguage(pick(["en", "ru"] as const));
         record(dir, "claude", "7.0.0", "real", "2026-08-30");
         record(dir, "claude", "7.1.0", "real", "2026-10-07");
-        await installVersions(dir, "claude", [{ version: "7.0.0" }, { version: "7.1.0" }], () => new Date(NOW));
+        await installVersions(dir, "claude", [{ version: "7.0.0" }, { version: "7.1.0" }], () => new Date(NOW), linkedVersionSource);
         const t = createCliTransition({
           dataDir: dir, logger: { info() {}, error() {} }, now: () => new Date(NOW), running: () => false, onChecked() {}, resetDiscovery() {},
           candidateDeps: () => inertTransitionDeps(),
@@ -262,5 +262,5 @@ describe("Requirement: Срок планового перехода / Перех
       }
     }
     setProcessLanguage("en");
-  }, 300_000);
+  }, 120_000);
 });
