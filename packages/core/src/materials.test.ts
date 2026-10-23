@@ -4,7 +4,9 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { attachedFolderPrefixes, collectMaterials, collectSessionMaterials, MaterialsError, selectMaterials, verifyMaterials } from "./materials.ts";
+import { attachedFolderPrefixes, collectMaterials, collectSessionMaterials, isEnvName, MaterialsError, selectMaterials, verifyMaterials } from "./materials.ts";
+import { setProcessLanguage } from "./i18n/process-language.ts";
+import { materialsMessages } from "./messages/materials.ts";
 import type { CollectOptions } from "./materials.ts";
 import { folderMap, folderStats } from "./protocol/folder.ts";
 import { loadPreparedMaterials, savePreparedMaterials } from "./store/prepared-materials.ts";
@@ -1120,5 +1122,51 @@ describe("Folder snapshot: explicit file before the folder", () => {
     const r = collectSessionMaterials([note, dir], o());
     expect(r.materials.map((m) => m.name)).toEqual(["note.md", "proj/README.md", "proj/src/a.ts"]);
     expect(r.materials.map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
+  });
+});
+
+describe("Environment files in materials: environment file in another case", () => {
+  afterEach(() => setProcessLanguage("ru"));
+
+  for (const lang of ["ru", "en"] as const) {
+    it(`explicit .ENV and .Env.local are refused like .env, unopened (${lang})`, () => {
+      setProcessLanguage(lang);
+      const m = materialsMessages();
+      const a = put(".ENV", "SECRET_TOKEN=abc123");
+      const b = put(".Env.local", "SECRET_TOKEN=def456");
+      const opened: string[] = [];
+      hook.beforeOpen = (p) => opened.push(p);
+      const err = refusal(() => collectMaterials([a, b], opts));
+      expect(err.reasons).toEqual([m.pathNamed(a, m.envRefused), m.pathNamed(b, m.envRefused)]);
+      expect(opened).toEqual([]);
+      expect(JSON.stringify([err.message, err.reasons])).not.toMatch(/abc123|def456/);
+    });
+
+    it(`.ENV and .Env.local in a folder are skipped unopened (${lang})`, () => {
+      setProcessLanguage(lang);
+      const m = materialsMessages();
+      put("d/.ENV", "SECRET_TOKEN=abc123");
+      put("d/.Env.local", "SECRET_TOKEN=def456");
+      put("d/a.txt", "a");
+      const opened: string[] = [];
+      hook.beforeOpen = (p) => opened.push(p);
+      const set = collectSessionMaterials([join(root, "d")], opts);
+      expect(set.materials.map((x) => x.name)).toEqual(["d/a.txt"]);
+      expect(set.skipped).toEqual([{ name: "d/.ENV", reason: m.envSkipped }, { name: "d/.Env.local", reason: m.envSkipped }]);
+      expect(opened).toEqual([join(root, "d/a.txt")]);
+      expect(JSON.stringify(set)).not.toMatch(/abc123|def456/);
+    });
+  }
+
+  it("property: any letter case of .env and .env.<suffix> is an environment file, look-alikes are not", () => {
+    const flip = (s: string, rnd: () => number) => [...s].map((c) => (rnd() < 0.5 ? c.toUpperCase() : c.toLowerCase())).join("");
+    const alnum = "abcxyzLOCALprod019-_.";
+    for (let seed = 1; seed <= 300; seed++) {
+      const rnd = mulberry32(seed);
+      const suffix = Array.from({ length: 1 + Math.floor(rnd() * 8) }, () => alnum[Math.floor(rnd() * alnum.length)]).join("");
+      for (const name of [flip(".env", rnd), `${flip(".env", rnd)}.${suffix}`]) expect(isEnvName(name), `seed ${seed}: ${name}`).toBe(true);
+      for (const name of [flip(".environment", rnd), flip(".envx", rnd), flip("env", rnd), flip("env.local", rnd), `x${flip(".env", rnd)}`])
+        expect(isEnvName(name), `seed ${seed}: ${name}`).toBe(false);
+    }
   });
 });

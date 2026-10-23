@@ -2,13 +2,15 @@
 import "../language-ru.ts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   INITIAL_MATERIALS, MaterialsError, collectMaterials, createScriptedDriver, createSession, ensureDataDir,
   eventsPath, materialPath, readEvents, resolveDataDir, runStoredSession,
 } from "../../src/index.ts";
 import type { CollectedMaterial, ParticipantDriver, Scenario } from "../../src/index.ts";
+import { makeZip } from "../../src/documents/fixture.ts";
 
 const home = process.env.COUNCIL_HOME?.trim();
 if (!home) {
@@ -143,6 +145,43 @@ const unsafe = collectMaterials([join(input, "unsafe")], opts);
 assert.ok(unsafe.skipped.some((s) => s.name === "unsafe/.env.local" && s.reason.includes("защита секретов")), "folder with .env.local: no skip with a reason");
 assert.ok(!JSON.stringify(unsafe).includes(SECRET_VALUE), "folder with .env.local: the secret got into the set");
 console.log("✓ skip: folder with .env.local — the environment file was not read");
+
+// 3a. Environment file in another case (change 232): real council process, explicit .ENV, folder and ZIP
+{
+  const repo = resolve(import.meta.dirname, "../../../..");
+  const CASE_SECRETS = ["abc123-232", "def456-232"];
+  put("case-env/.ENV", `SECRET_TOKEN=${CASE_SECRETS[0]}\n`);
+  put("case-env/.Env.local", `SECRET_TOKEN=${CASE_SECRETS[1]}\n`);
+  put("case-env/a.txt", "a\n");
+  put("case-env.zip", makeZip([{ name: ".ENV", data: `SECRET_TOKEN=${CASE_SECRETS[0]}` }, { name: "cfg/.Env.local", data: `SECRET_TOKEN=${CASE_SECRETS[1]}` }, { name: "a.txt", data: "a" }]));
+  const preview = (lang: string, attach: string) => {
+    const r = spawnSync(process.execPath, [join(repo, "packages/core/src/council.ts"), "--attach", join(input, attach), "--preview-materials"], {
+      cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120_000,
+      env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", COUNCIL_DEV: "1", COUNCIL_LANG: lang, COUNCIL_HOME: home },
+    });
+    const out = r.stdout + r.stderr;
+    for (const secret of CASE_SECRETS) assert.ok(!out.includes(secret), `${attach} (${lang}): the secret leaked into the output\n${out}`);
+    return { code: r.status, out };
+  };
+  for (const [lang, reason] of [["en", "environment files (.env, .env.*) cannot be attached — secrets protection"], ["ru", "файлы окружения (.env, .env.*) прикладывать нельзя — защита секретов"]] as const) {
+    for (const f of [".ENV", ".Env.local"]) {
+      const r = preview(lang, `case-env/${f}`);
+      assert.equal(r.code, 2, r.out);
+      assert.ok(r.out.includes(`«${f}»: ${reason}`), r.out);
+    }
+  }
+  console.log("✓ refusal: explicit .ENV and .Env.local — code 2 with the .env reason on en and ru, no secret in the output");
+  for (const [attach, names] of [["case-env", ["case-env/.ENV", "case-env/.Env.local"]], ["case-env.zip", ["case-env.zip/.ENV", "case-env.zip/cfg/.Env.local"]]] as const) {
+    const r = preview("en", attach);
+    assert.equal(r.code, 0, r.out);
+    assert.ok(r.out.includes("Materials: 1,"), r.out);
+    for (const n of names) assert.ok(r.out.includes(`${n} — environment file — secrets protection`), `${attach}: ${n} is not skipped\n${r.out}`);
+  }
+  const sessionsDir = join(dataDir, "sessions");
+  const stored = existsSync(sessionsDir) ? readdirSync(sessionsDir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => readFileSync(join(e.parentPath, e.name), "utf8")).join("\n") : "";
+  for (const secret of CASE_SECRETS) assert.ok(!stored.includes(secret), "the secret got into sessions/");
+  console.log("✓ skip: .ENV and .Env.local in a folder and in a ZIP — skipped with the secrets reason, the secret is not in the output and sessions/");
+}
 
 // 4. Session A
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
