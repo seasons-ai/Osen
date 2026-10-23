@@ -145,7 +145,7 @@ const more = (dir: string): Case[] => {
     { name: "corrupted", reason: "corrupted", ru: `Сессия cr: журнал сессии повреждён: после события №${crN} идёт неполная или невалидная запись; продолжение невозможно.`, values: ["cr", String(crN)], run: () => planResume(dir, "cr", { rounds: 1, isAlive: dead }) },
     { name: "running", reason: "running", ru: "Сессия rn идёт: исполнитель ещё работает.", values: ["rn"], run: () => planResume(dir, "rn", { isAlive: alive }) },
     { name: "failed", reason: "failed", ru: "Сессия fl завершилась сбоем и продолжена быть не может.", values: ["fl"], run: () => planResume(dir, "fl", { isAlive: dead }) },
-    { name: "busy (журнал изменился)", reason: "busy", ru: "Сессия bz: журнал изменился после проверки: повторите команду.", values: ["bz"], run: async () => {
+    { name: "stale_plan (журнал изменился)", reason: "stale_plan", ru: "Сессия bz: журнал изменился после проверки: повторите команду.", values: ["bz"], run: async () => {
       const plan = planResume(dir, "bz", { rounds: 1, isAlive: dead });
       const original = readFileSync(eventsPath(dir, "bz"));
       appendFileSync(eventsPath(dir, "bz"), "\n");
