@@ -10,7 +10,7 @@ export const OCR_LIMITS = { bytes: 50 * 2 ** 20, pixels: 100_000_000, ms: 30_000
 
 export type OcrFailure = "missing" | "start" | "bytes" | "pixels" | "damaged" | "no_text" | "timeout" | "memory" | "chars" | "failed";
 export type OcrResult = { ok: true; text: string } | { ok: false; code: OcrFailure; detail?: string };
-export type OcrPdfResult = { ok: true; pages: { n: number; text: string }[] } | { ok: false; code: OcrFailure | "page_timeout"; detail?: string };
+export type OcrPdfResult = { ok: true; pages: { n: number; text: string }[] } | { ok: false; code: OcrFailure | "page_timeout" | "encrypted"; detail?: string };
 export interface OcrImageRequest { mode: "image"; ms: number; rssBytes: number }
 export interface OcrPdfRequest { mode: "pdf"; pages: number[]; pageMs: number; ms: number; rssBytes: number }
 export type OcrRequest = OcrImageRequest | OcrPdfRequest;
@@ -66,7 +66,7 @@ export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult 
       return { ok: true, pages: raw.map((p) => ({ n: p!.n as number, text: orderLines(p!.lines as OcrLine[]) })) };
     }
     const c = typeof reply.code === "string" ? reply.code : "";
-    if (c === "damaged" || c === "no_text" || c === "timeout" || c === "memory" || c === "page_timeout") return { ok: false, code: c };
+    if (c === "damaged" || c === "no_text" || c === "timeout" || c === "memory" || c === "page_timeout" || c === "encrypted") return { ok: false, code: c };
     return { ok: false, code: "failed", detail: c || materialsMessages().docBadReply };
   }
   if (reply.ok === true && Array.isArray(reply.lines)) {

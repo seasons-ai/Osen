@@ -82,8 +82,10 @@ func recognize(_ img: CGImage) -> [[String: Any]] {
 
 if mode == "pdf" {
   guard let numbers = (req["pages"] as? [NSNumber])?.map({ $0.intValue }),
-        let doc = PDFDocument(data: data), !doc.isLocked, !doc.isEncrypted
+        let doc = PDFDocument(data: data)
   else { fail("damaged") }
+  // only a password to open blocks reading: an owner password (permissions only) still lets pages render
+  if doc.isLocked { fail("encrypted") }
   var pages: [[String: Any]] = []
   for n in numbers {
     guard n >= 1, n <= doc.pageCount, let page = doc.page(at: n - 1) else { fail("damaged") }

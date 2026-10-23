@@ -12,3 +12,12 @@ export function makeImage(format: Exclude<ImageFormat, "webp">, lines: string[],
   if (r.status !== 0) throw new Error(`osen-ocr-fixture failed: ${r.stderr?.toString() ?? r.error?.message}`);
   return r.stdout;
 }
+
+/** A PDF with one text-layer page per entry (empty = blank page). Default: an owner password and no open password, so it opens without a password but is encrypted; plain: no password (macOS, CoreGraphics). */
+export function makeOwnerPasswordPdf(pages: readonly string[], opts: { plain?: boolean } = {}): Buffer {
+  const bin = join(import.meta.dirname, "bin/osen-ocr-fixture");
+  if (!existsSync(bin)) throw new Error(`osen-ocr-fixture is missing at ${bin} — run: npm run build:ocr`);
+  const r = spawnSync(bin, ["pdf-owner", ...(opts.plain ? ["--plain"] : []), ...pages], { maxBuffer: 200 * 2 ** 20 });
+  if (r.status !== 0) throw new Error(`osen-ocr-fixture failed: ${r.stderr?.toString() ?? r.error?.message}`);
+  return r.stdout;
+}
