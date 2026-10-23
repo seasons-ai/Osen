@@ -55,7 +55,7 @@ export function table(rows: string[][]): string {
   return `<w:tbl>${rows.map((r) => `<w:tr>${r.map((c) => `<w:tc>${p(c)}</w:tc>`).join("")}</w:tr>`).join("")}</w:tbl>`;
 }
 
-export interface DocxSpec { body: string; footnotes?: string; endnotes?: string; macro?: boolean; header?: string; comments?: string; extraParts?: ZipPart[] }
+export interface DocxSpec { body: string; mainType?: string; footnotes?: string; endnotes?: string; macro?: boolean; header?: string; comments?: string; extraParts?: ZipPart[] }
 
 const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
 const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -82,7 +82,7 @@ export function makeDocx(spec: DocxSpec): Uint8Array {
   }
   if (spec.header !== undefined) add("rId3", "header", "header1.xml", "header", `<w:hdr ${W}>${spec.header}</w:hdr>`);
   if (spec.comments !== undefined) add("rId4", "comments", "comments.xml", "comments", `<w:comments ${W}>${spec.comments}</w:comments>`);
-  const mainType = spec.macro ? "application/vnd.ms-word.document.macroEnabled.main+xml" : `${WML}.document.main+xml`;
+  const mainType = spec.mainType ?? (spec.macro ? "application/vnd.ms-word.document.macroEnabled.main+xml" : `${WML}.document.main+xml`);
   return makeZip([
     {
       name: "[Content_Types].xml",
@@ -191,7 +191,7 @@ export type XlsxCell =
   | { raw: string };
 
 export interface XlsxSheet { name: string; hidden?: boolean | "very"; rows?: XlsxCell[][]; noRefs?: boolean; sheetData?: string; chartsheet?: boolean }
-export interface XlsxSpec { sheets: XlsxSheet[]; macro?: boolean; scramble?: boolean; sharedXml?: string; noSharedPart?: boolean; extraParts?: ZipPart[] }
+export interface XlsxSpec { sheets: XlsxSheet[]; mainType?: string; macro?: boolean; scramble?: boolean; sharedXml?: string; noSharedPart?: boolean; extraParts?: ZipPart[] }
 
 export const colName = (col: number): string => {
   let s = "";
@@ -240,7 +240,7 @@ export function makeXlsx(spec: XlsxSpec): Uint8Array {
     sheetRels.push(`<Relationship Id="rIdS" Type="${REL}/sharedStrings" Target="sharedStrings.xml"/>`);
     parts.push({ name: "xl/sharedStrings.xml", data: xml(`<sst xmlns="${SML}">${spec.sharedXml ?? shared.map((s) => `<si><t xml:space="preserve">${esc(s)}</t></si>`).join("")}</sst>`) });
   }
-  const mainType = spec.macro ? "application/vnd.ms-excel.sheet.macroEnabled.main+xml" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
+  const mainType = spec.mainType ?? (spec.macro ? "application/vnd.ms-excel.sheet.macroEnabled.main+xml" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml");
   return makeZip([
     {
       name: "[Content_Types].xml",
@@ -273,7 +273,7 @@ export const pptxTable = (rows: string[][]): string =>
 
 export interface PptxSlide { shapes: string; hidden?: boolean; notes?: string }
 // fileOrder[i] is the number of the slide file that holds presentation slide i (default i + 1).
-export interface PptxSpec { slides: PptxSlide[]; fileOrder?: number[]; macro?: boolean; extraParts?: ZipPart[] }
+export interface PptxSpec { slides: PptxSlide[]; mainType?: string; fileOrder?: number[]; macro?: boolean; extraParts?: ZipPart[] }
 
 export function makePptx(spec: PptxSpec): Uint8Array {
   const parts: ZipPart[] = [];
@@ -295,7 +295,7 @@ export function makePptx(spec: PptxSpec): Uint8Array {
     parts.push({ name: `ppt/slides/_rels/slide${k}.xml.rels`, data: xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join("")}</Relationships>`) });
   });
   parts.sort((a, b) => (a.name as string).localeCompare(b.name as string, "en", { numeric: true }));
-  const mainType = spec.macro ? "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml" : `${PML}.presentation.main+xml`;
+  const mainType = spec.mainType ?? (spec.macro ? "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml" : `${PML}.presentation.main+xml`);
   return makeZip([
     {
       name: "[Content_Types].xml",

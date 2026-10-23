@@ -4,7 +4,13 @@ import { DocError, type DocLimits } from "./limits.ts";
 import { decodeXml, parseXml, type XmlElement } from "./xml.ts";
 import type { Zip } from "./zip.ts";
 
-export const XLSX_TYPES = ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml", "application/vnd.ms-excel.sheet.macroEnabled.main+xml"];
+export const XLSX_TYPES = [
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml", "application/vnd.ms-excel.sheet.macroEnabled.main+xml",
+  // XLTX and XLTM: templates are read as their main format (change 222)
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml", "application/vnd.ms-excel.template.macroEnabled.main+xml",
+];
+/** Main part type of XLSB: a binary workbook that is refused with its kind reason (change 222). */
+export const XLSB_TYPE = "application/vnd.ms-excel.sheet.binary.macroEnabled.main";
 
 const MAX_COLUMN = 16384;
 // SpreadsheetML is usually unprefixed but may carry a prefix: names are compared without it.

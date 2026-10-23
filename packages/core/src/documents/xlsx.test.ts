@@ -91,12 +91,23 @@ describe("XLSX text", () => {
     expect(extractDocument(missingPart, DOC_LIMITS)).toEqual({ ok: false, code: "damaged" });
   });
 
-  it("a macro-free template or binary workbook type stays unsupported", () => {
+  it("XLTX and XLTM give the same text as XLSX; a template sheet keeps its heading", () => {
+    const sheets = [{ name: "План", rows: [["a", 1]] }];
+    const xlsx = text({ sheets });
+    expect(xlsx.startsWith("# План")).toBe(true);
+    for (const mainType of ["application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml", "application/vnd.ms-excel.template.macroEnabled.main+xml"]) {
+      expect(text({ sheets, mainType })).toBe(xlsx);
+      expect(run({ sheets, mainType, macro: true })).toMatchObject({ ok: true, format: "xlsx", text: xlsx });
+    }
+  });
+
+  it("a binary workbook (XLSB) is refused with the xlsb kind, not as unsupported", () => {
     const zip = makeZip([
-      { name: "[Content_Types].xml", data: '<Types><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml"/></Types>' },
-      { name: "_rels/.rels", data: '<Relationships><Relationship Id="1" Type="x/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+      { name: "[Content_Types].xml", data: '<Types><Override PartName="/xl/workbook.bin" ContentType="application/vnd.ms-excel.sheet.binary.macroEnabled.main"/></Types>' },
+      { name: "_rels/.rels", data: '<Relationships><Relationship Id="1" Type="x/officeDocument" Target="xl/workbook.bin"/></Relationships>' },
+      { name: "xl/workbook.bin", data: "x" },
     ]);
-    expect(extractDocument(zip, DOC_LIMITS)).toEqual({ ok: false, code: "unsupported" });
+    expect(extractDocument(zip, DOC_LIMITS)).toEqual({ ok: false, code: "kind", detail: "xlsb" });
   });
 });
 

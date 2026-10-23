@@ -4,7 +4,12 @@ import { DocError } from "./limits.ts";
 import type { XmlElement } from "./xml.ts";
 import type { Zip } from "./zip.ts";
 
-export const PPTX_TYPES = ["application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml", "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml"];
+export const PPTX_TYPES = [
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml", "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml",
+  // POTX, POTM, PPSX and PPSM: templates and slideshows are read as a presentation (change 222)
+  "application/vnd.openxmlformats-officedocument.presentationml.template.main+xml", "application/vnd.ms-powerpoint.template.macroEnabled.main+xml",
+  "application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml", "application/vnd.ms-powerpoint.slideshow.macroEnabled.main+xml",
+];
 
 // ponytail: the prefixes p:, a:, mc: and r: are taken literally (PowerPoint always writes them), as docx.ts does for w:.
 const EXCLUDED = ["ftr", "dt", "sldNum"];

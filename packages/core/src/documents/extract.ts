@@ -31,7 +31,7 @@ export function extractDocumentText(bytes: Uint8Array, limits: DocLimits = DOC_L
   if (code === "ENOBUFS") return { ok: false, code: "chars" };
   // EPIPE: the extractor answered (a limit) and exited before reading all input; its reply on stdout still counts
   if (r.error && code !== "EPIPE") return { ok: false, code: "failed", detail: code ?? materialsMessages().docStartError };
-  if (r.status !== 0) return { ok: false, code: "failed", detail: r.signal ?? `exit ${r.status}` };
+  if (r.status !== 0) return { ok: false, code: "failed", detail: r.signal ?? `exit:${r.status}` };
   try {
     const result = JSON.parse(r.stdout.toString("utf8")) as DocumentResult;
     if (typeof result === "object" && result !== null && typeof result.ok === "boolean") return result;
@@ -59,6 +59,15 @@ export function readDocumentText(fd: number, limits: DocLimits = DOC_LIMITS): Do
   return result;
 }
 
+// the extractor reports language-free codes; the parent builds the words
+function failedDetail(detail: string | undefined): string | undefined {
+  const m = materialsMessages();
+  if (detail === "parser_error") return m.docParserError;
+  if (detail === "parser_exit") return m.docParserExit;
+  const exit = /^exit:(\d+)$/.exec(detail ?? "");
+  return exit ? m.docExitCode(Number(exit[1])) : detail;
+}
+
 export function documentReason(failure: { code: DocFailure; detail?: string }, limits: DocLimits = DOC_LIMITS): string {
   const m = materialsMessages();
   switch (failure.code) {
@@ -75,7 +84,7 @@ export function documentReason(failure: { code: DocFailure; detail?: string }, l
     case "no_text": return m.docNoText;
     case "unsupported": return m.docUnsupported;
     case "textutil_unavailable": return m.docTextutilUnavailable;
-    case "failed": return m.docFailed(failure.detail ?? m.docStartError);
+    case "failed": return m.docFailed(failedDetail(failure.detail) ?? m.docStartError);
     case "odf_kind": return m.docOdfKind(failure.detail ?? "");
     case "drm": return m.docDrm;
     case "kind": return m.kindReason((failure.detail ?? "unknown") as FileKindId);

@@ -17,6 +17,8 @@ import { promisify } from "node:util";
 import { collectMaterials, DOC_LIMITS, documentReason, extractDocumentText, MaterialsError, setDocumentExtractorRuntime, setProcessLanguage } from "../../src/index.ts";
 import { makeCfb, makeDocx, makePptx, makeRtf, makeXlsx, makeZip, p, pptxTable, sp, table } from "../../src/documents/fixture.ts";
 import { SANDBOX_PROFILE } from "../../src/documents/textutil.ts";
+import { KIND_FIXTURES } from "../../src/documents/kind-fixtures.ts";
+import { materialsMessages } from "../../src/messages/materials.ts";
 import { odfEpubSuite } from "./odf-epub.ts";
 
 const run1 = promisify(execFile);
@@ -70,6 +72,19 @@ const PPTX_SPEC = {
   ],
 };
 const PPTX_EXPECTED = "# 1\nНазвание доклада\nПервый пункт\n\n# 2\nМесяц\tСумма\nмай\t10\n\nЗаметка докладчика\n\n# 3\nСкрытый слайд";
+// Templates and slideshows (change 222): the same bodies under other main part types; the expected text is that of the main format.
+const OOXML = "application/vnd.openxmlformats-officedocument", MS = "application/vnd.ms-";
+const VARIANTS: { file: string; expected: string; build: () => Uint8Array }[] = [
+  { file: "tpl.dotx", expected: EXPECTED, build: () => makeDocx({ ...REPORT, mainType: `${OOXML}.wordprocessingml.template.main+xml` }) },
+  { file: "tpl.dotm", expected: EXPECTED, build: () => makeDocx({ ...REPORT, mainType: `${MS}word.template.macroEnabledTemplate.main+xml` }) },
+  { file: "tpl.xltx", expected: XLSX_EXPECTED, build: () => makeXlsx({ ...XLSX_SPEC, mainType: `${OOXML}.spreadsheetml.template.main+xml` }) },
+  { file: "tpl.xltm", expected: XLSX_EXPECTED, build: () => makeXlsx({ ...XLSX_SPEC, mainType: `${MS}excel.template.macroEnabled.main+xml` }) },
+  { file: "tpl.potx", expected: PPTX_EXPECTED, build: () => makePptx({ ...PPTX_SPEC, mainType: `${OOXML}.presentationml.template.main+xml` }) },
+  { file: "tpl.potm", expected: PPTX_EXPECTED, build: () => makePptx({ ...PPTX_SPEC, mainType: `${MS}powerpoint.template.macroEnabled.main+xml` }) },
+  { file: "show.ppsx", expected: PPTX_EXPECTED, build: () => makePptx({ ...PPTX_SPEC, mainType: `${OOXML}.presentationml.slideshow.main+xml` }) },
+  { file: "show.ppsm", expected: PPTX_EXPECTED, build: () => makePptx({ ...PPTX_SPEC, mainType: `${MS}powerpoint.slideshow.macroEnabled.main+xml` }) },
+];
+const XLSB_BYTES = KIND_FIXTURES.find((k) => k.name === "xlsb")!.bytes;
 // distinct values keep the compression ratio of each part far below 200
 function bigBook(cells: number): Uint8Array {
   const rows: string[] = [];
@@ -418,7 +433,7 @@ async function suite(lang: "ru" | "en") {
     assert.ok(!events(id).some((e) => e.type === "turn_failed"), `${label}: turn_failed`);
     const fresh = promptLines().slice(before);
     assert.ok(fresh.length >= 2 && fresh.every((l) => (JSON.parse(l) as { prompt: string }).prompt.includes(expected)), `${label}: not every request carries the text`);
-    return { sha256: m[0]!.sha256, chars: m[0]!.chars, snapshot, requests: fresh.length };
+    return { sha256: m[0]!.sha256, chars: m[0]!.chars, snapshot, requests: fresh.length, id };
   }
   const xlsxSha = sha(Buffer.from(XLSX_EXPECTED, "utf8")), pptxSha = sha(Buffer.from(PPTX_EXPECTED, "utf8"));
 
@@ -509,6 +524,41 @@ async function suite(lang: "ru" | "en") {
   assert.ok(out8.some((l) => l.includes("broken.xlsx") && l.includes(t.reason.damaged)), `damaged line${dump(r8.r)}`);
   assert.ok(out8.some((l) => l.includes("empty.pptx") && l.includes(t.reason.noText)), `no-text line${dump(r8.r)}`);
   ok(`${tag} X8: a damaged .xlsx ("${t.reason.damaged}") and a text-less .pptx ("${t.reason.noText}") are skipped, README is collected`);
+
+  // ---- V. Templates and slideshows (change 222): terminal, MCP and app give the same material; no package parts as materials ----
+  for (const v of VARIANTS) {
+    const r = await exact(`v-${v.file}`, join(fx, v.file), v.expected);
+    const names = (created(r.id).materials as { name: string }[]).map((m) => m.name);
+    assert.ok(names.length === 1 && names[0]!.endsWith(v.file) && !names.some((n) => n.includes("[Content_Types].xml")), `${v.file}: names ${names}`);
+    const exp = `${v.file}-expected.txt`;
+    const m = await subStand(`MCP ${v.file}`, "packages/mcp/scenarios/documents/check.ts", join(work, `mcp-${v.file}-${lang}`), lang, [t.reason.damaged, v.file, exp]);
+    const a = await subStand(`app ${v.file}`, "apps/desktop/scenarios/documents/check.ts", join(work, `desktop-${v.file}-${lang}`), lang, [t.reason.damaged, v.file, exp]);
+    for (const [who, x] of [["terminal", r], ["MCP", m], ["app", a]] as const) {
+      assert.equal(x.sha256, sha(Buffer.from(v.expected, "utf8")), `${v.file} ${who}: sha256`);
+      assert.equal(x.chars, v.expected.length, `${v.file} ${who}: chars`);
+      assert.equal(readFileSync(x.snapshot, "utf8"), v.expected, `${v.file} ${who}: snapshot`);
+    }
+  }
+  ok(`${tag} V1: ${VARIANTS.map((v) => v.file).join(", ")} — one material named by the file with the main-format text; chars, sha256 and snapshot are identical in the terminal, MCP and the app; no [Content_Types].xml material`);
+
+  const mm = materialsMessages(lang);
+  const varDir = join(fx, "projvar");
+  const rF = await attach("v2", varDir, undefined);
+  assert.equal(rF.code, 0, dump(rF.r));
+  const namesF = (created(sessionId(rF.r)).materials as { name: string }[]).map((m) => m.name).sort();
+  assert.deepEqual(namesF, ["projvar/a.md", "projvar/show.ppsx", "projvar/tpl.xltx"], dump(rF.r));
+  assert.ok(!rF.r.out.includes(mm.archiveInFolder) && !rF.r.out.includes(mm.archiveNested), `archive reason in the folder output${dump(rF.r)}`);
+  ok(`${tag} V2: a folder with a.md, show.ppsx and tpl.xltx collects three files, no "${mm.archiveInFolder}"`);
+
+  const rZ = await attach("v3", join(fx, "pack.zip"), undefined);
+  assert.equal(rZ.code, 0, dump(rZ.r));
+  const namesZ = (created(sessionId(rZ.r)).materials as { name: string }[]).map((m) => m.name).sort();
+  assert.deepEqual(namesZ, ["pack.zip/a.md", "pack.zip/tpl.dotx"], dump(rZ.r));
+  assert.ok(rZ.r.out.split("\n").some((l) => l.includes("pack.zip/bin.xlsb") && l.includes(mm.kindReason("xlsb"))), `no skipped XLSB line${dump(rZ.r)}`);
+  assert.ok(!rZ.r.out.includes(mm.archiveNested), `nested-archive reason${dump(rZ.r)}`);
+  const tplZ = readFileSync(join(sdir(sessionId(rZ.r)), "materials", "m2.txt"), "utf8");
+  assert.equal(tplZ, EXPECTED, "pack.zip/tpl.dotx text");
+  ok(`${tag} V3: pack.zip with a.md, tpl.dotx, bin.xlsb — pack.zip/tpl.dotx has the main-format text, pack.zip/bin.xlsb is skipped with "${mm.kindReason("xlsb")}", no "${mm.archiveNested}"`);
 
   // Change 210: OpenDocument and EPUB checks with their own fixtures.
   await odfEpubSuite({ lang, work, t, run, attach, created, sessionId, sdir, journals, promptLines, pair: (n) => pair(n), parts, subStand, dump, ok });
@@ -635,6 +685,12 @@ async function main() {
   writeFileSync(join(fx, "deck.pptx"), makePptx(PPTX_SPEC));
   writeFileSync(join(fx, "deck-expected.txt"), PPTX_EXPECTED);
   writeFileSync(join(fx, "big.xlsx"), bigBook(1_000_001));
+  for (const v of VARIANTS) { writeFileSync(join(fx, v.file), v.build()); writeFileSync(join(fx, `${v.file}-expected.txt`), v.expected); }
+  mkdirSync(join(fx, "projvar"), { recursive: true });
+  writeFileSync(join(fx, "projvar", "a.md"), "Описание проекта.\n");
+  copyFileSync(join(fx, "show.ppsx"), join(fx, "projvar", "show.ppsx"));
+  copyFileSync(join(fx, "tpl.xltx"), join(fx, "projvar", "tpl.xltx"));
+  writeFileSync(join(fx, "pack.zip"), makeZip([{ name: "a.md", data: "Описание проекта.\n" }, { name: "tpl.dotx", data: VARIANTS[0]!.build() }, { name: "bin.xlsb", data: XLSB_BYTES }]));
   // RTF and legacy fixtures (change 211)
   writeFileSync(join(fx, "note.rtf"), makeRtf(RTF_PARAS));
   writeFileSync(join(fx, "expected-rtf.txt"), RTF_EXPECTED);
