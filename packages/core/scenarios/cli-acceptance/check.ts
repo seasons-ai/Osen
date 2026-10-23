@@ -86,7 +86,7 @@ const isAlive = (pid: number): boolean => {
 };
 
 interface Result { code: number; out: string; err: string; tag: string }
-interface RunOpts { lang?: "en" | "ru"; mode?: string; limits?: { timeoutMs?: number; maxBytes?: number }; onSpawn?: (child: ChildProcess, tag: string) => void }
+interface RunOpts { lang?: "en" | "ru"; mode?: string; swapAt?: number; limits?: { timeoutMs?: number; maxBytes?: number }; onSpawn?: (child: ChildProcess, tag: string) => void }
 let runNo = 0;
 function run(home: string, args: string[], o: RunOpts = {}): Promise<Result> {
   const tag = `run-${String(++runNo).padStart(3, "0")}`;
@@ -96,6 +96,7 @@ function run(home: string, args: string[], o: RunOpts = {}): Promise<Result> {
     PATH: `${bin}:/usr/bin:/bin`, HOME: homedir(), SHELL: fakeShell, COUNCIL_HOME: home, COUNCIL_DEV: "1", COUNCIL_LANG: o.lang ?? "en",
     STUB_MODE: o.mode ?? "good", STUB_LOG: join(logs, `${tag}.log`), STUB_ARGV_LOG: join(logs, `${tag}.argv`), STUB_STATE: state, STUB_PIDFILE: join(pidDir, `${tag}.pid`),
     ...(o.limits ? { CLI_ACCEPT_STAND_LIMITS: JSON.stringify(o.limits) } : {}),
+    ...(o.swapAt ? { STUB_SWAP_AT: String(o.swapAt) } : {}),
   };
   return new Promise((res, rej) => {
     const child = spawn(process.execPath, [entry, ...args], { env, cwd: repo, stdio: ["ignore", "pipe", "pipe"] });
@@ -315,6 +316,29 @@ try {
   assert.match(rb.err, /sha256/);
   assert.deepEqual(turnPids(rb), []);
   ok("installed stub changed after install: exit 2, stderr names the sha256 mismatch, no stub launch");
+
+  // ---- 6c: the installed file is swapped during the acceptance (change 237) ----
+  // the stub replaces its own file (temporary file + rename, a new inode) on the first or the seventh turn launch
+  const SWAP_TEXT = { en: (n: number) => `model calls made: ${n};`, ru: (n: number) => `сделано вызовов модели: ${n};` } as const;
+  for (const swapAt of [1, PROBES]) {
+    for (const lang of ["en", "ru"] as const) {
+      const h = H(`swap-${swapAt}-${lang}`);
+      await install(h);
+      const expected = installed(h).sha256;
+      const r = await accept(h, ["--candidate", "--max-calls", "7"], { lang, swapAt });
+      const found = hash(readFileSync(stubOf(h)!));
+      assert.notEqual(found, expected, "the stub did not replace its file");
+      assert.equal(r.code, 2, `swap at ${swapAt} ${lang}: ${r.out}\n${r.err}`);
+      assert.ok(r.err.includes("9.9.9") && r.err.includes(expected) && r.err.includes(found), r.err);
+      assert.ok(r.err.includes(SWAP_TEXT[lang](swapAt)), r.err);
+      if (lang === "ru") assert.ok(CYR.test(r.err), r.err);
+      else assert.ok(!CYR.test(r.err), r.err);
+      assert.equal(turnPids(r).length, swapAt, `swap at ${swapAt}: the stub was launched ${turnPids(r).length} times`);
+      assert.equal(probeLines(r.out).length, swapAt, r.out);
+      assert.deepEqual(realOf(h), []);
+      ok(`${lang}: the stub swaps its file on launch ${swapAt}: exit 2, stderr names 9.9.9, both sums and ${swapAt} call(s), ${swapAt} stub launch(es), no real entry`);
+    }
+  }
 
   // ---- 7: corrupted local record ----
   const h7 = H("corrupt");
