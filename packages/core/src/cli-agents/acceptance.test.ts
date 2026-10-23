@@ -5,6 +5,7 @@ import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setProcessLanguage } from "../i18n/process-language.ts";
 import { DEFAULT_MODEL } from "./types.ts";
+import { writeAcceptanceStub } from "./acceptance-stub.fixture.ts";
 import type { CliAgent } from "./types.ts";
 import type { VerifiedRecord } from "./verified-record.ts";
 import {
@@ -389,4 +390,21 @@ describe("Turn fixture from the valid turn", () => {
     expect(out.fixtureError).toContain("JSON");
     expect(existsSync(folder)).toBe(false);
   });
+});
+
+describe("Порядок поиска и окружение закреплённого CLI: Справка и список возможностей Codex в проверке кандидата и в приёмке", () => {
+  const UPDATE_OFF = "-c check_for_update_on_startup=false";
+  for (const agent of ["claude", "codex"] as const) {
+    it(`accept ${agent}: the real inspectPinned reads help${agent === "codex" ? " and features list with" : " without"} ${UPDATE_OFF}, no --version read`, async () => {
+      const stub = writeAcceptanceStub(root, { help: "  --model <m>\n", features: "shell_tool stable true\n" });
+      const configDir = join(root, "config");
+      mkdirSync(configDir, { recursive: true });
+      const plan: AcceptancePlan = { agent, version: "9.9.9", path: stub, sha256: "a".repeat(64), configDir, model: DEFAULT_MODEL, probes: PROBES, bound: 7 };
+      const argvLog = join(root, "argv.log");
+      const runner: ProbeRunner = async () => ({ ok: true, calls: 1 });
+      await runAcceptance(dataDir, plan, runOpts({ env: { ...ENV, STUB_ARGV_LOG: argvLog } }), { runProbe: runner });
+      const lines = readFileSync(argvLog, "utf8").split("\n").filter(Boolean);
+      expect(lines).toEqual(agent === "claude" ? ["--help"] : [`exec --help ${UPDATE_OFF}`, `features list ${UPDATE_OFF}`]);
+    });
+  }
 });

@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe("Limits and reasons", () => {
-  it("constants and sixteen reason wordings", () => {
+  it("constants and seventeen reason wordings", () => {
     expect(PDF_LIMITS).toEqual({ bytes: 104857600, pages: 2000, ms: 30000, rssBytes: 536870912, chars: 20000000 });
     const reasons: Record<PdfFailure, string> = {
       bytes: "PDF больше 100 МиБ",
@@ -49,6 +49,7 @@ describe("Limits and reasons", () => {
       ocr_timeout: "распознавание текста PDF дольше 300 секунд",
       ocr_memory: "распознавание текста PDF заняло больше 512 МиБ памяти",
       ocr_failed: "не удалось распознать текст PDF — ответ не разобран",
+      ocr_folder: "распознавание PDF в папке дольше 300 секунд — остальные PDF со сканами пропущены",
     };
     for (const [code, text] of Object.entries(reasons)) expect(pdfReason({ code: code as PdfFailure })).toBe(text);
     expect(pdfReason({ code: "failed", detail: "exit 3" })).toBe("не удалось извлечь текст PDF — exit 3");

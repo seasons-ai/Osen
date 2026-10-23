@@ -10,7 +10,7 @@ import { CFB_SIGNATURE } from "./documents/cfb.ts";
 import { DOC_LIMITS, documentReason, readDocumentText } from "./documents/extract.ts";
 import { nonTextReason, TAIL_BYTES } from "./documents/kinds.ts";
 import { expandArchive } from "./materials-archive.ts";
-import { pdfReason, readPdfText } from "./pdf/extract.ts";
+import { newPdfOcrBudget, PDF_LIMITS, pdfReason, readPdfText } from "./pdf/extract.ts";
 import { imageSignature, type ImageFormat } from "./ocr/image-header.ts";
 import { imageReason, OCR_LIMITS, readImageText } from "./ocr/run.ts";
 import { decodeFileText } from "./text-encoding.ts";
@@ -129,13 +129,14 @@ function readTail(fd: number): Buffer | undefined {
 }
 
 // string — text, { refused } — not text or the PDF, document or image was refused with a reason, { image } — an image whose recognition is deferred (defer)
-function readText(abs: string, defer = false): string | { refused: string } | { image: ImageFormat } | { archive: true } {
+function readText(abs: string, defer = false): string | { refused: string } | { image: ImageFormat } | { pdf: true } | { archive: true } {
   const fd = openSync(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     if (!fstatSync(fd).isFile()) throw new Error(materialsMessages().notRegularFile);
     const head = Buffer.alloc(HEAD_BYTES);
     const n = readSync(fd, head, 0, HEAD_BYTES, 0);
     if (head.subarray(0, Math.min(n, 5)).toString("latin1") === "%PDF-") {
+      if (defer) return { pdf: true };
       const r = readPdfText(fd);
       return r.ok ? r.text : { refused: pdfReason(r) };
     }
@@ -171,12 +172,12 @@ function readText(abs: string, defer = false): string | { refused: string } | { 
   }
 }
 
-// Recognition of an image found during a folder walk: the files are opened again after the folder is sorted
-function readImage(abs: string, format: ImageFormat): ReturnType<typeof readImageText> {
+// Recognition of an image or PDF found during a folder walk: the files are opened again after the folder is sorted
+function readDeferred<T>(abs: string, read: (fd: number) => T): T {
   const fd = openSync(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     if (!fstatSync(fd).isFile()) throw new Error(materialsMessages().notRegularFile);
-    return readImageText(fd, format);
+    return read(fd);
   } finally {
     closeSync(fd);
   }
@@ -226,7 +227,7 @@ export function attachedFolderPrefixes(paths: readonly string[]): Map<string, st
   return folderPrefixes(dirs);
 }
 
-type WalkOut = { rel: string; text?: string; skip?: string; excludedPath?: string; rule?: string; abs?: string; image?: ImageFormat }[];
+type WalkOut = { rel: string; text?: string; skip?: string; excludedPath?: string; rule?: string; abs?: string; image?: ImageFormat; pdf?: true }[];
 
 export function collectMaterials(paths: readonly string[], options: CollectOptions): MaterialSet {
   const m = materialsMessages();
@@ -315,6 +316,7 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
           try {
             const text = readText(abs, true);
             if (typeof text === "object" && "image" in text) out.push({ rel: eRel, abs, image: text.image });
+            else if (typeof text === "object" && "pdf" in text) out.push({ rel: eRel, abs, pdf: true });
             else if (typeof text === "object") skip((text as { refused: string }).refused); // defer: an archive is never returned here
             else {
               seen.add(abs);
@@ -353,14 +355,27 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
         out.sort((a, b) => compare(a.rel, b.rel));
         // images are recognized in the final name order: the first folderImages that reach the helper; refusals by size and header take no slot
         let recognized = 0;
+        const pdfBudget = newPdfOcrBudget(); // one recognition budget per attached folder, spent in the same name order
         for (const o of out) {
+          if (o.pdf) {
+            try {
+              const r = readDeferred(o.abs!, (fd) => readPdfText(fd, PDF_LIMITS, pdfBudget));
+              if (r.ok) {
+                seen.add(o.abs!);
+                o.text = r.text;
+              } else o.skip = pdfReason(r);
+            } catch (e) {
+              o.skip = m.readFailed(errText(e));
+            }
+            continue;
+          }
           if (!o.image) continue;
           if (recognized >= OCR_LIMITS.folderImages) {
             o.skip = m.imgFolderLimit(OCR_LIMITS.folderImages);
             continue;
           }
           try {
-            const r = readImage(o.abs!, o.image);
+            const r = readDeferred(o.abs!, (fd) => readImageText(fd, o.image!));
             if (!(!r.ok && (r.code === "bytes" || r.code === "pixels" || r.code === "damaged"))) recognized++;
             if (r.ok) {
               seen.add(o.abs!);

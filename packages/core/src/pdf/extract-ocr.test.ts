@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { OCR_LIMITS, runOcrHelper, setOcrRuntime } from "../ocr/run.ts";
 import { extractPdfText, mergePages, PDF_OCR_LIMITS, pdfReason, readPdfText } from "./extract.ts";
+import { makeOwnerPasswordPdf } from "../ocr/fixture.ts";
 import { makeEncryptedPdf, makePdf, makeScanPdf } from "./fixture.ts";
 
 const SLOW = 30_000;
@@ -59,6 +60,7 @@ describe("PDF recognition: merge and limits (stub helper)", () => {
     [{ ok: false, code: "timeout" }, { ok: false, code: "ocr_timeout" }, "распознавание текста PDF дольше 300 секунд"],
     [{ ok: false, code: "memory" }, { ok: false, code: "ocr_memory" }, "распознавание текста PDF заняло больше 512 МиБ памяти"],
     [{ ok: false, code: "damaged" }, { ok: false, code: "damaged" }, "PDF повреждён"],
+    [{ ok: false, code: "encrypted" }, { ok: false, code: "encrypted" }, "PDF зашифрован — пароль не запрашивается"],
     [{ ok: false, code: "bad_request" }, { ok: false, code: "ocr_failed", detail: "bad_request" }, "не удалось распознать текст PDF — bad_request"],
   ] as [unknown, object, string][])("maps the helper reply %j to a code and a reason", (reply, expected, reason) => {
     use(printing(reply));
@@ -67,11 +69,18 @@ describe("PDF recognition: merge and limits (stub helper)", () => {
     expect(r.ok ? "" : pdfReason(r)).toBe(reason);
   }, SLOW);
 
-  it("a missing helper and a helper that cannot start give their own codes", () => {
+  it("a missing helper and a helper that cannot start give their own codes when no page has a text layer", () => {
     use(join(dir, "absent"));
-    expect(extractPdfText(makePdf(["", "текст"]))).toEqual({ ok: false, code: "ocr_missing" });
+    expect(extractPdfText(makePdf(["", ""]))).toEqual({ ok: false, code: "ocr_missing" });
     use(stub("echo hi", 0o644));
-    expect(extractPdfText(makePdf(["", "текст"]))).toEqual({ ok: false, code: "ocr_start" });
+    expect(extractPdfText(makePdf(["", ""]))).toEqual({ ok: false, code: "ocr_start" });
+  }, SLOW);
+
+  it("without a usable helper the pages with a text layer are still read", () => {
+    use(join(dir, "absent"));
+    expect(extractPdfText(makePdf(["", "текст"]))).toEqual({ ok: true, text: "текст", pages: 2, fallback: true });
+    use(stub("echo hi", 0o644));
+    expect(extractPdfText(makePdf(["", "текст"]))).toEqual({ ok: true, text: "текст", pages: 2, fallback: true });
   }, SLOW);
 
   it("an encrypted PDF never starts the helper", () => {
@@ -92,13 +101,27 @@ describe("PDF recognition: cache", () => {
     writeFileSync(file, makePdf(["", "текст"]));
     const read = () => { const fd = openSync(file, "r"); try { return readPdfText(fd); } finally { closeSync(fd); } };
     use(join(dir, "absent"));
-    expect(read()).toEqual({ ok: false, code: "ocr_missing" });
+    expect(read()).toEqual({ ok: true, text: "текст", pages: 2, fallback: true });
     use(printing({ ok: false, code: "timeout" }));
     expect(read()).toEqual({ ok: false, code: "ocr_timeout" });
     use(printing({ ok: true, pages: [page(1, "скан")] }));
     expect(read()).toEqual({ ok: true, text: "скан\n\nтекст", pages: 2 });
     use(join(dir, "absent"));
     expect(read()).toEqual({ ok: true, text: "скан\n\nтекст", pages: 2 });
+  }, SLOW);
+});
+
+describe("Распознавание сканированного PDF: помощника нет", () => {
+  it("a helper that appears after a collection without it is used: the fallback is not cached", () => {
+    const file = join(dir, "late.pdf");
+    writeFileSync(file, makePdf(["", "текст"]));
+    const read = () => { const fd = openSync(file, "r"); try { return readPdfText(fd); } finally { closeSync(fd); } };
+    use(join(dir, "absent"));
+    const first = read();
+    expect(first.ok && first.text).toBe("текст");
+    use(printing({ ok: true, pages: [page(1, "скан")] }));
+    const second = read();
+    expect(second.ok && second.text).toBe("скан\n\nтекст");
   }, SLOW);
 });
 
@@ -151,6 +174,15 @@ describe.runIf(process.platform === "darwin")("real helper in pdf mode", () => {
     const pdf = makeScanPdf([["Договор поставки"]]);
     expect(runOcrHelper({ ...REQ, pages: [1], pageMs: 1 }, pdf)).toEqual({ ok: false, code: "page_timeout" });
     expect(runOcrHelper({ ...REQ, pages: [1], ms: 1 }, pdf)).toEqual({ ok: false, code: "timeout" });
+  }, SLOW);
+
+  it("a PDF with an owner password is read like the same PDF without it", () => {
+    const pages = ["Text layer page one", ""];
+    const owner = makeOwnerPasswordPdf(pages);
+    expect(owner.includes("/Encrypt")).toBe(true);
+    const plain = extractPdfText(makeOwnerPasswordPdf(pages, { plain: true }));
+    expect(plain).toEqual({ ok: true, text: "Text layer page one", pages: 2 });
+    expect(extractPdfText(owner)).toEqual(plain);
   }, SLOW);
 
   it("a mixed document comes back in page order", () => {

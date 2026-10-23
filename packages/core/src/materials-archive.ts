@@ -63,12 +63,13 @@ type Out = { rel: string; text?: string; skip?: string; idx?: number };
 
 // Mirrors readText in materials.ts on bytes: PDF (with scan recognition), documents, RTF/DOC, images, text with its encodings and the kind reasons of change 216;
 // a reader added there later must be wired here too.
-function readEntryBytes(bytes: Uint8Array, state: { recognized: number }): { text: string } | { skip: string } {
+function readEntryBytes(bytes: Uint8Array, state: { recognized: number; fallback?: boolean }): { text: string } | { skip: string } {
   const m = materialsMessages();
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const head = buf.subarray(0, Math.min(buf.length, HEAD_BYTES));
   if (head.subarray(0, 5).toString("latin1") === "%PDF-") {
     const r = extractPdfText(bytes);
+    if (r.ok && r.fallback) state.fallback = true;
     return r.ok ? { text: r.text } : { skip: pdfReason(r) };
   }
   // an empty ZIP is only the end record: as in readText it is an archive, here a nested one
@@ -156,20 +157,23 @@ export function expandArchive(abs: string, prefix: string, options: CollectOptio
     if (Date.now() >= deadline) throw new Refuse([m.archiveTimeout(totalMs / 1000)], true);
   };
   let result: ArchiveResult;
+  const seen: { fallback?: boolean } = {};
   try {
-    result = expand(bytes, prefix, options, checkTime);
+    result = expand(bytes, prefix, options, checkTime, seen);
   } catch (e) {
     if (!(e instanceof Refuse)) throw e;
     result = { refused: e.lines };
     if (e.transient) return result;
   }
+  // a PDF read without the OCR helper is not cached: the helper may appear before the next collection
+  if (seen.fallback) return result;
   cache.set(key, result);
   if ("materials" in result) cacheChars += result.materials.reduce((s, x) => s + x.text.length, 0);
   if (cacheChars > CACHE_CHARS) { cache.clear(); cacheChars = 0; }
   return result;
 }
 
-function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTime: () => void): ArchiveResult {
+function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTime: () => void, seen: { fallback?: boolean }): ArchiveResult {
   const m = materialsMessages();
   const listed = listArchiveEntries(bytes);
   if (!listed.ok) throw new Refuse([failureReason(listed)], TRANSIENT.includes(listed.code));
@@ -279,7 +283,7 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
   out.sort((a, b) => compare(a.rel, b.rel));
 
   // entries are read in the final order, in batches of declared size
-  const state = { recognized: 0 };
+  const state: { recognized: number; fallback?: boolean } = { recognized: 0 };
   readBatches(bytes, entries, out.filter((o) => o.idx !== undefined), checkTime, (o, data) => {
     if (data === undefined || typeof data === "string") o.skip = data === "encrypted" ? m.docEncrypted : m.archiveDamaged;
     else {
@@ -293,6 +297,7 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
     }
   });
 
+  if (state.fallback) seen.fallback = true;
   const materials: { name: string; text: string }[] = [];
   const skipped: SkippedMaterial[] = [];
   for (const o of out) {

@@ -98,6 +98,13 @@ printf '{"ok":true,"lines":[{"t":"argc=%s args=%s env=%s","x":0,"y":0,"w":1,"h":
   });
 });
 
+describe("runOcrHelper pdf mode (stub helpers)", () => {
+  it("passes the helper code encrypted instead of failed", () => {
+    setOcrRuntime({ helper: printing({ ok: false, code: "encrypted" }) });
+    expect(runOcrHelper({ mode: "pdf", pages: [1], pageMs: 5000, ms: 10_000, rssBytes: OCR_LIMITS.rssBytes }, Buffer.from("x"))).toEqual({ ok: false, code: "encrypted" });
+  });
+});
+
 describe("helper lookup", () => {
   it("honors COUNCIL_OCR_HELPER only with COUNCIL_DEV=1", () => {
     const alt = printing({ ok: true, lines: [line("from-env")] });

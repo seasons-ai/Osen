@@ -9,7 +9,7 @@ import { acceptanceMessages } from "../messages/acceptance.ts";
 import { providerMessages } from "../messages/providers.ts";
 import { createLogger } from "../store/log.ts";
 import type { Usage } from "../protocol/schema.ts";
-import { HELP_ARGS, planLaunch } from "./args.ts";
+import { CODEX_UPDATE_OFF, HELP_ARGS, planLaunch } from "./args.ts";
 import { TURN_RESPONSE_JSON_SCHEMA } from "./driver.ts";
 import { pinnedEnv } from "./discovery.ts";
 import { classifyFailure } from "./errors.ts";
@@ -322,9 +322,10 @@ type InspectLimits = { timeoutMs?: number; maxBytes?: number };
 
 async function inspectPinned(plan: AcceptancePlan, env: Record<string, string | undefined>, signal?: AbortSignal, limits: InspectLimits = {}): Promise<{ flags: ReadonlySet<string>; features?: ReadonlySet<string> }> {
   const childEnv = { ...env, ...pinnedEnv(plan.agent, plan.configDir) };
-  const flags = declaredFlags(await readOutput(plan.path, HELP_ARGS[plan.agent], childEnv, signal, limits.timeoutMs, limits.maxBytes));
+  const updateOff = plan.agent === "codex" ? CODEX_UPDATE_OFF : [];
+  const flags = declaredFlags(await readOutput(plan.path, [...HELP_ARGS[plan.agent], ...updateOff], childEnv, signal, limits.timeoutMs, limits.maxBytes));
   if (plan.agent === "claude") return { flags };
-  return { flags, features: parseCodexFeatures(await readOutput(plan.path, ["features", "list"], childEnv, signal, limits.timeoutMs, limits.maxBytes)) };
+  return { flags, features: parseCodexFeatures(await readOutput(plan.path, ["features", "list", ...updateOff], childEnv, signal, limits.timeoutMs, limits.maxBytes)) };
 }
 
 export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts: {

@@ -1,6 +1,7 @@
 #!/bin/sh
 # Stand stub of the claude CLI: never calls a model. Settings come from stub.env next to this file.
 . "$(dirname "$0")/stub.env"
+echo "$*" >> "$COUNTER.argv"
 case "$1" in
   --version) echo x >> "$COUNTER.version"; echo "$VERSION (Claude Code)" ;;
   --help) echo x >> "$COUNTER.help"; cat "$HELP_FILE" ;;

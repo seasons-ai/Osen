@@ -4,6 +4,8 @@ import { promptMessages } from "../messages/prompt.ts";
 import type { Language } from "../i18n/language.ts";
 import type { CliAgent } from "./types.ts";
 
+/** Appended to codex help and `features list` reads of pinned-like installs so the CLI does not check for updates. */
+export const CODEX_UPDATE_OFF: readonly string[] = ["-c", "check_for_update_on_startup=false"];
 /** Arguments used to fetch the help text of the required subcommand. */
 export const HELP_ARGS: Record<CliAgent, readonly string[]> = { claude: ["--help"], codex: ["exec", "--help"] };
 
