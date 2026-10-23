@@ -56,7 +56,8 @@ describe("ZIP archive as a folder: property tests", () => {
           expect(resolve(base, x.name).startsWith(join(base, prefix) + sep), ctx).toBe(true);
         }
         for (const name of unique) {
-          if (unsafe(name)) expect(set.skipped.find((x) => x.name === `${prefix}/${name}`)?.reason, `seed ${seed}: ${JSON.stringify(name)}`).toBe(materialsMessages().archiveUnsafeName);
+          const shown = name.replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+          if (unsafe(name)) expect(set.skipped.find((x) => x.name === `${prefix}/${shown}`)?.reason, `seed ${seed}: ${JSON.stringify(name)}`).toBe(materialsMessages().archiveUnsafeName);
         }
         expect(set.materials.map((x) => x.name), `seed ${seed}`).toContain(`${prefix}/ok.txt`);
       }
@@ -90,6 +91,80 @@ describe("ZIP archive as a folder: property tests", () => {
         });
         ref ??= key;
         expect(key, `permutation ${i}: ${parts.map((q) => q.name).join(",")}`).toBe(ref);
+      }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it("Архив ZIP как папка: имена без флага UTF-8 никогда не делают архив повреждённым", () => {
+    const tmp = realpathSync(mkdtempSync(join(tmpdir(), "mat-arc-prop-")));
+    const strict = new TextDecoder("utf-8", { fatal: true });
+    const cp866 = new TextDecoder("ibm866");
+    try {
+      for (let seed = 1; seed <= 25; seed++) {
+        const rnd = mulberry32(seed);
+        const int = (n: number) => Math.floor(rnd() * n);
+        const pieces: (() => number[])[] = [
+          () => [0x41 + int(26)], // ASCII letter
+          () => [0x20 + int(0x5f)].filter((b) => b !== 0x2f && b !== 0x5c), // printable ASCII without separators
+          () => [0xc2 + int(30), 0x80 + int(64)], // two-byte UTF-8 sequence
+          () => [0xe0 + int(16), 0x80 + int(64), 0x80 + int(64)], // three-byte sequence, may be invalid
+          () => [0xe0 + int(16), 0x80 + int(64)], // truncated three-byte sequence
+          () => [0x80 + int(128)], // lone byte
+          () => [0xa0 + int(0x30)], // CP866 Cyrillic capitals and small letters
+          () => [0xe0 + int(16)], // CP866 small letters
+        ];
+        const parts = Array.from({ length: 10 }, (_, k) => {
+          const bytes = [...Buffer.from(`i${k}_`)];
+          for (let j = 1 + int(8); j > 0; j--) bytes.push(...pieces[int(pieces.length)]!());
+          bytes.push(...Buffer.from(".txt"));
+          const raw = Uint8Array.from(bytes);
+          let expected: string;
+          try { expected = strict.decode(raw); } catch { expected = cp866.decode(raw); }
+          return { raw, expected };
+        });
+        const file = join(tmp, `n${seed}.zip`);
+        writeFileSync(file, makeZip(parts.map((q, k) => ({ name: q.raw, data: `t${k}` }))));
+        const set = collectMaterials([file], opts);
+        expect(set.materials.map((x) => x.name).sort(), `seed ${seed}`).toEqual(parts.map((q) => `n${seed}.zip/${q.expected}`).sort());
+      }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  it("Архив ZIP как папка: управляющие знаки в небезопасных именах показаны как \\uXXXX", () => {
+    const tmp = realpathSync(mkdtempSync(join(tmpdir(), "mat-arc-prop-")));
+    const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+    const back = (s: string) => s.replace(/\\u([0-9a-f]{4})/g, (_, h: string) => String.fromCharCode(parseInt(h, 16)));
+    try {
+      for (let seed = 1; seed <= 25; seed++) {
+        const rnd = mulberry32(seed);
+        const int = (n: number) => Math.floor(rnd() * n);
+        const ctl = () => String.fromCharCode(rnd() < 0.5 ? int(0x20) : 0x7f + int(0x21));
+        const piece = () => ["a", "Отчёт", "ü", "x.txt", "..", "-", "dir"][int(7)]!;
+        const names: string[] = [];
+        for (let k = 0; k < 6; k++) {
+          // a NUL or a ".." segment keeps the name unsafe; other control characters of both ranges are sprinkled in
+          const segs = [piece() + ctl() + piece(), rnd() < 0.5 ? `p${k}\u0000q` : "..", piece() + ctl()];
+          names.push(segs.join("/"));
+        }
+        const parts = [...names, names[int(names.length)]!].map((name) => ({ name, data: "t" }));
+        const unique = [...new Set(names)];
+        const prefix = `c${seed}.zip`;
+        const withOk = join(tmp, `c${seed}.zip`);
+        writeFileSync(withOk, makeZip([...parts, { name: "ok.txt", data: "o" }]));
+        const set = collectMaterials([withOk], opts);
+        for (const x of set.skipped) expect(CONTROL.test(x.name), `seed ${seed}: ${JSON.stringify(x.name)}`).toBe(false);
+        const shownBack = new Set(set.skipped.map((x) => back(x.name)));
+        for (const n of unique) expect(shownBack.has(`${prefix}/${n}`), `seed ${seed}: ${JSON.stringify(n)}`).toBe(true);
+        const only = join(tmp, `o${seed}.zip`);
+        writeFileSync(only, makeZip(parts));
+        let lines: string[] = [];
+        try { collectMaterials([only], opts); } catch (e) { lines = (e as { reasons: string[] }).reasons; }
+        expect(lines.length, `seed ${seed}`).toBeGreaterThan(1);
+        for (const l of lines) expect(CONTROL.test(l), `seed ${seed}: ${JSON.stringify(l)}`).toBe(false);
       }
     } finally {
       rmSync(tmp, { recursive: true, force: true });

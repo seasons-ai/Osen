@@ -79,7 +79,7 @@ export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult 
   return { ok: false, code: "failed", detail: c || materialsMessages().docBadReply };
 }
 
-const NOT_CACHED: readonly OcrFailure[] = ["timeout", "memory", "missing", "start", "failed"];
+export const OCR_NOT_CACHED: readonly OcrFailure[] = ["timeout", "memory", "missing", "start", "failed"];
 const CACHE_CHARS = 20_000_000;
 const cache = new Map<string, OcrResult>();
 let cacheChars = 0;
@@ -96,7 +96,7 @@ export function readImageText(fd: number, format: ImageFormat): OcrResult {
   if (!dims) return { ok: false, code: "damaged" };
   if (dims.width * dims.height > OCR_LIMITS.pixels) return { ok: false, code: "pixels" };
   const result = runOcrHelper({ mode: "image", ms: OCR_LIMITS.ms, rssBytes: OCR_LIMITS.rssBytes }, bytes);
-  if (result.ok || !NOT_CACHED.includes(result.code)) {
+  if (result.ok || !OCR_NOT_CACHED.includes(result.code)) {
     cache.set(key, result);
     if (result.ok) cacheChars += result.text.length;
     if (cacheChars > CACHE_CHARS) { cache.clear(); cacheChars = 0; }

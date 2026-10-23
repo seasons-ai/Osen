@@ -17,10 +17,13 @@ function run(bytes: Uint8Array, limits: DocLimits, extra: object, maxBuffer: num
   if (code === "ETIMEDOUT") return { ok: false, code: "timeout" };
   if (code === "ENOBUFS") return { ok: false, code: "memory" };
   if (r.error) return { ok: false, code: "failed", detail: code ?? materialsMessages().docStartError };
-  if (r.status !== 0) return { ok: false, code: "failed", detail: r.signal ?? `exit ${r.status}` };
+  if (r.status !== 0) return { ok: false, code: "failed", detail: r.signal ? materialsMessages().archiveSignal(r.signal) : materialsMessages().archiveExit(r.status) };
   try {
     const result = JSON.parse(r.stdout.toString("utf8")) as unknown;
-    if (typeof result === "object" && result !== null && typeof (result as { ok?: unknown }).ok === "boolean") return result;
+    if (typeof result === "object" && result !== null && typeof (result as { ok?: unknown }).ok === "boolean") {
+      // the worker's own failure detail is an English identifier: the reason takes the catalog text
+      return (result as RunFailure).ok === false && (result as RunFailure).code === "failed" ? { ok: false, code: "failed", detail: materialsMessages().archiveWorker } : result;
+    }
   } catch { /* not JSON */ }
   return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
 }

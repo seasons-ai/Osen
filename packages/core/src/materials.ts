@@ -236,6 +236,7 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
   const skipped: SkippedMaterial[] = [];
   const seen = new Set<string>();
   const include = new Set((options.include ?? []).map((p) => resolve(p)));
+  const explicit = new Set(paths.map((p) => resolve(p)));
   const returned = new Set<string>();
   const shownRule = new Map<string, string>();
   const prefixes = attachedFolderPrefixes(paths);
@@ -317,7 +318,11 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
             const text = readText(abs, true);
             if (typeof text === "object" && "image" in text) out.push({ rel: eRel, abs, image: text.image });
             else if (typeof text === "object" && "pdf" in text) out.push({ rel: eRel, abs, pdf: true });
-            else if (typeof text === "object") skip((text as { refused: string }).refused); // defer: an archive is never returned here
+            else if (typeof text === "object") {
+              // an archive attached separately by the same path is expanded under its own prefix, not skipped here
+              const refused = (text as { refused: string }).refused;
+              if (!(refused === m.archiveInFolder && explicit.has(abs))) skip(refused); // defer: an archive is never returned here
+            }
             else {
               seen.add(abs);
               out.push({ rel: eRel, text });

@@ -49,13 +49,18 @@ describe("listArchive", () => {
     expect(listArchive(ratio(200), L).ok).toBe(true);
   });
 
-  it("reports a truncated archive and an unknown method as damaged", () => {
+  it("reports a truncated archive as damaged", () => {
     const zip = makeZip([{ name: "a", data: "hello" }]);
     expect(listArchive(zip.subarray(0, zip.length - 30), L)).toEqual({ ok: false, code: "damaged" });
-    const bad = makeZip([{ name: "a", data: "hello", method: 0 }]);
-    const v = new DataView(bad.buffer, bad.byteOffset, bad.byteLength);
-    v.setUint16(v.getUint32(bad.length - 6, true) + 10, 12, true);
-    expect(listArchive(bad, L)).toEqual({ ok: false, code: "damaged" });
+  });
+
+  it("gives an entry with an unknown method its own kind and does not read it", () => {
+    for (const method of [12, 14, 93]) {
+      const zip = makeZip([{ name: "a.txt", data: "hello", method: 0 }, { name: "b.txt", data: "xyz", method }]);
+      const r = ok(listArchive(zip, L));
+      expect(r.entries.map((e) => [e.name, e.kind])).toEqual([["a.txt", "file"], ["b.txt", "method"]]);
+      expect(readArchive(zip, [1], L)).toEqual({ ok: true, entries: [{ i: 1, code: "unsupported" }] });
+    }
   });
 
   it("accepts an empty archive", () => {
