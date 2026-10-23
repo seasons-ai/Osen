@@ -8,7 +8,7 @@ import { OWNER_FILE, sweepCandidateLeftovers } from "./cli-agents/candidates.ts"
 import type { ReleaseSource } from "./cli-agents/candidates.ts";
 import type { PackageSource } from "./cli-agents/pins.ts";
 import type { VerifiedEntry } from "./cli-agents/verified-record.ts";
-import { writeExecutable } from "./executable.testutil.ts";
+import { linkExecutable } from "./executable.testutil.ts";
 import { setProcessLanguage } from "./i18n/index.ts";
 
 const FIX = join(import.meta.dirname, "cli-agents", "fixtures");
@@ -47,10 +47,13 @@ function source(violating: string[] = [], onFetch?: () => void | Promise<void>):
       mkdirSync(bin, { recursive: true });
       const exe = join(bin, agent);
       const help = agent === "claude" ? (violating.includes(version) ? noTools : CLAUDE_HELP) : CODEX_HELP;
+      // one stub content per agent: version line and help path live in data files next to it, so the stub is a shared hard link
+      writeFileSync(`${exe}.version`, agent === "claude" ? `${version} (Claude Code)\n` : `codex-cli ${version}\n`);
+      writeFileSync(`${exe}.help`, help);
       const body = agent === "claude"
-        ? `case "$1" in --version) echo "${version} (Claude Code)";; *) cat '${help}';; esac`
-        : `case "$1" in --version) echo "codex-cli ${version}";; features) cat '${CODEX_FEATURES}';; *) cat '${help}';; esac`;
-      writeExecutable(exe, `#!/bin/sh\n${body}\n`);
+        ? `case "$1" in --version) /bin/cat "$0.version";; *) /bin/cat "$(/bin/cat "$0.help")";; esac`
+        : `case "$1" in --version) /bin/cat "$0.version";; features) /bin/cat '${CODEX_FEATURES}';; *) /bin/cat "$(/bin/cat "$0.help")";; esac`;
+      linkExecutable(exe, `#!/bin/sh\n${body}\n`);
       return { executable: exe, source: `fake:${agent}@${version}` };
     },
   };
