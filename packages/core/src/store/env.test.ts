@@ -3,7 +3,7 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, it, expect } from "vitest";
 import { resolveDataDir } from "./data-dir.ts";
-import { envFilePath, loadEnv } from "./env.ts";
+import { cliEnv, envFilePath, loadEnv } from "./env.ts";
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -133,5 +133,66 @@ describe("loadEnv and data folder move (substitute HOME)", () => {
         chmodSync(join(old, "config.json"), 0o644);
       }
     });
+  });
+});
+
+describe("cliEnv", () => {
+  const setup = (dataText?: string, cwdText?: string) => {
+    const dataDir = tmp();
+    const cwd = tmp();
+    if (dataText !== undefined) put(join(dataDir, ".env"), dataText);
+    if (cwdText !== undefined) put(join(cwd, ".env"), cwdText);
+    return { dataDir, cwd };
+  };
+
+  it("removes data-folder .env keys absent in the shell and keeps the rest", () => {
+    const { dataDir, cwd } = setup("K_A=1\nK_B=2\n");
+    const out = cliEnv({ K_A: "1", K_B: "2", PATH: "/bin", HOME: "/h" }, { dataDir, cwd, shell: { PATH: "/bin" } });
+    expect(out).toEqual({ PATH: "/bin", HOME: "/h" });
+  });
+
+  it("keeps a key that is also set in the shell, with the env value", () => {
+    const { dataDir, cwd } = setup("K_A=file\n");
+    expect(cliEnv({ K_A: "shell" }, { dataDir, cwd, shell: { K_A: "shell" } })).toEqual({ K_A: "shell" });
+  });
+
+  it("removes a key that is empty in the shell", () => {
+    const { dataDir, cwd } = setup("K_A=file\n");
+    expect(cliEnv({ K_A: "file", X: "1" }, { dataDir, cwd, shell: { K_A: "" } })).toEqual({ X: "1" });
+  });
+
+  it("removes a key from the cwd .env", () => {
+    const { dataDir, cwd } = setup(undefined, "K_C=1\n");
+    expect(cliEnv({ K_C: "1", X: "1" }, { dataDir, cwd, shell: {} })).toEqual({ X: "1" });
+  });
+
+  it("without dataDir only the cwd .env is read", () => {
+    const { cwd } = setup("K_A=1\n", "K_C=1\n");
+    expect(cliEnv({ K_A: "1", K_C: "1" }, { cwd, shell: {} })).toEqual({ K_A: "1" });
+  });
+
+  it("does not change the input", () => {
+    const { dataDir, cwd } = setup("K_A=1\n");
+    const input = { K_A: "1", X: "2" };
+    cliEnv(input, { dataDir, cwd, shell: {} });
+    expect(input).toEqual({ K_A: "1", X: "2" });
+  });
+
+  it("property: result = env minus (file names minus non-empty shell names)", () => {
+    let seed = 20261024;
+    const rnd = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const names = Array.from({ length: 12 }, (_, i) => `PK_${i}`);
+    const pick = () => names.filter(() => rnd() < 0.4);
+    for (let i = 0; i < 60; i++) {
+      const inFile = pick(), inEnv = pick(), inShell = pick();
+      const shellEmpty = new Set(inShell.filter(() => rnd() < 0.3));
+      const dataDir = tmp();
+      put(join(dataDir, ".env"), inFile.map((n) => `${n}=v\n`).join(""));
+      const env = Object.fromEntries(inEnv.map((n) => [n, "e"]));
+      const shell = Object.fromEntries(inShell.map((n) => [n, shellEmpty.has(n) ? "" : "s"]));
+      const out = cliEnv(env, { dataDir, cwd: tmp(), shell });
+      const expected = Object.fromEntries(Object.entries(env).filter(([k]) => !inFile.includes(k) || (shell[k] ?? "") !== ""));
+      expect(out).toEqual(expected);
+    }
   });
 });

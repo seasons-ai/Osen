@@ -387,3 +387,43 @@ describe("Bounded provider base URL normalization", () => {
     expect(result.median).toBeLessThanOrEqual(1_000);
   }, 15_000);
 });
+
+describe("CLI participants: keys from .env files stay out of the CLI environment", () => {
+  const rand = () => Math.random().toString(36).slice(2, 10).toUpperCase();
+  const keyA = `OSEN_T238_A_${rand()}`;
+  const keyB = `OSEN_T238_B_${rand()}`;
+  const fromShell = `OSEN_T238_SHELL_${rand()}`;
+  type E = Record<string, string | undefined>;
+
+  it("help, features, locate, models, runtime.env and the turn environment lack the file keys; HTTP still sees its key", async () => {
+    const dataDir = join(dir, "data");
+    mkdirSync(dataDir);
+    writeFileSync(join(dataDir, ".env"), `${keyA}=secret-a\n${keyB}=secret-b\n`);
+    const merged = { ...env(), [keyA]: "secret-a", [keyB]: "secret-b", [fromShell]: "1" };
+    const seen: Record<string, E> = {};
+    const exe = stub("claude-env", '/usr/bin/env');
+    const deps = {
+      locate: async (_a: string, o: { env: E }): Promise<CliLocation> => { seen.locate = o.env; return { agent: "codex", found: true, path: exe, searchPath: dir, version: "0.159.2" }; },
+      readHelp: async (_p: string, _a: readonly string[], e: E) => { seen.help = e; return readFileSync(fixture("codex-0.159.2-exec-help.txt"), "utf8"); },
+      readFeatures: async (_p: string, _a: readonly string[], e: E) => { seen.features = e; return readFileSync(fixture("codex-0.159.2-features.txt"), "utf8"); },
+      listModels: async (_a: string, o: { env: E }) => { seen.models = o.env; return { models: [], confirmed: false }; },
+    };
+    const r = await inspectProvider(codex, { env: merged, dataDir, deps });
+    for (const e of [seen.locate, seen.help, seen.features, seen.models, r.runtime?.env]) {
+      expect(e).toBeDefined();
+      expect(e).not.toHaveProperty(keyA);
+      expect(e).not.toHaveProperty(keyB);
+      expect(e?.[fromShell]).toBe("1");
+      expect(e?.PATH).toBeDefined();
+    }
+    // the turn environment as the CLI driver builds it
+    const { stdout } = await promisify(execFile)(exe, [], { env: { ...r.runtime!.env, COUNCIL_PARTICIPANT: "1" } as NodeJS.ProcessEnv });
+    expect(stdout).not.toContain(keyA);
+    expect(stdout).not.toContain("secret-a");
+    expect(stdout).toContain("COUNCIL_PARTICIPANT=1");
+    expect(stdout).toContain(`${fromShell}=1`);
+
+    const http = await inspectProvider({ id: "h", kind: "openai-http", label: "H", baseUrl: "http://127.0.0.1:1/v1", apiKeyEnv: keyA, models: ["m"] }, { env: merged, dataDir });
+    expect(http.http?.apiKey).toBe("secret-a");
+  });
+});
