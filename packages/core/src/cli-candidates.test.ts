@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import { OWNER_FILE, sweepCandidateLeftovers } from "./cli-agents/candidates.ts"
 import type { ReleaseSource } from "./cli-agents/candidates.ts";
 import type { PackageSource } from "./cli-agents/pins.ts";
 import type { VerifiedEntry } from "./cli-agents/verified-record.ts";
+import { writeExecutable } from "./executable.testutil.ts";
 import { setProcessLanguage } from "./i18n/index.ts";
 
 const FIX = join(import.meta.dirname, "cli-agents", "fixtures");
@@ -49,8 +50,7 @@ function source(violating: string[] = [], onFetch?: () => void | Promise<void>):
       const body = agent === "claude"
         ? `case "$1" in --version) echo "${version} (Claude Code)";; *) cat '${help}';; esac`
         : `case "$1" in --version) echo "codex-cli ${version}";; features) cat '${CODEX_FEATURES}';; *) cat '${help}';; esac`;
-      writeFileSync(exe, `#!/bin/sh\n${body}\n`);
-      chmodSync(exe, 0o755);
+      writeExecutable(exe, `#!/bin/sh\n${body}\n`);
       return { executable: exe, source: `fake:${agent}@${version}` };
     },
   };
@@ -83,7 +83,7 @@ describe("council cli candidates", () => {
       ],
       failures: [],
     });
-  });
+  }, 60_000);
 
   it("contract violation: named in the text output, not recorded, exit 0, no leftovers", async () => {
     const h = home();

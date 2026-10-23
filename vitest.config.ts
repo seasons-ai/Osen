@@ -5,8 +5,10 @@ export default defineConfig({
   esbuild: { jsx: "automatic" },
   test: {
     env: { COUNCIL_LANG: "ru" },
-    // tests start real processes; the same ceiling as CI, so npm test does not fail under a busy machine
-    testTimeout: 30_000,
+    // tests start real processes, and on macOS the first launch of every fresh stub is checked by the system
+    // (writeExecutable warms it, which can take over 10 s under load); CI passes its own --testTimeout
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
     setupFiles: ["./vitest.setup.ts"],
   },
 });

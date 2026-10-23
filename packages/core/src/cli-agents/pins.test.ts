@@ -3,6 +3,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeExecutable } from "../executable.testutil.ts";
 import { setProcessLanguage } from "../i18n/process-language.ts";
 import {
   activePin, cliDir, installPin, installedPath, listPins, pinConfigDir, pinsFileState, pinsPath, readPins, rollbackPin, usePin, versionDir,
@@ -28,8 +29,7 @@ function fakeSource(): PackageSource {
       const exe = join(d, "node_modules", "pkg", "bin", agent);
       mkdirSync(join(d, "node_modules", "pkg", "bin"), { recursive: true });
       const reported = sourceMode === "wrong-version" ? "9.9.9" : version;
-      writeFileSync(exe, `#!/bin/sh\necho "${reported} (fake)"\n`);
-      chmodSync(exe, 0o755);
+      writeExecutable(exe, `#!/bin/sh\necho "${reported} (fake)"\n`);
       if (sourceMode === "outside") return { executable: process.execPath, source: "fake" };
       return { executable: exe, source: `fake:${agent}@${version}` };
     }

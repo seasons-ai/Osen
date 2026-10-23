@@ -1,8 +1,9 @@
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it } from "vitest";
+import { writeExecutable } from "../../../packages/core/src/executable.testutil.ts";
 import { ocrHelperLine } from "./ocr-in-image.ts";
 
 let dir: string;
@@ -11,8 +12,10 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
 const helper = (body: string, mode: number) => {
   mkdirSync(join(dir, "ocr"), { recursive: true });
-  writeFileSync(join(dir, "ocr/osen-ocr"), body);
-  chmodSync(join(dir, "ocr/osen-ocr"), mode);
+  const file = join(dir, "ocr/osen-ocr");
+  if (mode & 0o111) { writeExecutable(file, body, mode); return; }
+  writeFileSync(file, body); // never launched, so no warm-up
+  chmodSync(file, mode);
 };
 
 it("fails when the helper is missing", () => {
@@ -39,6 +42,6 @@ it("passes with a stub that prints the version", () => {
 it("passes with the real built helper", () => {
   const built = resolve(dirname(fileURLToPath(import.meta.url)), "../../../packages/core/src/ocr/bin/osen-ocr");
   mkdirSync(join(dir, "ocr"));
-  copyFileSync(built, join(dir, "ocr/osen-ocr"));
+  writeExecutable(join(dir, "ocr/osen-ocr"), readFileSync(built));
   expect(ocrHelperLine(dir).ok).toBe(true);
 });
