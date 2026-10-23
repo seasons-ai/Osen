@@ -1,4 +1,4 @@
-// Live check of the agent connection module @model-council/connect (change 140, steps 0-5 of the Live Scenario).
+// Live check of the agent connection module @model-council/connect (change 140, steps 0-5 of the Live Scenario; change 241 cases in steps 1 and 4).
 // The module is called directly with ConnectDeps over a fake HOME; the installer is the real `node skill/install.ts` with a fake
 // HOME and fake `claude` and `codex` first in PATH: they edit $HOME/.claude.json and $HOME/.codex/fake-state.json and write
 // calls to a log. The owner's global agent settings are not changed. Model calls 0.
@@ -184,6 +184,16 @@ for (const c of ["claude-code", "codex", "claude-desktop"] as ClientId[]) {
   check(1, `${ctx}: disconnect → settings equal to the original by value, no osen`, x.ok && gone && isDeepStrictEqual(after, orig), json([x, after]));
   renameSync(B, A);
 }
+// claude-desktop: an empty mcpServers and an absent one are equal by value (change 241)
+for (const orig of [{ x: 1, mcpServers: {} }, { x: 1 }]) {
+  const home = join(work, `home-empty-${Object.keys(orig).length}`);
+  const d = depsFor(home);
+  put(desktopFile(home), json(orig));
+  const r1 = connect("claude-desktop", cmdA, d), r2 = disconnect("claude-desktop", cmdA, d);
+  const { mcpServers = {}, ...rest } = readJson(desktopFile(home));
+  check(1, `claude-desktop ${json(orig)}: connect, disconnect → x is 1, mcpServers empty or absent, no osen`,
+    r1.ok && r2.ok && isDeepStrictEqual(rest, { x: 1 }) && isDeepStrictEqual(mcpServers, {}), json([r1, r2, readJson(desktopFile(home))]));
+}
 
 // ---- step 2: refusals; module status and the real installer in en and ru ----
 {
@@ -280,6 +290,21 @@ setInterval(() => {}, 1000);
     const x = await checkConnection(e, { extraEnv: { HOME: home }, ...(timeoutMs ? { timeoutMs } : {}) });
     check(4, `${what}: ${reason} in ≤ 25 s`, !x.ok && x.reason === reason && Date.now() - t <= 25000, json(x));
   }
+  // change 241: answers both requests, then prints text without a newline and exits
+  const tail = join(work, "tail.mjs");
+  writeFileSync(tail, `import { createInterface } from "node:readline";
+const tools = ${json(["council_continue", "council_options", "council_resume", "council_say", "council_start", "council_status", "council_stop"])}.map((name) => ({ name }));
+const out = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");
+createInterface({ input: process.stdin }).on("line", (l) => {
+  const m = JSON.parse(l);
+  if (m.method === "initialize") out({ id: m.id, result: { protocolVersion: "2025-06-18", capabilities: {}, serverInfo: { name: "tail", version: "0" } } });
+  if (m.method === "tools/list") { out({ id: m.id, result: { tools } }); process.stdout.write("garbage", () => process.exit(0)); }
+});
+`);
+  const t = Date.now();
+  const x = await checkConnection({ command: process.execPath, args: [tail] }, { extraEnv: { HOME: home } });
+  check(4, "7 tools, then stdout text without a newline and exit: stray_stdout, detail starts with garbage, in ≤ 25 s",
+    !x.ok && x.reason === "stray_stdout" && x.detail.startsWith("garbage") && Date.now() - t <= 25000, json(x));
 }
 
 // ---- step 5: the app command ----
