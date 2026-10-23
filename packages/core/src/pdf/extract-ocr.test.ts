@@ -6,6 +6,7 @@ import { OCR_LIMITS, runOcrHelper, setOcrRuntime } from "../ocr/run.ts";
 import { extractPdfText, mergePages, PDF_OCR_LIMITS, pdfReason, readPdfText } from "./extract.ts";
 import { makeOwnerPasswordPdf } from "../ocr/fixture.ts";
 import { makeEncryptedPdf, makePdf, makeScanPdf } from "./fixture.ts";
+import { writeExecutable } from "../executable.testutil.ts";
 
 const SLOW = 30_000;
 let dir: string;
@@ -13,10 +14,13 @@ beforeAll(() => { dir = realpathSync(mkdtempSync(join(tmpdir(), "pdf-ocr-"))); }
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 afterEach(() => setOcrRuntime());
 
-let n = 0;
+// one executable stub per file, rewritten in place: a new inode per call pays the macOS first-launch check
+// (seconds under load) inside the helper deadline; a non-executable stub goes to its own path by a plain write
 function stub(body: string, mode = 0o755): string {
-  const f = join(dir, `stub-${n++}.sh`);
-  writeFileSync(f, `#!/bin/sh\n${body}\n`);
+  const text = `#!/bin/sh\n${body}\n`;
+  if (mode & 0o111) return writeExecutable(join(dir, "stub.sh"), text, mode);
+  const f = join(dir, "stub-plain.sh");
+  writeFileSync(f, text);
   chmodSync(f, mode);
   return f;
 }
