@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { findOldReason } from "./old-reason.ts";
+import { findOldReason, gitEnv } from "./old-reason.ts";
 
 const NEEDLE = "old «no text layer» reason";
-const git = (cwd: string, ...a: string[]) => execFileSync("git", a, { cwd, stdio: "pipe" });
+const git = (cwd: string, ...a: string[]) => execFileSync("git", a, { cwd, env: gitEnv(), stdio: "pipe" });
 const put = (repo: string, rel: string, text: string) => { mkdirSync(dirname(join(repo, rel)), { recursive: true }); writeFileSync(join(repo, rel), text); };
 function mkRepo(): string {
   const d = mkdtempSync(join(tmpdir(), "old-reason-"));
@@ -20,6 +20,35 @@ function mkRepo(): string {
 const commit = (d: string) => { git(d, "add", "-A"); git(d, "commit", "-q", "--allow-empty", "-m", "x"); };
 
 describe("findOldReason", () => {
+  // Defect found 2026-10-23: under the pre-push hook git exports GIT_DIR and friends, and this test
+  // committed its fixtures into the real repository and set core.bare there.
+  it("under inherited git hook bindings, touches neither the bound repository nor reads it", () => {
+    const sentinel = mkdtempSync(join(tmpdir(), "old-reason-sentinel-"));
+    const KEYS = ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR", "GIT_PREFIX", "GIT_CEILING_DIRECTORIES"];
+    const saved = Object.fromEntries(KEYS.map((k) => [k, process.env[k]]));
+    const nogit = mkdtempSync(join(tmpdir(), "old-reason-nogit-"));
+    let d = "";
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: sentinel, env: { ...process.env, GIT_DIR: join(sentinel, ".git"), GIT_WORK_TREE: sentinel, GIT_INDEX_FILE: join(sentinel, ".git/index") } });
+      put(sentinel, "docs/s.md", NEEDLE);
+      const configBefore = readFileSync(join(sentinel, ".git/config"), "utf8");
+      const gitDir = join(sentinel, ".git");
+      Object.assign(process.env, { GIT_DIR: gitDir, GIT_WORK_TREE: sentinel, GIT_INDEX_FILE: join(gitDir, "index"), GIT_OBJECT_DIRECTORY: join(gitDir, "objects"), GIT_COMMON_DIR: gitDir, GIT_PREFIX: "", GIT_CEILING_DIRECTORIES: dirname(nogit) });
+      d = mkRepo();
+      put(d, "docs/a.md", NEEDLE);
+      commit(d);
+      expect(findOldReason(d, NEEDLE)).toEqual(["docs/a.md"]);
+      expect(() => findOldReason(nogit, NEEDLE)).toThrow(/not a git repository/i);
+      for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+      expect(readFileSync(join(sentinel, ".git/config"), "utf8")).toBe(configBefore);
+      expect(existsSync(join(sentinel, ".git/index"))).toBe(false);
+      expect(readdirSync(join(sentinel, ".git/refs/heads"))).toEqual([]);
+    } finally {
+      for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+      for (const p of [sentinel, nogit, d]) if (p) rmSync(p, { recursive: true, force: true });
+    }
+  });
+
   it("ignores a .gitignore-hidden file and an untracked file", () => {
     const d = mkRepo();
     try {
