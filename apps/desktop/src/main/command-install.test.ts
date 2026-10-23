@@ -3,6 +3,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeExecutable } from "../../../../packages/core/src/executable.testutil.ts";
 import { commandInstall } from "../shared/messages/command-install.ts";
 import { LINK_HINT_LINE, classifyLink, commandStatus, describeState, installCommand, removeCommand } from "./command-install.ts";
 
@@ -27,9 +28,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 const opts = (extra: object = {}) => ({ home, wrapper, language: "en" as const, ...extra });
 const stubShell = (name: string, body: string) => {
   const p = join(root, name);
-  writeFileSync(p, `#!/bin/sh\n${body}\n`);
-  chmodSync(p, 0o755);
-  return p;
+  return writeExecutable(p, `#!/bin/sh\n${body}\n`);
 };
 
 describe("Requirement: foreign council is not overwritten", () => {
