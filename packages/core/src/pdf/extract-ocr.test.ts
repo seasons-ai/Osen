@@ -65,7 +65,7 @@ describe("PDF recognition: merge and limits (stub helper)", () => {
     [{ ok: false, code: "memory" }, { ok: false, code: "ocr_memory" }, "распознавание текста PDF заняло больше 512 МиБ памяти"],
     [{ ok: false, code: "damaged" }, { ok: false, code: "damaged" }, "PDF повреждён"],
     [{ ok: false, code: "encrypted" }, { ok: false, code: "encrypted" }, "PDF зашифрован — пароль не запрашивается"],
-    [{ ok: false, code: "bad_request" }, { ok: false, code: "ocr_failed", detail: "bad_request" }, "не удалось распознать текст PDF — bad_request"],
+    [{ ok: false, code: "bad_request" }, { ok: false, code: "ocr_failed", detail: "helper:bad_request" }, "не удалось распознать текст PDF — помощник распознавания сообщил об ошибке"],
   ] as [unknown, object, string][])("maps the helper reply %j to a code and a reason", (reply, expected, reason) => {
     use(printing(reply));
     const r = extractPdfText(makePdf(["", "текст"]));

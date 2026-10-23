@@ -6,8 +6,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  extractPdfText, pdfReason, PDF_LIMITS, readPdfText, setPdfExtractorRuntime, type PdfFailure, type PdfLimits,
+  extractPdfText, pdfReason, PDF_LIMITS, readPdfText, setPdfExtractorRuntime, setPdfOcrTesting, type PdfFailure, type PdfLimits,
 } from "./extract.ts";
+import { setProcessLanguage } from "../i18n/process-language.ts";
 import { makeEncryptedPdf, makeImageOnlyPdf, makeMalformedPdf, makePdf } from "./fixture.ts";
 import { extractText } from "./pdf-text.ts";
 import type { PdfResult } from "./extract.ts";
@@ -53,8 +54,26 @@ describe("Limits and reasons", () => {
     };
     for (const [code, text] of Object.entries(reasons)) expect(pdfReason({ code: code as PdfFailure })).toBe(text);
     expect(pdfReason({ code: "failed", detail: "exit 3" })).toBe("не удалось извлечь текст PDF — exit 3");
-    expect(pdfReason({ code: "ocr_failed", detail: "bad_request" })).toBe("не удалось распознать текст PDF — bad_request");
+    expect(pdfReason({ code: "ocr_failed", detail: "helper:bad_request" })).toBe("не удалось распознать текст PDF — помощник распознавания сообщил об ошибке");
   });
+});
+
+describe("Scanned PDF recognition: unknown helper code in a PDF scan", () => {
+  afterEach(() => { setPdfOcrTesting(); setProcessLanguage("ru"); });
+
+  it.each([
+    ["ru", "не удалось распознать текст PDF — помощник распознавания сообщил об ошибке"],
+    ["en", "could not recognize the PDF text — the recognition helper reported an error"],
+  ] as const)("the %s reason has no helper code", (lang, text) => {
+    setProcessLanguage(lang);
+    // what runOcrHelper returns for {"ok":false,"code":"vision"} (run.test.ts)
+    setPdfOcrTesting({ run: () => ({ ok: false, code: "failed", detail: "helper:vision" }) });
+    const r = extractPdfText(makeImageOnlyPdf());
+    expect(r).toEqual({ ok: false, code: "ocr_failed", detail: "helper:vision" });
+    const reason = pdfReason(r as { code: PdfFailure; detail?: string });
+    expect(reason).toBe(text);
+    expect(reason).not.toContain("vision");
+  }, SLOW);
 });
 
 describe("Local PDF text", () => {

@@ -314,6 +314,15 @@ describe("ZIP archive as a folder", () => {
     expect(names(set)).toEqual(["g.zip/a.txt", "g.zip/out/x.txt"]);
     expect(reasonOf(set, "g.zip/.gitignore")).toBe(m().archiveMethod);
   }, SLOW);
+
+  it("an image entry whose helper answers an unknown code is skipped with catalog words, not the code", () => {
+    ocrHelper({ ok: false, code: "vision" });
+    const f = zipAt("v.zip", [{ name: "scan.png", data: png() }, { name: "a.txt", data: "a" }]);
+    const set = collectMaterials([f], opts);
+    expect(names(set)).toEqual(["v.zip/a.txt"]);
+    expect(reasonOf(set, "v.zip/scan.png")).toBe("не удалось распознать текст изображения — помощник распознавания сообщил об ошибке");
+    expect(JSON.stringify(set.skipped)).not.toContain("vision");
+  }, SLOW);
 });
 
 // header-valid PNG without pixels: enough for a stub helper

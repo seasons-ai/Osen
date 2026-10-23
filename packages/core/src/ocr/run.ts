@@ -68,7 +68,7 @@ export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult 
     }
     const c = typeof reply.code === "string" ? reply.code : "";
     if (c === "damaged" || c === "no_text" || c === "timeout" || c === "memory" || c === "page_timeout" || c === "encrypted") return { ok: false, code: c };
-    return { ok: false, code: "failed", detail: c || materialsMessages().docBadReply };
+    return { ok: false, code: "failed", detail: c ? `helper:${c}` : materialsMessages().docBadReply };
   }
   if (reply.ok === true && Array.isArray(reply.lines)) {
     if (!reply.lines.every(valid)) return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
@@ -78,7 +78,7 @@ export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult 
   }
   const c = typeof reply.code === "string" ? reply.code : "";
   if (c === "damaged" || c === "no_text" || c === "timeout" || c === "memory") return { ok: false, code: c };
-  return { ok: false, code: "failed", detail: c || materialsMessages().docBadReply };
+  return { ok: false, code: "failed", detail: c ? `helper:${c}` : materialsMessages().docBadReply };
 }
 
 export const OCR_NOT_CACHED: readonly OcrFailure[] = ["timeout", "memory", "missing", "start", "failed"];
@@ -106,6 +106,12 @@ export function readImageText(fd: number, format: ImageFormat): OcrResult {
   return result;
 }
 
+// an unknown helper code stays language-free in detail as helper:<code>; the reason gets catalog words instead
+export function ocrFailedDetail(detail: string | undefined): string {
+  const m = materialsMessages();
+  return detail?.startsWith("helper:") ? m.ocrHelperError : detail ?? m.docBadReply;
+}
+
 export function imageReason(failure: { code: OcrFailure; detail?: string }): string {
   const m = materialsMessages();
   switch (failure.code) {
@@ -118,6 +124,6 @@ export function imageReason(failure: { code: OcrFailure; detail?: string }): str
     case "timeout": return m.imgTimeout(OCR_LIMITS.ms / 1000);
     case "memory": return m.imgMemory(OCR_LIMITS.rssBytes / 2 ** 20);
     case "chars": return m.imgChars(DOC_LIMITS.chars);
-    case "failed": return m.imgFailed(failure.detail ?? m.docBadReply);
+    case "failed": return m.imgFailed(ocrFailedDetail(failure.detail));
   }
 }
