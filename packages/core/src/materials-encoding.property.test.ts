@@ -38,10 +38,35 @@ function randomText(r: () => number, len: number): string {
 // A Windows-1251 text is only decodable when it has Cyrillic with enough lowercase, is not accidentally valid UTF-8 (UTF-8 wins by design)
 // and does not start with a letter pair that spells a UTF-16 BOM (FE FF, FF FE: "юя", "яю"; the BOM wins by design)
 const validUtf8 = (b: Buffer) => { try { new TextDecoder("utf-8", { fatal: true }).decode(b); return true; } catch { return false; } };
-function cp1251Ok(s: string): boolean {
+const latin = (x: number | undefined) => x !== undefined && /[A-Za-z]/.test(String.fromCharCode(x));
+// the fourth condition: at most 20 % of Cyrillic letters touch a Latin ASCII letter
+// Russian, Ukrainian and Belarusian letters, and their lowercase, as the requirement names them
+const isCyr = (x: number) => x >= 0xc0 || [0xa8, 0xb8, 0xa1, 0xa2, 0xa5, 0xaa, 0xaf, 0xb2, 0xb3, 0xb4, 0xba, 0xbf].includes(x);
+const isLow = (x: number) => x >= 0xe0 || [0xb8, 0xa2, 0xb3, 0xba, 0xbf, 0xb4].includes(x);
+function nearLatinShare(s: string): number {
   const b = enc1251(s);
-  const cyr = b.filter((x) => x >= 0xc0 || [0xa8, 0xb8].includes(x));
-  return cyr.length > 0 && cyr.filter((x) => x >= 0xe0 || x === 0xb8).length / cyr.length >= 0.5 && !validUtf8(b) && !/^(юя|яю)/.test(s);
+  const idx = [...b.keys()].filter((i) => isCyr(b[i]!));
+  return idx.filter((i) => latin(b[i - 1]) || latin(b[i + 1])).length / idx.length;
+}
+const nearLatinOk = (s: string) => nearLatinShare(s) <= 0.2;
+function cp1251BaseOk(s: string): boolean {
+  const b = enc1251(s);
+  const cyr = b.filter(isCyr);
+  return cyr.length > 0 && cyr.filter(isLow).length / cyr.length >= 0.5 && !validUtf8(b) && !/^(юя|яю)/.test(s);
+}
+const cp1251Ok = (s: string) => cp1251BaseOk(s) && nearLatinOk(s);
+// Russian words, `marked` of them with a Latin letter glued after the last Cyrillic letter
+function gluedText(r: () => number, words: number, marked: number): string {
+  return Array.from({ length: words }, (_, i) => {
+    const w = Array.from({ length: 1 + Math.floor(r() * 4) }, () => LOW[Math.floor(r() * LOW.length)]).join("");
+    return i < marked ? w + ASCII[Math.floor(r() * 6)] : w;
+  }).join(" ");
+}
+// A Latin ASCII word of 2+ letters with 1-3 bytes C0-FF put inside or at an edge, as Latin-1 / Windows-1252 accented letters
+function westernWord(r: () => number): number[] {
+  const w = Array.from({ length: 2 + Math.floor(r() * 7) }, () => 0x61 + Math.floor(r() * 26) - (r() < 0.2 ? 0x20 : 0));
+  for (let k = 1 + Math.floor(r() * 3); k > 0; k--) w.splice(Math.floor(r() * (w.length + 1)), 0, 0xc0 + Math.floor(r() * 64));
+  return w;
 }
 
 let n = 0;
@@ -64,13 +89,29 @@ describe("property: text encodings round-trip exactly", () => {
   it("Windows-1251: decodable texts round-trip, including exactly the lowercase threshold and a newline at byte 8192", () => {
     const r = rng(1251);
     const texts = ["а", "аА", "аАаА", "я".repeat(8191) + "\nя", "я".repeat(8192) + "\n" + "Я".repeat(3), ...Array.from({ length: 150 }, () => randomText(r, 1 + Math.floor(r() * 400)))];
-    let tested = 0;
+    // the fourth condition at its border: exactly 20 % of Cyrillic letters touch a Latin letter, and one more
+    const border: string[] = [];
+    for (let k = 1; k <= 12; k++) {
+      const t = gluedText(r, k, k);
+      // pad with lone Cyrillic letters until exactly 20 % (k of 5k); the padding is never empty, words have at most 4 letters
+      const ok = t + " а".repeat(5 * k - enc1251(t).filter(isCyr).length);
+      expect(nearLatinShare(ok), ok).toBe(0.2);
+      expect(nearLatinShare(ok + "x"), ok).toBeGreaterThan(0.2);
+      border.push(ok);
+      texts.push(ok, ok + "x");
+    }
+    for (const t of border) expect(cp1251BaseOk(t), t).toBe(true);
+    let tested = 0, nearLatinRefused = 0;
     for (const t of texts) {
-      if (!cp1251Ok(t)) continue;
-      tested++;
-      expect(accepted(enc1251(t))).toBe(t);
+      if (!cp1251BaseOk(t)) continue;
+      const res = accepted(enc1251(t));
+      if (nearLatinOk(t)) { tested++; expect(res, t).toBe(t); continue; }
+      nearLatinRefused++;
+      expect(res, t).toBeInstanceOf(MaterialsError);
+      expect((res as MaterialsError).reasons[0], t).toContain("кодировка не распознана");
     }
     expect(tested).toBeGreaterThan(100);
+    expect(nearLatinRefused).toBeGreaterThanOrEqual(12);
     // typographic punctuation does not hurt
     expect(accepted(enc1251("«а» — «б» … №1"))).toBe("«а» — «б» … №1");
   });
@@ -90,6 +131,20 @@ describe("property: text encodings round-trip exactly", () => {
       const bytes = [...Array(cyr).fill(0xe0), ...Array(other).fill(0xa3)];
       for (let k = bytes.length - 1; k > 0; k--) { const j = Math.floor(r() * (k + 1)); [bytes[k], bytes[j]] = [bytes[j]!, bytes[k]!]; }
       expect(accepted(Buffer.from(bytes.flatMap((b) => [b, 0x20])))).toBeInstanceOf(MaterialsError);
+    }
+  });
+
+  it("Western 8-bit text (accented letters inside or at the edge of Latin words) is never accepted", () => {
+    const r = rng(1252);
+    const sep = [0x20, 0x20, 0x0a, 0x2c, 0x3b, 0x2e];
+    // border: one accented letter per word, two-letter words
+    expect(accepted(Buffer.from("de\xe9 a\xe0 \xfcb \xe9t", "latin1"))).toBeInstanceOf(MaterialsError);
+    for (let i = 0; i < 80; i++) {
+      const bytes = [0x4e, 0x3a, 0x20]; // "N: " keeps the head off a UTF-16 BOM
+      for (let w = 1 + Math.floor(r() * 30); w > 0; w--) bytes.push(...westernWord(r), sep[Math.floor(r() * sep.length)]!);
+      const res = accepted(Buffer.from(bytes));
+      expect(res, Buffer.from(bytes).toString("latin1")).toBeInstanceOf(MaterialsError);
+      expect((res as MaterialsError).reasons[0]).toContain("кодировка не распознана");
     }
   });
 
