@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { main } from "../cli.ts";
 import { createSession } from "../engine.ts";
 import { cliMessages } from "../messages/cli.ts";
@@ -13,6 +13,13 @@ import { eventsPath, readEvents, resumeLockPath, sessionsDir } from "./journal.t
 import { runStoredSession } from "./run.ts";
 import { readSession } from "./sessions.ts";
 import "../../scenarios/language-ru.ts";
+
+// Seam: a hook run after the executor's own plan check and before its lock (inside resumeDrivers), for "the journal changed after the check".
+const hooks = vi.hoisted(() => ({ afterPlan: null as null | (() => void) }));
+vi.mock("./resume.ts", async (orig) => {
+  const real = await orig<typeof import("./resume.ts")>();
+  return { ...real, resumeDrivers: async (...a: Parameters<typeof real.resumeDrivers>) => { hooks.afterPlan?.(); return real.resumeDrivers(...a); } };
+});
 
 const tmps: string[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "launch-")); tmps.push(d); return d; };
@@ -176,6 +183,22 @@ describe("Внутренний запуск подготовленной сес�
     expect(JSON.parse(firstLine(r.err))).toMatchObject({ code: "stale_plan" });
     expect(journalText(home, "r2")).toBe(before);
     expect(existsSync(launchAcceptedPath(f))).toBe(false);
+  });
+
+  it("a journal changed after the executor's check but before its lock: stale_plan on the first stderr line (ru), journal untouched", async () => {
+    const home = tmp();
+    const p = await finished(home, "r4", "no_consensus");
+    const before = `${journalText(home, "r4")}\n`;
+    hooks.afterPlan = () => appendFileSync(eventsPath(home, "r4"), "\n");
+    try {
+      const f = writeLaunchFile(home, { ...p, rounds: 2 });
+      const r = await cli(home, ["run-prepared", f]);
+      expect(r.code).not.toBe(0);
+      expect(JSON.parse(firstLine(r.err))).toEqual({ code: "stale_plan", message: "Сессия r4: журнал изменился после проверки: повторите команду." });
+      expect(journalText(home, "r4")).toBe(before);
+      expect(existsSync(launchAcceptedPath(f))).toBe(false);
+      expect(readEvents(home, "r4")!.events.some((e) => e.type === "session_resumed")).toBe(false);
+    } finally { hooks.afterPlan = null; }
   });
 
   it("a consensus session with a message: owner_message right after session_resumed", async () => {
