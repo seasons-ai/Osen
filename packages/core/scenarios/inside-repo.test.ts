@@ -17,6 +17,16 @@ describe("isInsideRepo", () => {
     expect(isInsideRepo(nfd(REPO), "/tmp/x")).toBe(false);
     expect(isInsideRepo(nfd(REPO), nfc(`${REPO}/..`))).toBe(false);
     expect(isInsideRepo(nfd(REPO), nfc(`${REPO} 2/x`))).toBe(false);
+    expect(isInsideRepo(nfd(REPO), nfc(`${REPO}/../x`))).toBe(false);
+  });
+
+  it("treats names that merely start with two dots as inside", () => {
+    for (const r of [nfc, nfd]) for (const f of [nfc, nfd]) {
+      expect(isInsideRepo(r(REPO), f(`${REPO}/..foo`))).toBe(true);
+      expect(isInsideRepo(r(REPO), f(`${REPO}/.council-data/..x`))).toBe(true);
+      expect(isInsideRepo(r(REPO), f(`${REPO}/..`))).toBe(false);
+      expect(isInsideRepo(r(REPO), f(`${REPO}/../x`))).toBe(false);
+    }
   });
 
   // Own seeded generator: fast-check is not wired in.
@@ -29,6 +39,7 @@ describe("isInsideRepo", () => {
     };
   }
   const PARTS = ["Мозговой штурм", "ёлка", "й", "data", "a b", "Новый ёж", "x"];
+  const DOTTED = ["...", "..foo", "..x", "..й"]; // never a bare ".."
 
   it("gives the same answer for every NFC/NFD pairing of project and folder", () => {
     for (let seed = 1; seed <= 300; seed++) {
@@ -36,14 +47,16 @@ describe("isInsideRepo", () => {
       const pick = () => PARTS[Math.floor(rnd() * PARTS.length)]!;
       const base = Array.from({ length: 1 + Math.floor(rnd() * 3) }, pick);
       const repo = "/" + base.join("/");
-      const kind = Math.floor(rnd() * 4); // 0 — the project itself, 1 — nested, 2 — sibling, 3 — parent
+      const kind = Math.floor(rnd() * 5); // 0 — the project itself, 1 — nested, 2 — sibling, 3 — parent, 4 — parent's child
       const depth = 1 + Math.floor(rnd() * 5);
-      const nested = Array.from({ length: depth }, pick);
+      const pickN = () => (rnd() < 0.3 ? DOTTED[Math.floor(rnd() * DOTTED.length)]! : pick());
+      const nested = Array.from({ length: depth }, pickN);
       const folder =
         kind === 0 ? repo
         : kind === 1 ? `${repo}/${nested.join("/")}`
         : kind === 2 ? `${repo}-${pick()}/${nested.join("/")}`
-        : `${repo}/..`;
+        : kind === 3 ? `${repo}/..`
+        : `${repo}/../other-${pick()}`;
       const expected = kind <= 1;
       for (const r of [nfc, nfd]) for (const f of [nfc, nfd]) {
         expect(isInsideRepo(r(repo), f(folder)), `seed ${seed}: ${folder}`).toBe(expected);

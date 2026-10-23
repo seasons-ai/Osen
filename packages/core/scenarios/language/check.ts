@@ -7,7 +7,8 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { isInsideRepo } from "../inside-repo.ts";
 import { foldEvents, planResume, ResumeRejectedError, readSession, setProcessLanguage, tokenUsage, readTariffs } from "../../src/index.ts";
 import type { Language } from "../../src/index.ts";
 import { finishReasonText } from "../../src/protocol/finish-reason.ts";
@@ -33,7 +34,7 @@ const rawHome = process.env.COUNCIL_HOME;
 if (!rawHome) { console.error("Set COUNCIL_HOME: a new folder inside the project."); process.exit(1); }
 mkdirSync(resolve(rawHome), { recursive: true });
 const work = realpathSync(resolve(rawHome));
-if (relative(realpathSync(repo), work).startsWith("..")) { console.error(`COUNCIL_HOME ${work} is outside the project.`); process.exit(1); }
+if (!isInsideRepo(realpathSync(repo), work)) { console.error(`COUNCIL_HOME ${work} is outside the project.`); process.exit(1); }
 if (readdirSync(work).length) { console.error(`COUNCIL_HOME ${work} is not empty: a new folder is needed.`); process.exit(1); }
 
 // ---------- checks ----------
