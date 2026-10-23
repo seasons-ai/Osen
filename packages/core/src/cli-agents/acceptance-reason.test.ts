@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -21,7 +22,7 @@ async function reasonOf(mode: string, language: Language, limits: { timeoutMs?: 
   const stub = writeAcceptanceStub(root, help ? { help } : {});
   const configDir = join(root, "config");
   mkdirSync(configDir, { recursive: true });
-  const plan: AcceptancePlan = { agent: "claude", version: "2.1.288", path: stub, sha256: "a".repeat(64), configDir, model: DEFAULT_MODEL, probes: PROBES, bound: 7 };
+  const plan: AcceptancePlan = { agent: "claude", version: "2.1.288", path: stub, sha256: createHash("sha256").update(readFileSync(stub)).digest("hex"), configDir, model: DEFAULT_MODEL, probes: PROBES, bound: 7 };
   const env = { PATH: "/usr/bin:/bin", STUB_MODE: mode, STUB_PIDFILE: join(root, "child.pid") };
   const out = await runAcceptance(join(root, "data"), plan, { env, language, inspectLimits: limits });
   return out.outcomes[0]!.reason!;
