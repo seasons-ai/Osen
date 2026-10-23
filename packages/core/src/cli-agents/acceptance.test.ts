@@ -502,3 +502,21 @@ describe("Порядок поиска и окружение закреплённ
     });
   }
 });
+
+describe("Ключи из .env не попадают в окружение CLI: acceptance", () => {
+  it("inspect and probes get an environment without the data folder .env keys", async () => {
+    const key = `OSEN_T238_E_${Math.random().toString(36).slice(2, 10)}`;
+    writeFileSync(join(dataDir, ".env"), `${key}=secret\n`);
+    install("codex", "0.159.2");
+    const plan = await planFor(realRecord("codex", "0.159.2"));
+    const envs: Array<Record<string, string | undefined>> = [];
+    const runner: ProbeRunner = async (probe, ctx) => { envs.push(ctx.env); return { ok: true, calls: 1, raw: probe === "valid_turn" ? RAW : undefined }; };
+    const inspect = async (_p: unknown, e: Record<string, string | undefined>) => { envs.push(e); return { flags: new Set<string>(), features: new Set<string>() }; };
+    await runAcceptance(dataDir, plan, runOpts({ env: { ...ENV, [key]: "secret", KEEP: "1" } }), { runProbe: runner, inspect });
+    expect(envs.length).toBeGreaterThan(1);
+    for (const e of envs) {
+      expect(e).not.toHaveProperty(key);
+      expect(e.KEEP).toBe("1");
+    }
+  });
+});

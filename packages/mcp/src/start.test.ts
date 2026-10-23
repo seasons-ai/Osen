@@ -723,6 +723,19 @@ describe("council_start: detached executor", () => {
     expect(readSession(ctx.dataDir, v.sessionId)!.status).toBe("stopped");
   });
 
+  it("e. the executor environment lacks keys that come only from the data folder .env", async () => {
+    const key = `OSEN_T238_S_${Math.random().toString(36).slice(2, 10)}`;
+    const dataDir = tmp();
+    writeFileSync(join(dataDir, ".env"), `${key}=secret\n`);
+    const out = join(tmp(), "env.json");
+    const ctx = withScript(`import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(out)}, JSON.stringify(Object.keys(process.env))); process.exit(3);`, { dataDir, env: { COUNCIL_DEV: "1", [key]: "secret", KEEP_T238: "1" } });
+    await rejectsTool(ctx, { topic: "т", participants: two }, /exit code 3/);
+    const keys = JSON.parse(readFileSync(out, "utf8")) as string[];
+    expect(keys).not.toContain(key);
+    expect(keys).toContain("KEEP_T238");
+    expect(keys).toContain("COUNCIL_HOME");
+  });
+
   it("b. the executor cannot be started: the reason, no session, no launch files", async () => {
     const ctx = ctxOf({ councilLaunch: { command: join(tmp(), "no-such-node"), args: [], env: {} } });
     await rejectsTool(ctx, { topic: "т", participants: two }, /не запустился: .*ENOENT/);

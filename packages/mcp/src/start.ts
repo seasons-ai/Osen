@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, existsSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
-import { checkLineup, collectSessionMaterials, createSession, eventsPath, launchAcceptedPath, launchErrPath, launchFilePath, ResumeRejectedError, writeLaunchFile, DEFAULT_MODEL, ensureRegistry, envFilePath, FOLDER_LIMITS, folderStats, inspectProvider, LineupsError, maxCallsBound, loadTemplates, logRegistryLoaded, MaterialsError, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, readLineups, readRegistry, readScenario, ScriptedUnavailableError, scriptedDevOnlyMessage, SessionInputError, templateSessionInput, UnknownTemplateError, userTemplatesDir } from "@model-council/core";
+import { checkLineup, cliEnv, collectSessionMaterials, createSession, eventsPath, launchAcceptedPath, launchErrPath, launchFilePath, ResumeRejectedError, writeLaunchFile, DEFAULT_MODEL, ensureRegistry, envFilePath, FOLDER_LIMITS, folderStats, inspectProvider, LineupsError, maxCallsBound, loadTemplates, logRegistryLoaded, MaterialsError, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, readLineups, readRegistry, readScenario, ScriptedUnavailableError, scriptedDevOnlyMessage, SessionInputError, templateSessionInput, UnknownTemplateError, userTemplatesDir } from "@model-council/core";
 import type { FolderFile, LaunchPayload, LaunchResumePayload, ResumeRejection } from "@model-council/core";
 import { z } from "zod";
 import { defineTool, ROUNDS_BOUNDS, resumeScenarioPath, SCRIPTED_PROVIDER_ID, scriptedProviderLabel, scenarioPath, ToolError } from "./context.ts";
@@ -88,7 +88,7 @@ export async function launchExecutor(ctx: ToolContext, id: string, payload: Prep
         const child = spawn(ctx.councilLaunch.command, [...ctx.councilLaunch.args, "run-prepared", file], {
           detached: true,
           stdio: ["ignore", "ignore", errFd],
-          env: { ...Object.fromEntries(Object.entries(ctx.env).filter((e): e is [string, string] => e[1] !== undefined)), COUNCIL_HOME: ctx.dataDir, ...ctx.councilLaunch.env },
+          env: { ...Object.fromEntries(Object.entries(cliEnv(ctx.env, { dataDir: ctx.dataDir })).filter((e): e is [string, string] => e[1] !== undefined)), COUNCIL_HOME: ctx.dataDir, ...ctx.councilLaunch.env },
         });
         child.on("error", (e) => { failure ??= e.message; });
         child.on("exit", (code) => { failure ??= reason(code); });

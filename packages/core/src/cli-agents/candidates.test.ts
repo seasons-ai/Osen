@@ -545,3 +545,21 @@ describe("Порядок поиска и окружение закреплённ
     expect(candidatesJson(r).candidates[0]!.violations).toContainEqual({ code: "help_unread", name: "exec --help" });
   });
 });
+
+describe("Ключи из .env не попадают в окружение CLI: candidates", () => {
+  it("run gets an environment without the data folder .env keys", async () => {
+    const key = `OSEN_T238_C_${Math.random().toString(36).slice(2, 10)}`;
+    writeFileSync(join(dir, ".env"), `${key}=secret\n`);
+    const h = harness();
+    const seen: Array<Record<string, string | undefined>> = [];
+    const inner = h.deps.run!;
+    h.deps.env = { [key]: "secret", KEEP: "1" };
+    h.deps.run = async (path, args, env, signal) => { seen.push(env); return inner(path, args, env, signal); };
+    await checkCandidates(dir, ["claude"], h.deps);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const e of seen) {
+      expect(e).not.toHaveProperty(key);
+      expect(e.KEEP).toBe("1");
+    }
+  });
+});

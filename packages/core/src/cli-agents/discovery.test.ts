@@ -329,3 +329,22 @@ describe("locateCli verified record", () => {
     expect(logLines()).toEqual([]);
   });
 });
+
+describe("locateCli: keys from .env files", () => {
+  it("version read and pin-less lookup get an environment without the data folder .env keys", async () => {
+    const key = `OSEN_T238_D_${Math.random().toString(36).slice(2, 10)}`;
+    const dataDir = join(tmp, "data");
+    mkdirSync(dataDir);
+    writeFileSync(join(dataDir, ".env"), `${key}=secret\n`);
+    const file = bin("2.1.288 (Claude Code)");
+    const seen: Array<Record<string, string | undefined>> = [];
+    const r = await locateCli("claude", {
+      env: { PATH: join(tmp, "bin"), [key]: "secret", KEEP: "1" }, dataDir,
+      deps: { ...noLogin, runVersion: async (_p, e) => { seen.push(e); return "2.1.288 (Claude Code)"; } },
+    });
+    expect(r).toMatchObject({ found: true, path: file });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).not.toHaveProperty(key);
+    expect(seen[0]?.KEEP).toBe("1");
+  });
+});
