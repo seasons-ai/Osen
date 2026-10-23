@@ -121,6 +121,7 @@ export const materialsMessages = defineMessages({
     imgMemory: (mib: number) => `text recognition used more than ${mib} MiB of memory`,
     imgChars: (n: number) => `the image text is longer than ${chars(n)}`,
     imgFailed: (detail: string) => `could not recognize the image text — ${detail}`,
+    ocrHelperError: "the recognition helper reported an error",
     imgFolderLimit: (n: number) => `the folder has more than ${n} images — the first ${n} were recognized`,
     // ZIP archive as a folder (change 215)
     archiveNested: "nested archive is not expanded",
@@ -243,6 +244,7 @@ export const materialsMessages = defineMessages({
     imgMemory: (mib: number) => `распознавание текста заняло больше ${mib} МиБ памяти`,
     imgChars: (n: number) => `текст изображения больше ${n} знаков`,
     imgFailed: (detail: string) => `не удалось распознать текст изображения — ${detail}`,
+    ocrHelperError: "помощник распознавания сообщил об ошибке",
     imgFolderLimit: (n: number) => `в папке больше ${n} изображений — распознаны первые ${n}`,
     archiveNested: "вложенный архив не раскрывается",
     archiveUnsafeName: "небезопасное имя в архиве",

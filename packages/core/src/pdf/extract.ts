@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { fstatSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { materialsMessages } from "../messages/materials.ts";
-import { OCR_LIMITS, runOcrHelper, type OcrPdfRequest, type OcrPdfResult } from "../ocr/run.ts";
+import { OCR_LIMITS, ocrFailedDetail, runOcrHelper, type OcrPdfRequest, type OcrPdfResult } from "../ocr/run.ts";
 
 export const PDF_LIMITS = { bytes: 100 * 2 ** 20, pages: 2000, ms: 30_000, rssBytes: 512 * 2 ** 20, chars: 20_000_000 } as const;
 export interface PdfLimits { bytes: number; pages: number; ms: number; rssBytes: number; chars: number }
@@ -138,6 +138,6 @@ export function pdfReason(failure: { code: PdfFailure; detail?: string }, limits
     case "ocr_timeout": return m.pdfOcrTimeout(PDF_OCR_LIMITS.ms / 1000);
     case "ocr_memory": return m.pdfOcrMemory(OCR_LIMITS.rssBytes / 2 ** 20);
     case "ocr_folder": return m.pdfOcrFolder(PDF_FOLDER_OCR_MS / 1000);
-    case "ocr_failed": return m.pdfOcrFailed(failure.detail ?? m.docBadReply);
+    case "ocr_failed": return m.pdfOcrFailed(ocrFailedDetail(failure.detail));
   }
 }

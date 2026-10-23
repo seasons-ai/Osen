@@ -8,7 +8,9 @@ import { DOC_LIMITS } from "../documents/limits.ts";
 import { materialsMessages } from "../messages/materials.ts";
 import { makeImage } from "./fixture.ts";
 import { writeExecutable } from "../executable.testutil.ts";
-import { imageReason, OCR_LIMITS, runOcrHelper, setOcrRuntime, type OcrImageRequest } from "./run.ts";
+import { setProcessLanguage } from "../i18n/process-language.ts";
+import { pdfReason } from "../pdf/extract.ts";
+import { imageReason, OCR_LIMITS, runOcrHelper, setOcrRuntime, type OcrImageRequest, type OcrPdfRequest } from "./run.ts";
 
 const REQ: OcrImageRequest = { mode: "image", ms: 10_000, rssBytes: OCR_LIMITS.rssBytes };
 const REAL = join(import.meta.dirname, "bin/osen-ocr");
@@ -16,7 +18,7 @@ const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\n ]/gu, "");
 let dir: string;
 beforeAll(() => { dir = realpathSync(mkdtempSync(join(tmpdir(), "ocr-run-"))); });
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
-afterEach(() => { setOcrRuntime(); delete process.env.COUNCIL_OCR_HELPER; });
+afterEach(() => { setOcrRuntime(); setProcessLanguage("ru"); delete process.env.COUNCIL_OCR_HELPER; });
 
 // one executable stub per file, rewritten in place: a new inode per call pays the macOS first-launch check
 // (seconds under load) inside the helper deadline; a non-executable stub goes to its own path by a plain write
@@ -42,9 +44,9 @@ describe("runOcrHelper protocol (stub helpers)", () => {
     expect(run(printing({ ok: false, code }))).toEqual({ ok: false, code });
   });
 
-  it("keeps any other helper code as failed with the code as detail", () => {
-    expect(run(printing({ ok: false, code: "vision" }))).toEqual({ ok: false, code: "failed", detail: "vision" });
-    expect(run(printing({ ok: false, code: "bad_request" }))).toEqual({ ok: false, code: "failed", detail: "bad_request" });
+  it("keeps any other helper code as failed with the marked code as detail", () => {
+    expect(run(printing({ ok: false, code: "vision" }))).toEqual({ ok: false, code: "failed", detail: "helper:vision" });
+    expect(run(printing({ ok: false, code: "bad_request" }))).toEqual({ ok: false, code: "failed", detail: "helper:bad_request" });
   });
 
   it("treats an unparsable reply as failed with the catalog text", () => {
@@ -178,7 +180,7 @@ describe.runIf(process.platform === "darwin")("real helper", () => {
 
   it("rejects an unknown mode with bad_request", () => {
     const r = runOcrHelper({ ...REQ, mode: "docx" } as unknown as OcrImageRequest, Buffer.from("x"));
-    expect(r).toEqual({ ok: false, code: "failed", detail: "bad_request" });
+    expect(r).toEqual({ ok: false, code: "failed", detail: "helper:bad_request" });
   });
 
   it("recognizes a Russian image in reading order inside the sandbox", () => {
@@ -211,5 +213,65 @@ describe("imageReason", () => {
     expect(imageReason({ code: "memory" })).toBe("распознавание текста заняло больше 512 МиБ памяти");
     expect(imageReason({ code: "chars" })).toBe("текст изображения больше 20000000 знаков");
     expect(imageReason({ code: "failed", detail: "vision" })).toBe("не удалось распознать текст изображения — vision");
+  });
+});
+
+// Own seeded generator: fast-check is not wired in.
+function mulberry32(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const PDF_REQ: OcrPdfRequest = { mode: "pdf", pages: [1], pageMs: 5000, ms: 10_000, rssBytes: OCR_LIMITS.rssBytes };
+const runPdf = (helper: string) => { setOcrRuntime({ helper }); return runOcrHelper(PDF_REQ, Buffer.from("x")); };
+
+describe("Image limits and refusals: unknown helper code", () => {
+  const words = {
+    en: { img: "could not recognize the image text — the recognition helper reported an error", pdf: "could not recognize the PDF text — the recognition helper reported an error" },
+    ru: { img: "не удалось распознать текст изображения — помощник распознавания сообщил об ошибке", pdf: "не удалось распознать текст PDF — помощник распознавания сообщил об ошибке" },
+  } as const;
+
+  it.each(["en", "ru"] as const)("an unknown helper code gives the %s reason without the code", (lang) => {
+    setProcessLanguage(lang);
+    for (const code of ["vision", "bad_request"]) {
+      const r = run(printing({ ok: false, code }));
+      expect(r.ok).toBe(false);
+      const reason = imageReason(r as { code: "failed"; detail?: string });
+      expect(reason).toBe(words[lang].img);
+      expect(reason).not.toContain(code);
+    }
+  });
+
+  it.each(["en", "ru"] as const)("an empty or non-string code is still reply not parsed (%s)", (lang) => {
+    setProcessLanguage(lang);
+    for (const code of ["", 7, null]) {
+      const r = run(printing({ ok: false, code }));
+      expect(r).toEqual({ ok: false, code: "failed", detail: materialsMessages().docBadReply });
+      expect(imageReason(r as { code: "failed"; detail?: string })).toBe(materialsMessages().imgFailed(materialsMessages().docBadReply));
+    }
+  });
+
+  it("for any unknown code, image and PDF reasons on en and ru do not contain it and detail keeps helper:<code>", () => {
+    const rnd = mulberry32(246);
+    const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-";
+    for (let i = 0; i < 12; i++) {
+      const len = 1 + Math.floor(rnd() * 12);
+      const code = "zq-" + Array.from({ length: len }, () => alphabet[Math.floor(rnd() * alphabet.length)]).join("");
+      const helper = printing({ ok: false, code });
+      const img = run(helper);
+      const pdf = runPdf(helper);
+      expect(img).toEqual({ ok: false, code: "failed", detail: `helper:${code}` });
+      expect(pdf).toEqual({ ok: false, code: "failed", detail: `helper:${code}` });
+      for (const lang of ["en", "ru"] as const) {
+        setProcessLanguage(lang);
+        const reasons = [imageReason(img as { code: "failed"; detail?: string }), pdfReason({ code: "ocr_failed", detail: (pdf as { detail?: string }).detail })];
+        expect(reasons).toEqual([words[lang].img, words[lang].pdf]);
+        for (const reason of reasons) expect(reason, `seed 246, case ${i}, ${lang}`).not.toContain(code);
+      }
+    }
   });
 });
