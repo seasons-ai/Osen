@@ -1,7 +1,7 @@
 import { posix } from "node:path";
 import { docxText, DOCX_TYPES } from "./docx.ts";
 import { CFB_SIGNATURE, cfbStreams } from "./cfb.ts";
-import { xlsxText, XLSX_TYPES } from "./xlsx.ts";
+import { xlsxText, XLSB_TYPE, XLSX_TYPES } from "./xlsx.ts";
 import { pptxText, PPTX_TYPES } from "./pptx.ts";
 import { DocError, type DocFailure, type DocLimits } from "./limits.ts";
 import { decodeXml, parseXml, type XmlElement } from "./xml.ts";
@@ -53,7 +53,8 @@ export function extractDocument(bytes: Uint8Array, limits: Pick<DocLimits, "char
     const type = mimetype(zip) ?? mainType(zip);
     const format = type === undefined ? undefined : FORMATS.find((f) => f.test(type));
     // iWork is a ZIP too: it is named here, before the caller treats an "unsupported" ZIP as a folder (change 215)
-    if (!format) throw zip.entries.has("Index/Document.iwa") ? new DocError("kind", "iwork") : new DocError("unsupported");
+    // XLSB is named too: its main part is binary, so it is refused with its kind reason (change 222)
+    if (!format) throw zip.entries.has("Index/Document.iwa") ? new DocError("kind", "iwork") : type === XLSB_TYPE ? new DocError("kind", "xlsb") : new DocError("unsupported");
     checkZip(zip, limits);
     format.check?.(zip);
     // A DTD or an entity declaration in any XML part makes the document damaged, even in parts the builder never parses.

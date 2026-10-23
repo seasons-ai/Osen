@@ -45,8 +45,8 @@ if (isMainThread) {
     });
     thread.on("message", (result) => finish(result));
     // extractDocument catches parse errors itself: an error or exit here is an unexpected failure, not a damaged document
-    thread.on("error", (e) => finish((e as { code?: string }).code === "ERR_WORKER_OUT_OF_MEMORY" ? { ok: false, code: "memory" } : { ok: false, code: "failed", detail: "worker error" }));
-    thread.on("exit", () => finish({ ok: false, code: "failed", detail: "worker exit" }));
+    thread.on("error", (e) => finish((e as { code?: string }).code === "ERR_WORKER_OUT_OF_MEMORY" ? { ok: false, code: "memory" } : { ok: false, code: "failed", detail: "parser_error" }));
+    thread.on("exit", () => finish({ ok: false, code: "failed", detail: "parser_exit" }));
   }
 } else {
   const { bytes, mode, indices, limits } = workerData;

@@ -73,6 +73,18 @@ describe("PPTX text", () => {
     expect(run({ slides, macro: true })).toMatchObject({ ok: true, format: "pptx" });
   });
 
+  it("POTX, POTM, PPSX and PPSM give the same text as PPTX with the slide headings", () => {
+    const slides = [{ shapes: sp(["a"]), notes: sp(["n"], "body") }, { shapes: sp(["b"]) }];
+    const pptx = text({ slides });
+    expect(pptx).toContain("# 1");
+    expect(pptx).toContain("# 2");
+    const P = "application/vnd.openxmlformats-officedocument.presentationml";
+    for (const mainType of [`${P}.template.main+xml`, "application/vnd.ms-powerpoint.template.macroEnabled.main+xml", `${P}.slideshow.main+xml`, "application/vnd.ms-powerpoint.slideshow.macroEnabled.main+xml"]) {
+      expect(text({ slides, mainType })).toBe(pptx);
+      expect(text({ slides, mainType, macro: true })).toBe(pptx);
+    }
+  });
+
   it("damaged: a slide listed but missing, an unknown relationship id, broken slide XML", () => {
     const ct = '<Types><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/></Types>';
     const pkg = (slide: string | undefined, rid = "rId1") => makeZip([

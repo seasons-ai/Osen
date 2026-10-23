@@ -3,7 +3,10 @@
 //   COUNCIL_DEV=1 [COUNCIL_HOME=<new folder inside the project>] node packages/core/scenarios/file-kinds/check.ts [--mutant]
 // Without COUNCIL_HOME the stand creates .council-data/file-kinds-<stamp> and removes it on success. A COUNCIL_HOME given is kept.
 // Fixture files are generated in code (kind-fixtures.ts and the generators of changes 208-215) in a temp folder that is removed on success.
-// --mutant: the RAR record is removed from KIND_SIGNATURES in a copy of packages/core/src, the terminal steps run on that copy; the stand must exit non-zero and name RAR.
+// --mutant [rar|format-list|kind-overlap]: the stand runs against a mutated copy of packages/core/src and must exit non-zero naming the cause:
+//   rar (default): see below. format-list: XLSB is added to the copy of the supportedFormats list; the stand names XLSB.
+//   kind-overlap: a record with PK\x03\x04 at offset 0 is added to the copy of KIND_SIGNATURES; the stand names the accepted file and the kind found.
+// --mutant rar: the RAR record is removed from KIND_SIGNATURES in a copy of packages/core/src, the terminal steps run on that copy; the stand must exit non-zero and name RAR.
 import "../language-ru.ts";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
@@ -24,9 +27,12 @@ import { makeImage } from "../../src/ocr/fixture.ts";
 import { makePdf, makeScanPdf } from "../../src/pdf/fixture.ts";
 import { enc1251, encKoi8r, utf16le } from "../../src/text-encoding.testutil.ts";
 
-const usage = "COUNCIL_DEV=1 [COUNCIL_HOME=<new folder inside the project>] node packages/core/scenarios/file-kinds/check.ts [--mutant]";
+const usage = "COUNCIL_DEV=1 [COUNCIL_HOME=<new folder inside the project>] node packages/core/scenarios/file-kinds/check.ts [--mutant [rar|format-list|kind-overlap]]";
 if (process.env.COUNCIL_DEV !== "1") { console.error(`Usage: ${usage}`); process.exit(2); }
-const mutant = process.argv.includes("--mutant");
+const mi = process.argv.indexOf("--mutant");
+const mutant = mi >= 0;
+const mutantMode = !mutant ? "" : process.argv[mi + 1] && !process.argv[mi + 1]!.startsWith("--") ? process.argv[mi + 1]! : "rar";
+if (mutant && !["rar", "format-list", "kind-overlap"].includes(mutantMode)) { console.error(`Unknown mutant ${mutantMode}. Usage: ${usage}`); process.exit(2); }
 const repo = resolve(import.meta.dirname, "../../../..");
 const given = process.env.COUNCIL_HOME;
 if (given && existsSync(resolve(given)) && (!statSync(resolve(given)).isDirectory() || readdirSync(resolve(given)).length > 0)) {
@@ -77,7 +83,8 @@ async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (x: T) => 
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => { while (next < items.length) { const i = next++; out[i] = await fn(items[i]!); } }));
   return out;
 }
-const coreEntry = join(mutant ? mutantDir : join(repo, "packages/core/src"), "council.ts");
+const srcDir = mutant ? mutantDir : join(repo, "packages/core/src");
+const coreEntry = join(srcDir, "council.ts");
 const consensus = ["p1", "p2"].flatMap((x) => ["--participant", `scripted:${join(repo, "packages/core/scenarios/consensus", `${x}.json`)}`]);
 const cli = (lang: Lang, args: string[]) => run([coreEntry, ...args], { ...baseEnv, COUNCIL_LANG: lang, COUNCIL_HOME: homes(lang).cli });
 const attach = (lang: Lang, paths: string[], extra: string[] = []) => cli(lang, ["--topic", "What is in the files?", ...paths.flatMap((f) => ["--attach", f]), ...consensus, "--max-rounds", "3", ...extra]);
@@ -86,7 +93,7 @@ const sessionsOf = (lang: Lang) => { const d = join(homes(lang).cli, "sessions")
 // ---- fixture files ----
 const EXT: Record<FileKindId, string> = {
   mp3: "mp3", aac: "aac", m4a: "m4a", wav: "wav", aiff: "aiff", flac: "flac", ogg: "ogg", video: "mp4", rar: "rar", "7z": "7z", tar: "tar", gzip: "gz", bzip2: "bz2", xz: "xz", zstd: "zst",
-  dmg: "dmg", program: "bin", sqlite: "db", font: "ttf", xls: "xls", ppt: "ppt", iwork: "pages", unknown: "bin",
+  dmg: "dmg", program: "bin", sqlite: "db", font: "ttf", xls: "xls", ppt: "ppt", xlsb: "xlsb", iwork: "pages", unknown: "bin",
 };
 const put = (rel: string, data: Uint8Array | string): string => { const f = join(fx, rel); mkdirSync(join(f, ".."), { recursive: true }); writeFileSync(f, data); return f; };
 const kindFiles = KIND_FIXTURES.map((k) => ({ ...k, file: put(`kinds/${k.name}.${EXT[k.kind]}`, k.bytes), base: `${k.name}.${EXT[k.kind]}` }));
@@ -98,6 +105,9 @@ const mp3Bytes = KIND_FIXTURES.find((k) => k.name === "mp3-id3")!.bytes;
 const notesTxt = put("ok/notes.txt", mp3Bytes);
 const brokenDocx = put("ok/broken.docx", makeDocx({ body: "<w:p>" }));
 const koi = put("ok/koi.txt", encKoi8r(TEXT));
+const xlsbBytes = KIND_FIXTURES.find((k) => k.kind === "xlsb")!.bytes;
+const binXlsb = put("ok/bin.xlsb", xlsbBytes);
+const bookZip = put("ok/book.zip", xlsbBytes);
 const hugeZip = put("ok/huge.zip", Buffer.from([0x50, 0x4b, 0x03, 0x04]));
 truncateSync(hugeZip, 150 * 2 ** 20);
 const darwin = process.platform === "darwin";
@@ -122,6 +132,8 @@ async function refusals(lang: Lang) {
     { name: "mp3 named notes.txt", file: notesTxt, reason: m.kindReason("mp3"), tag: "mp3" },
     { name: "damaged docx", file: brokenDocx, reason: m.docDamaged, tag: "docx" },
     { name: "KOI8-R text", file: koi, reason: m.encodingUnknown, tag: "encoding" },
+    { name: "XLSB named bin.xlsb", file: binXlsb, reason: m.kindReason("xlsb"), tag: "xlsb" },
+    { name: "XLSB named book.zip", file: bookZip, reason: m.kindReason("xlsb"), tag: "xlsb" },
     { name: "ZIP over 100 MiB", file: hugeZip, reason: m.zipTooLarge(100), tag: "zip" },
   ];
   const results = await mapLimit(cases, 6, async (c) => ({ c, r: await attach(lang, [c.file], ["--max-rounds", "1"]) }));
@@ -131,6 +143,7 @@ async function refusals(lang: Lang) {
       assert.equal(r.out, "", `stdout${dump(r)}`);
       assert.ok(r.err.startsWith(`${REJECTED[lang]}\n`) && r.err.includes(`  «${basename(c.file)}»: ${c.reason}\n`), `stderr lacks the reason "${c.reason}"${dump(r)}`);
       if (lang === "en") assert.ok(!CYR.test(r.err.split(fx).join("")), `Cyrillic in the en reason${dump(r)}`);
+      if (c.name.startsWith("XLSB")) assert.ok(c.reason === (lang === "ru" ? "двоичная книга Excel (XLSB) — сохраните как XLSX" : "Excel binary workbook (XLSB) — save it as XLSX"), `XLSB reason: ${c.reason}`);
       if (c.tag !== "docx" && c.tag !== "encoding" && c.tag !== "zip" && c.name !== "mp3 named notes.txt") assert.ok(c.reason !== m.kindReason("unknown") || c.tag === "unknown", "kind fell to unknown");
     });
   }
@@ -167,6 +180,8 @@ async function folder(lang: Lang) {
   for (const k of kindFiles) put(`all/${k.base}`, k.bytes);
   put("all/koi.txt", encKoi8r(TEXT));
   put("all/a.md", "a");
+  put("all/bin.xlsb", xlsbBytes);
+  put("all/book.zip", xlsbBytes);
   const r = await attach(lang, [dir]);
   await check(`4 [${lang}] folder with ${kindFiles.length + 2} files: exit 0, a.md collected, kind reasons before the session id, consensus`, () => {
     assert.equal(r.code, 0, `exit code ${r.code}${dump(r)}`);
@@ -176,6 +191,7 @@ async function folder(lang: Lang) {
     assert.ok(head.includes(lang === "ru" ? "Материалы: 1, объём 1 символов" : "Materials: 1, size 1 characters"), `summary${dump(r)}`);
     for (const k of kindFiles) assert.ok(head.includes(`  all/${k.base} — ${m.kindReason(k.kind)}`), `no skipped line for ${k.base}${dump(r)}`);
     assert.ok(head.includes(`  all/koi.txt — ${m.encodingUnknown}`), `no skipped line for koi.txt${dump(r)}`);
+    for (const x of ["bin.xlsb", "book.zip"]) assert.ok(head.includes(`  all/${x} — ${m.kindReason("xlsb")}`), `no XLSB skipped line for ${x}${dump(r)}`);
     if (lang === "en") assert.ok(!CYR.test(head), `Cyrillic in the en block${dump(r)}`);
     const journal = readFileSync(join(homes(lang).cli, "sessions", sid[1]!, "events.jsonl"), "utf8");
     const events = journal.trim().split("\n").map((l) => JSON.parse(l) as Record<string, any>);
@@ -256,14 +272,26 @@ function formatFiles(): { token: string; file: string }[] {
   add("DOCX", "a.docx", makeDocx({ body: p("Первая строка") }));
   add("DOCM", "a.docm", makeDocx({ body: p("Первая строка"), macro: true }));
   const sheet = { sheets: [{ name: "S", rows: [[{ inline: "Товар" }, 40]] }] };
+  const OO = "application/vnd.openxmlformats-officedocument", MS = "application/vnd.ms-";
+  add("DOTX", "a.dotx", makeDocx({ body: p("Первая строка"), mainType: `${OO}.wordprocessingml.template.main+xml` }));
+  add("DOTM", "a.dotm", makeDocx({ body: p("Первая строка"), mainType: `${MS}word.template.macroEnabledTemplate.main+xml` }));
   add("XLSX", "a.xlsx", makeXlsx(sheet));
   add("XLSM", "a.xlsm", makeXlsx({ ...sheet, macro: true }));
   const deck = { slides: [{ shapes: sp(["Название доклада"], "title") }] };
   add("PPTX", "a.pptx", makePptx(deck));
   add("PPTM", "a.pptm", makePptx({ ...deck, macro: true }));
+  add("XLTX", "a.xltx", makeXlsx({ ...sheet, mainType: `${OO}.spreadsheetml.template.main+xml` }));
+  add("XLTM", "a.xltm", makeXlsx({ ...sheet, mainType: `${MS}excel.template.macroEnabled.main+xml` }));
+  add("POTX", "a.potx", makePptx({ ...deck, mainType: `${OO}.presentationml.template.main+xml` }));
+  add("POTM", "a.potm", makePptx({ ...deck, mainType: `${MS}powerpoint.template.macroEnabled.main+xml` }));
+  add("PPSX", "a.ppsx", makePptx({ ...deck, mainType: `${OO}.presentationml.slideshow.main+xml` }));
+  add("PPSM", "a.ppsm", makePptx({ ...deck, mainType: `${MS}powerpoint.slideshow.macroEnabled.main+xml` }));
   add("ODT", "a.odt", makeOdf({ kind: "text", body: odtP("Абзац") }));
   add("ODS", "a.ods", makeOdf({ kind: "spreadsheet", body: odsTable("Итоги", [["Статья", "Сумма"]]) }));
   add("ODP", "a.odp", makeOdf({ kind: "presentation", body: odpPage(["Заголовок слайда"]) }));
+  add("OTT", "a.ott", makeOdf({ kind: "text-template", body: odtP("Абзац") }));
+  add("OTS", "a.ots", makeOdf({ kind: "spreadsheet-template", body: odsTable("Итоги", [["Статья", "Сумма"]]) }));
+  add("OTP", "a.otp", makeOdf({ kind: "presentation-template", body: odpPage(["Заголовок слайда"]) }));
   add("EPUB", "a.epub", makeEpub({ chapters: [{ path: "OEBPS/ch1.xhtml", html: xhtml("<p>Глава первая</p>") }] }));
   add("RTF", "a.rtf", makeRtf(["Первая строка"]));
   add("ZIP", "a.zip", makeZip([{ name: "a.txt", data: "a" }]));
@@ -274,35 +302,68 @@ function formatFiles(): { token: string; file: string }[] {
   }
   return out;
 }
+// Formats named by a supportedFormats string: elements split by ", " outside parentheses, then by "/";
+// an element with parentheses gives one format per name inside; for the others the format is the first word (the explanation is dropped).
+function parseFormats(list: string): string[] {
+  const elements: string[] = [];
+  let depth = 0, cur = "";
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i]!;
+    if (c === "(") depth++;
+    if (c === ")") depth--;
+    if (depth === 0 && list.startsWith(", ", i)) { elements.push(cur); cur = ""; i++; continue; }
+    cur += c;
+  }
+  elements.push(cur);
+  return elements.flatMap((e) => {
+    const m = /\(([^)]*)\)/.exec(e);
+    if (m) return m[1]!.split(", ");
+    return e.split("/").map((x) => x.trim().split(" ")[0]!);
+  });
+}
+// The Russian list names pictures «картинки»: one table key
+const CANONICAL: Record<string, string> = { "картинки": "pictures" };
 async function formats() {
-  const en = msgs("en");
+  // the list, the signatures and the table come from the copy of packages/core/src that the stand runs
+  const { materialsMessages: listMessages } = await import(join(srcDir, "messages/materials.ts")) as typeof import("../../src/messages/materials.ts");
+  const { fileKind, TAIL_BYTES } = await import(join(srcDir, "documents/kinds.ts")) as typeof import("../../src/documents/kinds.ts");
+  const { DESCRIPTION_EXTENSIONS } = await import(join(srcDir, "materials.ts")) as typeof import("../../src/materials.ts");
+  const HEAD_BYTES = 8192; // as the collector reads (materials.ts)
+  const en = listMessages("en");
   const helpOf = async (lang: Lang) => (await cli(lang, ["--help"])).out;
   for (const lang of LANGS) {
-    const list = msgs(lang).supportedFormats;
+    const list = listMessages(lang).supportedFormats;
     await check(`8 council --help [${lang}] holds the list of formats`, async () => assert.ok((await helpOf(lang)).includes(list)));
   }
+  await check("8 council --help [en] descriptions list equals the collector extensions", async () => assert.ok((await helpOf("en")).includes(`descriptions (${DESCRIPTION_EXTENSIONS.join(", ")})`)));
   await check("8 skill/osen/SKILL.md and docs/materials.md hold the en list", () => {
     for (const f of ["skill/osen/SKILL.md", "docs/materials.md"]) assert.ok(readFileSync(join(repo, f), "utf8").includes(en.supportedFormats), f);
   });
   const files = formatFiles();
-  const list = en.supportedFormats;
-  const tokens = new Set(files.map((x) => x.token));
-  await check("8 every format of the list has a generated file", () => {
-    for (const token of ["UTF-8", "UTF-16", "Windows-1251", "PDF", "DOCX", "DOCM", "XLSX", "XLSM", "PPTX", "PPTM", "ODT", "ODS", "ODP", "EPUB", "RTF", "ZIP", ...(darwin ? ["DOC", "pictures"] : [])]) {
-      assert.ok(list.includes(token), `${token} is not in the list`);
-      assert.ok(tokens.has(token), `no file for ${token}`);
-    }
-  });
+  const parsed = Object.fromEntries(LANGS.map((l) => [l, parseFormats(listMessages(l).supportedFormats).map((x) => CANONICAL[x] ?? x)])) as Record<Lang, string[]>;
+  await check("8 the lists parse to the same formats on en and ru", () => assert.deepEqual(parsed.ru, parsed.en));
   const results = await mapLimit(files, 4, async (x) => ({ x, r: await cli("en", ["--attach", x.file, "--preview-materials"]) }));
+  const accepted = (token: string) => results.filter((y) => y.x.token === token);
+  for (const format of new Set([...parsed.en, ...parsed.ru])) {
+    if (!darwin && ["DOC", "pictures"].includes(format)) continue;
+    await check(`8 format ${format} of the list has an accepted file`, () => {
+      const hits = accepted(format);
+      assert.ok(hits.length > 0, `no file for the format ${format}`);
+      for (const { x, r } of hits) assert.ok(r.code === 0 && /^Materials: 1,/m.test(r.out), `format ${format}: ${basename(x.file)} is not accepted${dump(r)}`);
+    });
+  }
   for (const { x, r } of results) {
     await check(`8 format ${x.token} (${basename(x.file)}) accepted: exit 0, one material`, () => {
       assert.equal(r.code, 0, `exit code ${r.code}${dump(r)}`);
       assert.match(r.out, /^Materials: 1,/m, dump(r));
     });
   }
-  await check("8 no accepted file is also a table kind: no byte-for-byte overlap", () => {
-    const accepted = new Set(files.map((x) => readFileSync(x.file).toString("hex")));
-    for (const k of kindFiles) if (k.kind !== "unknown") assert.ok(!accepted.has(Buffer.from(k.bytes).toString("hex")), `${k.name} is also an accepted file`);
+  await check("8 no accepted file is read as a kind of the table (head and tail as the collector reads them)", () => {
+    for (const { x } of results) {
+      const buf = readFileSync(x.file);
+      const kind = fileKind(buf.subarray(0, HEAD_BYTES), buf.length >= TAIL_BYTES ? buf.subarray(buf.length - TAIL_BYTES) : undefined);
+      assert.equal(kind, undefined, `accepted file ${basename(x.file)} (${x.token}) is read as the kind ${kind}`);
+    }
   });
 }
 
@@ -311,15 +372,31 @@ const guard = setTimeout(() => { console.error("FAILED: the stand did not finish
 try {
   if (mutant) {
     cpSync(join(repo, "packages/core/src"), mutantDir, { recursive: true });
-    const kinds = join(mutantDir, "documents/kinds.ts");
-    const src = readFileSync(kinds, "utf8");
-    const lines = src.split("\n");
-    const kept = lines.filter((l) => !l.includes('kind: "rar"'));
-    assert.equal(lines.length - kept.length, 1, "the RAR record was not found in the copy of kinds.ts");
-    writeFileSync(kinds, kept.join("\n"));
-    console.log("mutant: the RAR record is removed from KIND_SIGNATURES in the copy of packages/core/src");
+    const edit = (rel: string, fn: (src: string) => string) => { const f = join(mutantDir, rel); writeFileSync(f, fn(readFileSync(f, "utf8"))); };
+    if (mutantMode === "rar") {
+      edit("documents/kinds.ts", (src) => {
+        const lines = src.split("\n");
+        const kept = lines.filter((l) => !l.includes('kind: "rar"'));
+        assert.equal(lines.length - kept.length, 1, "the RAR record was not found in the copy of kinds.ts");
+        return kept.join("\n");
+      });
+      console.log("mutant: the RAR record is removed from KIND_SIGNATURES in the copy of packages/core/src");
+    } else if (mutantMode === "format-list") {
+      edit("messages/materials.ts", (src) => {
+        assert.equal(src.split(", EPUB, RTF").length - 1, 2, "the lists were not found in the copy of materials.ts");
+        return src.split(", EPUB, RTF").join(", XLSB, EPUB, RTF");
+      });
+      console.log("mutant: XLSB is added to the supportedFormats lists in the copy of packages/core/src");
+    } else {
+      edit("documents/kinds.ts", (src) => {
+        const marker = "export const KIND_SIGNATURES: readonly KindSignature[] = [\n";
+        assert.ok(src.includes(marker), "KIND_SIGNATURES was not found in the copy of kinds.ts");
+        return src.replace(marker, `${marker}  { kind: "program", offset: 0, bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04]) },\n`);
+      });
+      console.log("mutant: a record with PK\\x03\\x04 at offset 0 is added to KIND_SIGNATURES in the copy of packages/core/src");
+    }
   }
-  for (const lang of LANGS) {
+  for (const lang of mutantMode === "format-list" || mutantMode === "kind-overlap" ? [] : LANGS) {
     await refusals(lang);
     await accepted(lang);
     await folder(lang);
@@ -335,12 +412,12 @@ try {
 if (failures.length > 0) {
   console.log(`\n${failures.length} failed:`);
   for (const f of failures) console.log(`  - ${f.split("\n")[0]}`);
-  const rar = failures.some((f) => f.toLowerCase().includes("rar"));
-  if (mutant) console.log(rar ? "MUTANT DETECTED: the RAR failure is named above" : "MUTANT NOT NAMED: failures do not mention RAR");
+  const named = { rar: "rar", "format-list": "xlsb", "kind-overlap": "is read as the kind program" }[mutantMode as "rar"];
+  if (mutant) console.log(failures.some((f) => f.toLowerCase().includes(named!)) ? `MUTANT DETECTED: the failure naming "${named}" is above` : `MUTANT NOT NAMED: failures do not mention "${named}"`);
   console.error(`FAILED (${checks} checks passed, ${failures.length} failed)${mutant ? "" : `\nFixtures left in ${fx}; data in ${work}`}`);
   process.exit(1);
 }
-if (mutant) { console.error(`MUTANT SURVIVED: no check failed on the copy without the RAR record (${checks} checks)`); process.exit(1); }
+if (mutant) { console.error(`MUTANT SURVIVED (${mutantMode}): no check failed on the mutated copy (${checks} checks)`); process.exit(1); }
 rmSync(fx, { recursive: true, force: true });
 if (!given) rmSync(work, { recursive: true, force: true });
 console.log(`PASS (${checks} checks, 0 model calls)`);

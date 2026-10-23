@@ -4,6 +4,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { setProcessLanguage } from "../i18n/process-language.ts";
 import { extractDocument } from "./detect.ts";
 import {
   DOC_LIMITS, documentReason, extractDocumentText, readDocumentText, setDocumentExtractorRuntime, type DocFailure, type DocLimits,
@@ -23,6 +24,7 @@ const tmp = (): string => {
 };
 afterEach(() => {
   setDocumentExtractorRuntime();
+  setProcessLanguage("ru");
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
@@ -49,7 +51,7 @@ describe("Limits and reasons", () => {
       kind: "двоичный файл неизвестного формата",
     };
     for (const [code, text] of Object.entries(reasons)) expect(documentReason({ code: code as DocFailure })).toBe(text);
-    expect(documentReason({ code: "failed", detail: "exit 3" })).toBe("не удалось извлечь текст документа — exit 3");
+    expect(documentReason({ code: "failed", detail: "exit:3" })).toBe("не удалось извлечь текст документа — код выхода 3");
     expect(documentReason({ code: "damaged", detail: "OEBPS/c1.xhtml" })).toBe("документ повреждён — OEBPS/c1.xhtml");
     expect(documentReason({ code: "odf_kind", detail: "graphics" })).toBe("формат не поддерживается — рисунок OpenDocument");
   });
@@ -139,8 +141,12 @@ describe("Parent safeguard", () => {
     setDocumentExtractorRuntime({ script: pdfData("child-garbage.ts") });
     expect(extractDocumentText(docx)).toEqual({ ok: false, code: "failed", detail: "ответ не разобран" });
     setDocumentExtractorRuntime({ script: pdfData("child-exit3.ts") });
-    expect(extractDocumentText(docx)).toEqual({ ok: false, code: "failed", detail: "exit 3" });
-    expect(documentReason({ code: "failed", detail: "exit 3" })).toBe("не удалось извлечь текст документа — exit 3");
+    const exit3 = extractDocumentText(docx);
+    expect(exit3).toEqual({ ok: false, code: "failed", detail: "exit:3" });
+    expect(documentReason(exit3 as { code: "failed" })).toBe("не удалось извлечь текст документа — код выхода 3");
+    setProcessLanguage("en");
+    expect(documentReason(exit3 as { code: "failed" })).toBe("could not extract document text — exit code 3");
+    setProcessLanguage("ru");
     expect(documentReason({ code: "damaged", detail: "OEBPS/c1.xhtml" })).toBe("документ повреждён — OEBPS/c1.xhtml");
     expect(documentReason({ code: "odf_kind", detail: "graphics" })).toBe("формат не поддерживается — рисунок OpenDocument");
   }, SLOW);
@@ -152,8 +158,15 @@ describe("Parent safeguard", () => {
 
   it("Отказы документов: an unexpected worker failure or exit is «could not extract document text — <code>», not «damaged»", () => {
     const own = (worker: string) => spawnSync(process.execPath, [join(here, "doc-extract.ts"), JSON.stringify({ ...DOC_LIMITS, worker: join(here, "testdata", worker) })], { input: docx, timeout: 15_000 });
-    expect(JSON.parse(own("worker-crash.ts").stdout.toString())).toEqual({ ok: false, code: "failed", detail: "worker error" });
-    expect(JSON.parse(own("worker-exit.ts").stdout.toString())).toEqual({ ok: false, code: "failed", detail: "worker exit" });
+    const crash = JSON.parse(own("worker-crash.ts").stdout.toString());
+    const exited = JSON.parse(own("worker-exit.ts").stdout.toString());
+    expect(crash).toEqual({ ok: false, code: "failed", detail: "parser_error" });
+    expect(exited).toEqual({ ok: false, code: "failed", detail: "parser_exit" });
+    expect(documentReason(crash)).toBe("не удалось извлечь текст документа — сбой разбора документа");
+    expect(documentReason(exited)).toBe("не удалось извлечь текст документа — разбор завершился без ответа");
+    setProcessLanguage("en");
+    expect(documentReason(crash)).toBe("could not extract document text — the document parser failed");
+    expect(documentReason(exited)).toBe("could not extract document text — the document parser exited without a reply");
   }, SLOW);
 
   it("worker without a response: one line with timeout; growing worker: memory", () => {
