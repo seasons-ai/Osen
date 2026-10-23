@@ -3,7 +3,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFile
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { writeExecutable } from "../executable.testutil.ts";
+import { detachExecutable, linkExecutable } from "../executable.testutil.ts";
 import { setProcessLanguage } from "../i18n/process-language.ts";
 import {
   activePin, cliDir, installPin, installedPath, listPins, pinConfigDir, pinsFileState, pinsPath, readPins, rollbackPin, usePin, versionDir,
@@ -29,15 +29,16 @@ function fakeSource(): PackageSource {
       const exe = join(d, "node_modules", "pkg", "bin", agent);
       mkdirSync(join(d, "node_modules", "pkg", "bin"), { recursive: true });
       const reported = sourceMode === "wrong-version" ? "9.9.9" : version;
-      writeExecutable(exe, `#!/bin/sh\necho "${reported} (fake)"\n`);
+      linkExecutable(exe, '#!/bin/sh\n/bin/cat "$0.version"\n');
+      writeFileSync(`${exe}.version`, `${reported} (fake)\n`);
       if (sourceMode === "outside") return { executable: process.execPath, source: "fake" };
       return { executable: exe, source: `fake:${agent}@${version}` };
     }
   };
 }
-// The fake binary only echoes its version, so it is read from the file: a child process from the test worker costs ~0.4 s,
+// The fake binary only prints its .version data file, so the version is read from that file: a child process from the test worker costs ~0.4 s,
 // and several seconds in a full parallel run (hooks with 3 installs hit their 10 s timeout). The real child probe keeps one test below.
-const stubVersion = async (path: string) => /echo "([^"]*)"/.exec(readFileSync(path, "utf8"))![1]!;
+const stubVersion = async (path: string) => readFileSync(`${path}.version`, "utf8").trimEnd();
 const deps = (): PinDeps => ({ source: fakeSource(), record, now, readVersion: stubVersion });
 const install = (agent: string, opts: { version?: string; candidate?: boolean } = {}) => installPin(dir, agent, opts, deps());
 const pinsOf = () => JSON.parse(readFileSync(pinsPath(dir), "utf8"));
@@ -385,6 +386,7 @@ describe("Переключение и откат", () => {
   it("Переключение и откат: file changed after install: use is refused with version, path and both sums", () => {
     const inst = claude().installed.find((i: { version: string }) => i.version === "1.1.0");
     const file = installedPath(dir, "claude", inst);
+    detachExecutable(file);
     appendFileSync(file, "# changed\n");
     const bytes = readFileSync(pinsPath(dir));
     const r = usePin(dir, "claude", "1.1.0", { record, now });
@@ -398,6 +400,7 @@ describe("Переключение и откат", () => {
     usePin(dir, "claude", "1.1.0", { record, now });
     const inst = claude().installed.find((i: { version: string }) => i.version === "1.0.0");
     const file = installedPath(dir, "claude", inst);
+    detachExecutable(file);
     appendFileSync(file, "# changed\n");
     const bytes = readFileSync(pinsPath(dir));
     const r = rollbackPin(dir, "claude", { now });
@@ -410,6 +413,7 @@ describe("Переключение и откат", () => {
   it("Переключение и откат: a missing or changed file: text names the path for the terminal, textNoPath does not", () => {
     const inst = (v: string) => claude().installed.find((i: { version: string }) => i.version === v);
     const file11 = installedPath(dir, "claude", inst("1.1.0"));
+    detachExecutable(file11);
     appendFileSync(file11, "# changed\n");
     const changed = usePin(dir, "claude", "1.1.0", { record, now });
     if (changed.ok) throw new Error("expected a refusal");
@@ -424,6 +428,7 @@ describe("Переключение и откат", () => {
   it("Переключение и откат: rollback with a missing or changed previous file: textNoPath has no path", () => {
     usePin(dir, "claude", "1.1.0", { record, now });
     const file = installedPath(dir, "claude", claude().installed.find((i: { version: string }) => i.version === "1.0.0"));
+    detachExecutable(file);
     appendFileSync(file, "# changed\n");
     const changed = rollbackPin(dir, "claude", { now });
     if (changed.ok) throw new Error("expected a refusal");
@@ -452,6 +457,7 @@ describe("Переключение и откат", () => {
       expect(r.textNoPath).not.toContain(dir);
     };
     const file11 = installedPath(dir, "claude", inst("1.1.0"));
+    detachExecutable(file11);
     chmodSync(file11, 0o644);
     const bytes = readFileSync(pinsPath(dir));
     check(usePin(dir, "claude", "1.1.0", { record, now }), "1.1.0", file11, "not executable");
@@ -459,6 +465,7 @@ describe("Переключение и откат", () => {
     chmodSync(file11, 0o755);
     expect(usePin(dir, "claude", "1.1.0", { record, now }).ok).toBe(true);
     const file10 = installedPath(dir, "claude", inst("1.0.0"));
+    detachExecutable(file10);
     chmodSync(file10, 0o644);
     const bytes2 = readFileSync(pinsPath(dir));
     check(rollbackPin(dir, "claude", { now }), "1.0.0", file10, "not executable");
