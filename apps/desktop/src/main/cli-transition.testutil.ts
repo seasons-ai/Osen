@@ -1,8 +1,7 @@
-import { linkSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger, ProviderStatus } from "@model-council/core";
-import { writeExecutable } from "../../../../packages/core/src/executable.testutil.ts";
+import { linkExecutable } from "../../../../packages/core/src/executable.testutil.ts";
 import { installPin, pinsPath, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { PackageSource } from "../../../../packages/core/src/cli-agents/pins.ts";
 import { addLocalEntry, loadVerifiedRecord } from "../../../../packages/core/src/cli-agents/verified-record.ts";
@@ -24,28 +23,8 @@ export const fakeVersionSource: PackageSource = {
   async fetch(agent, version, dir) {
     const exe = join(dir, "node_modules", "pkg", "bin", agent);
     mkdirSync(join(dir, "node_modules", "pkg", "bin"), { recursive: true });
-    writeExecutable(exe, `#!/bin/sh\necho "${version} (fake)"\n`);
-    return { executable: exe, source: `fake:${agent}@${version}` };
-  },
-};
-
-const warmed = new Map<string, string>();
-/**
- * Same script as fakeVersionSource, but every install of one agent@version is a hard link to one warmed file:
- * macOS checks each new inode at its first launch (see writeExecutable), which under load costs seconds per install.
- * The inode is shared, so tests that modify an installed file must use fakeVersionSource.
- */
-export const linkedVersionSource: PackageSource = {
-  async fetch(agent, version, dir) {
-    const bin = join(dir, "node_modules", "pkg", "bin");
-    mkdirSync(bin, { recursive: true });
-    let src = warmed.get(`${agent}@${version}`);
-    if (!src) {
-      src = writeExecutable(join(mkdtempSync(join(tmpdir(), "cli-linked-exe-")), agent), `#!/bin/sh\necho "${version} (fake)"\n`);
-      warmed.set(`${agent}@${version}`, src);
-    }
-    const exe = join(bin, agent);
-    linkSync(src, exe);
+    linkExecutable(exe, '#!/bin/sh\n/bin/cat "$0.version"\n');
+    writeFileSync(`${exe}.version`, `${version} (fake)\n`);
     return { executable: exe, source: `fake:${agent}@${version}` };
   },
 };
