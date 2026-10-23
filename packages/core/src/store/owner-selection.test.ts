@@ -245,7 +245,7 @@ describe("selection and continuation", () => {
     expect(s.state.ownerSelection).toEqual(res);
   });
 
-  it("plan before selection, after selection — rejected busy", async () => {
+  it("plan before selection, after selection — rejected stale_plan", async () => {
     const dir = tmp();
     await noConsensus(dir);
     const plan = planResume(dir, "s", { rounds: 1, isAlive: dead });
@@ -253,7 +253,7 @@ describe("selection and continuation", () => {
     const before = journal(dir, "s");
     const { drivers } = await resumeDrivers(plan, { registry: registry(), env, dataDir: dir });
     await expect(runResumedSession({ dataDir: dir, plan, drivers, isAlive: dead })).rejects.toSatisfy(
-      (e) => e instanceof ResumeRejectedError && e.reason === "busy",
+      (e) => e instanceof ResumeRejectedError && e.reason === "stale_plan",
     );
     expect(journal(dir, "s")).toBe(before);
   });

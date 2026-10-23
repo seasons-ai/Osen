@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createLogger, eventsPath, launchDir, listSessions, readEvents, readSession, requestStop, resumeLockPath, writeLaunchFile } from "@model-council/core";
+import { createLogger, eventsPath, launchDir, listSessions, readEvents, readSession, requestStop, resumeLockPath, setProcessLanguage, writeLaunchFile } from "@model-council/core";
 import { createServer } from "../../src/server.ts";
 import { mcpMessages } from "../../src/messages.ts";
 import { writeStub } from "../../../core/scenarios/launch-guard/stub.ts";
@@ -318,6 +318,28 @@ async function main() {
   check(!existsSync(resumeLockPath(home, R4)), "R4: no resume.lock after stale_plan");
   await sr4.client.close();
   await serverGone(sr4, "R4");
+
+  // Change 235: the journal changes after the server check, before the executor's lock; the server speaks en, the executor ru.
+  // A wrapper around `council` appends a valid event to the journal and only then starts the executor.
+  const R5 = noConsensus("r5", 0);
+  const inject = join(home, "scen", "inject-event.mjs");
+  writeFileSync(inject, [
+    'import { appendFileSync, readFileSync } from "node:fs";',
+    'import { spawnSync } from "node:child_process";',
+    'const [journal, council, ...rest] = process.argv.slice(2);',
+    'const last = JSON.parse(readFileSync(journal, "utf8").trimEnd().split("\\n").at(-1));',
+    'appendFileSync(journal, JSON.stringify({ ...last, seq: last.seq + 1 }) + "\\n");',
+    'const r = spawnSync(process.execPath, [council, ...rest], { stdio: "inherit" });',
+    'process.exit(r.status ?? 1);',
+  ].join("\n"));
+  setProcessLanguage("en");
+  const en = await inProc({ command: process.execPath, args: [inject, eventsPath(home, R5), councilTs], env: { COUNCIL_LANG: "ru" } });
+  let r5: Res;
+  try { r5 = await planAndExec({ client: en.client } as unknown as Srv, R5); } finally { await en.close(); setProcessLanguage("ru"); }
+  check(r5.isError === true && body(r5).startsWith("stale_plan:"), "R5: journal changed before the executor's lock (server en, executor ru) -> stale_plan", body(r5).slice(0, 140));
+  check(evCount(R5, "session_resumed") === 0, "R5: no session_resumed after stale_plan");
+  check(!existsSync(resumeLockPath(home, R5)), "R5: no resume.lock after stale_plan");
+  check(launchLeft().length === 0, "R5: no files left in launch/", launchLeft().join(","));
 
   const R6 = noConsensus("r6", 0);
   const before6 = bytes(R6);

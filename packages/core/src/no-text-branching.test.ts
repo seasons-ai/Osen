@@ -30,9 +30,60 @@ export function collectCyrConstants(sourceText: string): Set<string> {
   return names;
 }
 
+// A message catalog: a call `xxxMessages()` or a variable initialized with one (`const m = resumeMessages()`).
+// Bindings are scoped: `m` of a nested function or block (`(m) => m.id`) shadows the catalog `m`; the innermost binding around a use decides.
+const CATALOG = /Messages$/;
+const isCatalogCall = (x: unknown) => {
+  const n = x as Node | null;
+  return n?.type === "CallExpression" && (n.callee as Node).type === "Identifier" && CATALOG.test((n.callee as { name: string }).name);
+};
+type Span = { start: number; end: number };
+type Binding = Span & { name: string; catalog: boolean };
+const SCOPES = new Set(["Program", "BlockStatement", "FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ObjectMethod", "ClassMethod", "CatchClause", "ForStatement", "ForOfStatement", "ForInStatement"]);
+const FUNCS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ObjectMethod", "ClassMethod", "CatchClause"]);
+function patternNames(x: unknown, out: string[] = []): string[] {
+  const n = x as Node | null;
+  if (!n) return out;
+  if (n.type === "Identifier") out.push(n.name as string);
+  else if (n.type === "ObjectPattern") for (const p of n.properties as Node[]) patternNames(p.type === "RestElement" ? p.argument : p.value, out);
+  else if (n.type === "ArrayPattern") for (const e of n.elements as Node[]) patternNames(e, out);
+  else if (n.type === "AssignmentPattern") patternNames(n.left, out);
+  else if (n.type === "RestElement") patternNames(n.argument, out);
+  else if (n.type === "TSParameterProperty") patternNames(n.parameter, out);
+  return out;
+}
+function bindings(ast: Node): Binding[] {
+  const out: Binding[] = [];
+  const span = (n: Node) => ({ start: n.start as number, end: n.end as number });
+  visitAst(ast, (n, anc) => {
+    if (FUNCS.has(n.type)) {
+      for (const name of patternNames(n.param)) out.push({ name, catalog: false, ...span(n) });
+      for (const p of (n.params as Node[] | undefined) ?? []) for (const name of patternNames(p)) out.push({ name, catalog: false, ...span(n) });
+    }
+    if (n.type === "VariableDeclarator") {
+      const scope = [...anc].reverse().find((a) => SCOPES.has(a.type))!;
+      for (const name of patternNames(n.id)) out.push({ name, catalog: (n.id as Node).type === "Identifier" && isCatalogCall(n.init), ...span(scope) });
+    }
+  });
+  return out;
+}
+// A text taken from a catalog: `xxxMessages().field`, `xxxMessages().field(...)`, `m.field`, `m.field(...)`. Returns the field name.
+function catalogField(x: unknown, scope: Binding[]): string | null {
+  const n = x as Node | null;
+  if (n?.type === "CallExpression") return catalogField(n.callee, scope);
+  if (n?.type !== "MemberExpression" || n.computed) return null;
+  const o = n.object as Node;
+  const field = (n.property as { name: string }).name;
+  if (isCatalogCall(o)) return field;
+  if (o.type !== "Identifier") return null;
+  const at = o.start as number;
+  const inner = scope.filter((b) => b.name === o.name && b.start <= at && at < b.end).sort((a, b) => (a.end - a.start) - (b.end - b.start))[0];
+  return inner?.catalog ? field : null;
+}
+
 export interface Finding { file: string; line: number | undefined; what: string; name: string | null }
 
-// Decision by natural-language text: comparison with a Cyrillic literal or with a constant from `consts`, case, substring search methods.
+// Decision by natural-language text: comparison with a Cyrillic literal, a constant from `consts` or a catalog text, case, substring search methods.
 // ponytail: constants are matched by name without resolving imports; same-named constants in different files give a false finding (then an exception in ALLOWED).
 export function findTextBranching(fileName: string, sourceText: string, consts: Set<string> = new Set()): Finding[] {
   const found: Finding[] = [];
@@ -40,10 +91,13 @@ export function findTextBranching(fileName: string, sourceText: string, consts: 
     const n = x as Node | null;
     return n?.type === "Identifier" && consts.has(n.name as string) ? (n.name as string) : null;
   };
-  const text = (x: unknown) => hasCyrLiteral(x) || constName(x) !== null;
+  const ast = parseSource(sourceText);
+  const scope = bindings(ast);
+  const named = (x: unknown) => constName(x) ?? catalogField(x, scope);
+  const text = (x: unknown) => hasCyrLiteral(x) || named(x) !== null;
   const add = (n: Node, what: string, ...ops: unknown[]) =>
-    found.push({ file: fileName, line: n.loc?.start.line, what, name: ops.map(constName).find((v) => v !== null) ?? null });
-  visitAst(parseSource(sourceText), (n) => {
+    found.push({ file: fileName, line: n.loc?.start.line, what, name: ops.map(named).find((v) => v !== null) ?? null });
+  visitAst(ast, (n) => {
     if (n.type === "BinaryExpression" && CMP.has(n.operator as string) && (text(n.left) || text(n.right))) add(n, "сравнение с текстом", n.left, n.right);
     if (n.type === "SwitchCase" && text(n.test)) add(n, "case с текстом", n.test);
     const c = n.callee as Node | undefined;
@@ -55,8 +109,11 @@ export function findTextBranching(fileName: string, sourceText: string, consts: 
   return found;
 }
 
-// Known places. Key: "<path from root>#<constant name>" (matched by name); value — justification.
-const ALLOWED: Record<string, string> = {};
+// Known places. Key: "<path from root>#<constant name or catalog field>" (matched by name); value — justification.
+const ALLOWED: Record<string, string> = {
+  // found by the catalog check of change 235; the fix (an archive marker instead of the text) is change 264-fix-materials-archive-text-match
+  "packages/core/src/materials.ts#archiveInFolder": "same-process comparison of a folder archive refusal; to be replaced by a marker in 264-fix-materials-archive-text-match",
+};
 
 describe("Refusal codes and identifiers do not depend on the language: no text matching", () => {
   it("the search finds every text match in the built-in sample", () => {
@@ -82,6 +139,26 @@ describe("Refusal codes and identifiers do not depend on the language: no text m
     expect(hits).toHaveLength(4);
     expect(hits.every((h) => h.name === "HINT")).toBe(true);
     expect(findTextBranching("ok.ts", `if (r === "fail") {} msg.includes("x"); const t = "Сбой";`)).toEqual([]);
+    const catalog = `
+      const m = resumeMessages();
+      if (e.message === resumeMessages().journalChanged(id)) {}
+      if (resumeMessages().busy !== e.message) {}
+      if (e.message == m.journalChanged(id)) {}
+      switch (e.message) { case m.busy: break; }
+      msg.includes(cliMessages().failed);
+    `;
+    expect(findTextBranching("cat.ts", catalog).map((h) => h.line)).toEqual([3, 4, 5, 6, 7]);
+    expect(findTextBranching("cat.ts", catalog).map((h) => h.name)).toEqual(["journalChanged", "busy", "journalChanged", "busy", "failed"]);
+    const ok = `
+      const m = resumeMessages();
+      if (e.reason === "busy") {} const x = m.busy; io.stderr(m.journalChanged(id)); if (n.journalChanged(id) === y) {}
+      list.some((m) => m.requestId === id);
+      function f(m: Item) { return m.id !== x; }
+      { const m = other(); if (m.text === y) {} }
+      for (const m of items) if (m.name === y) {}
+      const g = ({ m }: { m: Item }) => m.id === y;
+    `;
+    expect(findTextBranching("cat-ok.ts", ok)).toEqual([]);
   });
 
   it("no findings outside the list in packages/core, packages/mcp and apps/desktop", () => {

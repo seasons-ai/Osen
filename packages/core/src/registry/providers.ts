@@ -11,6 +11,7 @@ import { listHttpModels } from "../http/models.ts";
 import type { HttpRuntime } from "../http/types.ts";
 import { registryMessages } from "../messages/registry.ts";
 import { getProcessLanguage } from "../i18n/process-language.ts";
+import { cliEnv } from "../store/env.ts";
 import { configPath, createRegistry } from "./config.ts";
 import type { CliProvider, HttpProvider, Provider, Registry } from "./config.ts";
 
@@ -61,7 +62,8 @@ const realDeps: InspectDeps = {
 
 interface Options { env: Env; withModels?: boolean; deps?: Partial<InspectDeps>; keyFile?: string; dataDir?: string }
 
-async function inspectCli(provider: CliProvider, { env, withModels = true, deps, dataDir }: Options): Promise<ProviderInspection> {
+async function inspectCli(provider: CliProvider, { env: rawEnv, withModels = true, deps, dataDir }: Options): Promise<ProviderInspection> {
+  const env = cliEnv(rawEnv, { dataDir });
   const d = { ...realDeps, ...deps };
   const { agent } = provider;
   const status: ProviderStatus = { id: provider.id, kind: "cli", label: provider.label, available: false, models: provider.models, modelsConfirmed: false };

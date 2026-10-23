@@ -12,6 +12,7 @@ import { activePin } from "./pins.ts";
 import type { PackageSource } from "./pins.ts";
 import { DEFAULT_MODEL } from "./types.ts";
 import type { CliAgent } from "./types.ts";
+import { cliEnv } from "../store/env.ts";
 import { BUILTIN_RECORD, VERIFIED_FILE, addLocalEntry, mergeRecords, readLocalRecord } from "./verified-record.ts";
 import type { VerifiedEntry } from "./verified-record.ts";
 
@@ -128,7 +129,7 @@ export async function checkCandidates(dataDir: string, agents: readonly CliAgent
   const m = providerMessages();
   const { signal } = deps;
   const run = deps.run ?? defaultRun;
-  const env = deps.env ?? process.env;
+  const env = cliEnv(deps.env ?? process.env, { dataDir });
   const report: CandidatesReport = { bases: {}, candidates: [], failures: [], interrupted: false, code: 0 };
   const finish = (): CandidatesReport => {
     report.code = report.interrupted ? 1 : report.failures.some((f) => f.code === "no_base") ? 2 : report.failures.length ? 1 : 0; // an interruption is always 1

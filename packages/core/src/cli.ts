@@ -425,9 +425,7 @@ async function runPreparedResume(p: LaunchResumePayload, file: string, dataDir: 
   } catch (e) {
     if (e instanceof ResumeRejectedError) {
       log.error("Prepared resume rejected", `${e.reason}: ${e.message}`);
-      // the journal changed after this executor's check but before its lock: for the server this is still a plan made stale, not another executor
-      const code = e.reason === "busy" && e.message === resumeMessages().journalChanged(id) ? "stale_plan" : e.reason;
-      io.stderr(JSON.stringify({ code, message: e.message }));
+      io.stderr(JSON.stringify({ code: e.reason, message: e.message }));
       return EXIT.usage;
     }
     if (e instanceof RegistryError) return fail(e.message);
