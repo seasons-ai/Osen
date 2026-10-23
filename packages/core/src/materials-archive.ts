@@ -5,6 +5,7 @@ import { listArchiveEntries, readArchiveEntries } from "./documents/archive-run.
 import type { ArchiveEntry } from "./documents/archive.ts";
 import { DOC_LIMITS, documentReason, extractDocumentText, type DocFailure } from "./documents/extract.ts";
 import { CFB_SIGNATURE } from "./documents/cfb.ts";
+import { nonTextReason, TAIL_BYTES } from "./documents/kinds.ts";
 import { extractPdfText, pdfReason } from "./pdf/extract.ts";
 import { imageDimensions, imageSignature } from "./ocr/image-header.ts";
 import { imageReason, OCR_LIMITS, runOcrHelper } from "./ocr/run.ts";
@@ -55,11 +56,13 @@ function failureReason(f: { code: DocFailure; detail?: string }): string {
 
 const TRANSIENT: readonly DocFailure[] = ["timeout", "memory", "failed"];
 
+const tailOf = (buf: Buffer): Buffer | undefined => (buf.length >= TAIL_BYTES ? buf.subarray(buf.length - TAIL_BYTES) : undefined);
+
 type Node = { name: string; dir: boolean; idx?: number; children: Map<string, Node> };
 type Out = { rel: string; text?: string; skip?: string; idx?: number };
 
-// ponytail: this mirrors the readers of readText in materials.ts on bytes (PDF, documents, RTF/DOC of change 211, images, text with the encodings of change 212);
-// a reader added there later (scanned PDF OCR of change 214) must be wired here too.
+// Mirrors readText in materials.ts on bytes: PDF (with scan recognition), documents, RTF/DOC, images, text with its encodings and the kind reasons of change 216;
+// a reader added there later must be wired here too.
 function readEntryBytes(bytes: Uint8Array, state: { recognized: number }): { text: string } | { skip: string } {
   const m = materialsMessages();
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -82,7 +85,7 @@ function readEntryBytes(bytes: Uint8Array, state: { recognized: number }): { tex
   if (head.subarray(bom, bom + 5).toString("latin1") === "{\\rtf" || (head.length >= 8 && head.subarray(0, 8).equals(CFB_SIGNATURE))) {
     const r = extractDocumentText(bytes);
     if (r.ok) return { text: r.text };
-    return { skip: r.code === "unsupported" ? m.notText : documentReason(r) };
+    return { skip: r.code === "unsupported" ? nonTextReason(head, tailOf(buf)) : documentReason(r) };
   }
   const format = imageSignature(head, buf.length);
   if (format) {
@@ -96,7 +99,7 @@ function readEntryBytes(bytes: Uint8Array, state: { recognized: number }): { tex
     return r.ok ? { text: r.text } : { skip: imageReason(r) };
   }
   const text = decodeFileText(head, () => buf);
-  return text === undefined ? { skip: m.notText } : typeof text === "object" ? { skip: text.refused } : { text };
+  return typeof text === "string" ? { text } : { skip: nonTextReason(head, tailOf(buf), text?.refused) };
 }
 
 // Reads the items (with an idx) in the given order in batches of at most BATCH_BYTES of declared size; one entry over it is its own batch.
@@ -294,7 +297,7 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
   const skipped: SkippedMaterial[] = [];
   for (const o of out) {
     const name = `${prefix}/${o.rel}`;
-    if (o.skip !== undefined || o.text === undefined) skipped.push({ name, reason: o.skip ?? m.notText });
+    if (o.skip !== undefined || o.text === undefined) skipped.push({ name, reason: o.skip ?? m.kindReason("unknown") });
     else materials.push({ name, text: o.text });
   }
   if (materials.length === 0) {

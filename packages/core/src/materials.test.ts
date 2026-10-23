@@ -132,12 +132,12 @@ describe("collectMaterials", () => {
     it(`non-text (${label}): explicit file refused, skipped in a folder`, () => {
       const f = put("bad.txt", bytes);
       const err = refusal(() => collectMaterials([f], opts));
-      expect(err.reasons).toEqual([`«${f}»: нетекстовый файл (не UTF-8 или бинарные данные)`]);
+      expect(err.reasons).toEqual([`«${f}»: двоичный файл неизвестного формата`]);
       put("d/bad.bin", bytes);
       put("d/ok.txt", "ok");
       const set = collectMaterials([join(root, "d")], opts);
       expect(set.materials.map((m) => m.name)).toEqual(["d/ok.txt"]);
-      expect(set.skipped).toEqual([{ name: "d/bad.bin", reason: "нетекстовый файл" }]);
+      expect(set.skipped).toEqual([{ name: "d/bad.bin", reason: "двоичный файл неизвестного формата" }]);
     });
   }
 
@@ -145,7 +145,7 @@ describe("collectMaterials", () => {
     put("d/big.bin", Buffer.concat([Buffer.alloc(10, 0x41), Buffer.from([0]), Buffer.alloc(100_000, 0x41)]));
     const set = collectMaterials([join(root, "d")], opts);
     expect(set.materials).toEqual([]);
-    expect(set.skipped).toEqual([{ name: "d/big.bin", reason: "нетекстовый файл" }]);
+    expect(set.skipped).toEqual([{ name: "d/big.bin", reason: "двоичный файл неизвестного формата" }]);
     expect(hook.fullReads).toBe(0);
   });
 
@@ -153,7 +153,7 @@ describe("collectMaterials", () => {
     const bytes = Buffer.alloc(10_000, 0x41);
     bytes[9000] = 0;
     const f = put("tail.bin", bytes);
-    expect(refusal(() => collectMaterials([f], opts)).reasons[0]).toContain("нетекстовый файл");
+    expect(refusal(() => collectMaterials([f], opts)).reasons[0]).toContain("двоичный файл неизвестного формата");
     expect(hook.fullReads).toBe(1);
   });
 

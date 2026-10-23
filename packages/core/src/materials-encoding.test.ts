@@ -29,7 +29,7 @@ function reasonOf(f: string): string {
   throw new Error("refusal expected");
 }
 const refusedWith = (f: string, reason: string) => expect(reasonOf(f)).toBe(`«${f}»: ${reason}`);
-const NON_TEXT = "нетекстовый файл (не UTF-8 или бинарные данные)";
+const NON_TEXT = "двоичный файл неизвестного формата";
 // bytes b[i] each followed by a space: never valid UTF-8 for b >= 0x80
 const spaced = (bytes: number[]) => Buffer.from(bytes.flatMap((b) => [b, 0x20]));
 

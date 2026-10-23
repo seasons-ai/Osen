@@ -53,7 +53,7 @@ describe("materials draft", () => {
     const reasons = Object.fromEntries(v.skipped.map((s) => [s.name, s.reason]));
     expect(reasons["proj/node_modules"]).toBe("в списке игнорирования");
     expect(reasons["proj/.cache"]).toBe("скрытое имя");
-    expect(reasons["proj/bin.dat"]).toBe("нетекстовый файл");
+    expect(reasons["proj/bin.dat"]).toBe("двоичный файл неизвестного формата");
   });
 
   it(".env: an error with the name, without path and content, the list unchanged", () => {

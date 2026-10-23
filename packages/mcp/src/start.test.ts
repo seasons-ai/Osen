@@ -289,7 +289,7 @@ describe("council_start: materials", () => {
     const v = await start(ctx, { topic: "т", participants: two, attachments: [join(fx, "dir")] });
     expect(v.materials.count).toBe(1);
     expect(v.materials.skipped.find((x) => x.name.endsWith("node_modules"))!.reason).toMatch(/в списке игнорирования/);
-    expect(v.materials.skipped.find((x) => x.name.endsWith("bin.dat"))!.reason).toMatch(/нетекстовый файл/);
+    expect(v.materials.skipped.find((x) => x.name.endsWith("bin.dat"))!.reason).toMatch(/двоичный файл неизвестного формата/);
     const j = JSON.stringify(v);
     expect(j).not.toContain("ТЕКСТ-");
     expect(j).not.toContain(fx);

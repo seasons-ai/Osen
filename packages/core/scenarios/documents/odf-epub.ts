@@ -132,9 +132,10 @@ export async function odfEpubSuite(c: Ctx) {
   const fake = join(fx, "fake.odt");
   writeFileSync(fake, makeOdf({ kind: "application/x-foo", body: odtP("x") }));
   const rf = await c.run(["--topic", "t", "--attach", fake, ...c.parts(c.pair(`${lang}-o1fake`)), "--max-rounds", "1"]);
-  assert.equal(rf.code, 2, c.dump(rf.r));
-  assert.equal(rf.r.err, `${t.rejected}\n  «fake.odt»: ${t.nonText}\n`, c.dump(rf.r));
-  c.ok(`${tag} 210-1b: a ZIP with mimetype application/x-foo named fake.odt is refused as a non-text file, not as damaged`);
+  // a ZIP whose mimetype is no supported format is an ordinary archive since change 215: expanded, not refused
+  assert.equal(rf.code, 0, c.dump(rf.r));
+  assert.ok(!rf.r.err.includes(t.reason.damaged) && !rf.r.err.includes(t.nonText), c.dump(rf.r));
+  c.ok(`${tag} 210-1b: a ZIP with mimetype application/x-foo named fake.odt is expanded as an archive (change 215), neither refused as damaged nor as "${t.nonText}"`);
 
   // ---- 2. EPUB: spine order, no service content ----
   const ep = join(fx, "book.epub");

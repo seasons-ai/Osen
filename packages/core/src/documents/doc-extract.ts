@@ -35,7 +35,7 @@ if (isMainThread) {
 
   // RTF and Word 97-2003 go to the system converter; a CFB of another kind or a bad CFB ends here
   let kind: "rtf" | "doc" | undefined;
-  try { kind = mode ? undefined : systemKind(bytes); } catch (e) { finish({ ok: false, code: e instanceof DocError ? e.code : "damaged" }); }
+  try { kind = mode ? undefined : systemKind(bytes); } catch (e) { finish(e instanceof DocError ? { ok: false, code: e.code, ...(e.detail === undefined ? {} : { detail: e.detail }) } : { ok: false, code: "damaged" }); }
   if (!done && kind) {
     void runTextutil(bytes, kind, { ms, rssBytes, chars }, tools, controller.signal).then(finish);
   } else if (!done) {

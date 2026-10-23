@@ -41,7 +41,8 @@ describe("Зашифрованные документы Office", () => {
   it("EncryptedPackage wins over WordDocument; a CFB with neither is unsupported; RTF and others are not system files", () => {
     expect(code(() => systemKind(makeCfb({ streams: ["WordDocument", "EncryptedPackage"] })))).toBe("encrypted");
     expect(systemKind(makeCfb({ streams: ["WordDocument"] }))).toBe("doc");
-    expect(code(() => systemKind(makeCfb({ streams: ["Workbook"] })))).toBe("unsupported");
+    expect(code(() => systemKind(makeCfb({ streams: ["Workbook"] })))).toBe("kind");
+    expect(code(() => systemKind(makeCfb({ streams: ["x"] })))).toBe("unsupported");
     expect(systemKind(Buffer.from("{\\rtf1 x}"))).toBe("rtf");
     expect(systemKind(Buffer.from("﻿{\\rtf1 x}"))).toBe("rtf");
     expect(systemKind(Buffer.from(" {\\rtf1 x}"))).toBeUndefined();

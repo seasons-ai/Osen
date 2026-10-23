@@ -39,8 +39,8 @@ const wd = realpathSync(work); // the collector rejects paths through symlinks
 
 const TEXT = "Привет, мир. Ёж ест яблоко.";
 const GOOD = ["le16.txt", "be16.txt", "win.csv", "bom8.txt"];
-const R_NOTEXT = "нетекстовый файл (не UTF-8 или бинарные данные)";
-const R_NOTEXT_FOLDER = "нетекстовый файл";
+const R_NOTEXT = "двоичный файл неизвестного формата";
+const R_NOTEXT_FOLDER = R_NOTEXT;
 const RU_ENC = "кодировка не распознана — нужен UTF-8, UTF-16 с BOM или Windows-1251";
 const EN_ENC = "encoding not recognized — UTF-8, UTF-16 with BOM or Windows-1251 is required";
 const files: Record<string, Buffer> = {
@@ -219,7 +219,7 @@ async function stepApp() {
 
 async function stepRefusals(lang: "ru" | "en") {
   const reasonEnc = lang === "ru" ? RU_ENC : EN_ENC;
-  const reasonText = lang === "ru" ? R_NOTEXT : "not a text file (not UTF-8 or binary data)";
+  const reasonText = lang === "ru" ? R_NOTEXT : "binary file of an unknown format";
   const head = lang === "ru" ? "Материалы не приняты:" : "Materials not accepted:";
   for (const [f, reason] of [["nobom.txt", reasonText], ["koi.txt", reasonEnc]] as const) {
     const sessions = sessionsOf(cliHome).length, calls = promptsOf(cliLog).length;

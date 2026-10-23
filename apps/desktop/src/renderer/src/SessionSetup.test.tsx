@@ -250,9 +250,9 @@ describe("SessionSetup: materials", () => {
     expect(h).toContain("Материалы: 18420 знаков уходят в каждый вызов");
   });
   it("omissions", () => {
-    const h = render(view({ skipped: [{ name: "folder/.cache", reason: "скрытое имя" }, { name: "folder/binary.bin", reason: "нетекстовый файл" }, { name: "folder/node_modules", reason: "в списке игнорирования" }] }));
+    const h = render(view({ skipped: [{ name: "folder/.cache", reason: "скрытое имя" }, { name: "folder/binary.bin", reason: "двоичный файл неизвестного формата" }, { name: "folder/node_modules", reason: "в списке игнорирования" }] }));
     expect(h).toContain('<details class="disclosure"><summary>Пропущено: 3</summary>');
-    for (const t of ["folder/.cache", "скрытое имя", "нетекстовый файл", "в списке игнорирования"]) expect(h).toContain(t);
+    for (const t of ["folder/.cache", "скрытое имя", "двоичный файл неизвестного формата", "в списке игнорирования"]) expect(h).toContain(t);
   });
   it("not included: names, reasons and hint", () => {
     const m = view({ left: [{ name: "proj/src/a.ts", reason: "не описание — из папки больше лимита берутся только описания" }, { name: "proj/docs/big.md", reason: "не поместился в лимит — 90000 знаков" }] });

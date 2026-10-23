@@ -71,9 +71,11 @@ describe("Материалы RTF и DOC", () => {
     }
   });
 
-  it("a CFB without WordDocument is a non-text file as before; a looping CFB is damaged, fast", () => {
-    const f = put("sheet.bin", makeCfb({ streams: ["Workbook"] }));
-    expect(refusal(() => collectMaterials([f], opts)).reasons).toEqual([`«${f}»: нетекстовый файл (не UTF-8 или бинарные данные)`]);
+  it("a CFB without WordDocument gets its kind reason or the unknown-binary one; a looping CFB is damaged, fast", () => {
+    const sheet = put("sheet.bin", makeCfb({ streams: ["Workbook"] }));
+    expect(refusal(() => collectMaterials([sheet], opts)).reasons).toEqual([`«${sheet}»: таблица Excel 97 — сохраните как XLSX`]);
+    const f = put("other.bin", makeCfb({ streams: ["Contents"] }));
+    expect(refusal(() => collectMaterials([f], opts)).reasons).toEqual([`«${f}»: двоичный файл неизвестного формата`]);
     const loop = put("loop.doc", makeCfb({ streams: ["WordDocument"], loop: true }));
     const t0 = Date.now();
     expect(refusal(() => collectMaterials([loop], opts)).reasons).toEqual([`«${loop}»: документ повреждён`]);
