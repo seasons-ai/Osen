@@ -12,7 +12,7 @@
   },
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "pretest": "test -x packages/core/src/ocr/bin/osen-ocr && test -x packages/core/src/ocr/bin/osen-ocr-fixture || npm run build:ocr",
+    "pretest": "npm run build:ocr -- --if-stale",
     "test": "vitest run",
     "prepare": "git config core.hooksPath .githooks || true",
     "release": "node scripts/release.ts",
