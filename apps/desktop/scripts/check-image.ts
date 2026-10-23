@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { copyDirFor } from "./image-copy.ts";
 import { ocrHelperLine } from "./ocr-in-image.ts";
 import { reportHeadlessLines } from "./headless-in-image.ts";
 import { appIconLine, bundleIdentityLine, FONT_FILES, docExtractLine, fuseLine, htmlWorkerLine, missingFontFiles, missingTemplateFiles, parse5Line } from "./templates-in-image.ts";
@@ -115,7 +116,7 @@ try {
   report(noFonts.length === 0, `IBM Plex Sans and JetBrains Mono fonts in app.asar: .woff2 ${FONT_FILES.length - noFonts.length} of ${FONT_FILES.length}${noFonts.length ? `, missing: ${noFonts.join(", ")}` : ""}`);
 
   // the image is read-only: run the entry points on a copy inside the project (no quarantine attribute: Gatekeeper would ask the owner)
-  const copyDir = mkdtempSync(join(root, ".council-data", "headless-image-"));
+  const copyDir = copyDirFor(root);
   try {
     execFileSync("ditto", [join(mnt, appName), join(copyDir, appName)], { stdio: "pipe" });
     await reportHeadlessLines(join(copyDir, appName, "Contents"), copyDir, report);
