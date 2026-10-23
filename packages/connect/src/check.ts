@@ -36,6 +36,9 @@ export function checkConnection(entry: ServerCommand | null | undefined, opts: {
     };
     const fail = (reason: Reason, detail: string, t?: string[]): void => finish({ ok: false, reason, detail, ...(t ? { tools: t } : {}) });
     const verdict = (): void => {
+      // output without a trailing newline never reaches onLine: it is still stray stdout
+      const tail = buf.trim();
+      if (tail) return fail("stray_stdout", tail.slice(0, 200));
       const missing = SERVER_TOOLS.filter((n) => !tools?.includes(n));
       if (missing.length) fail("missing_tools", `missing: ${missing.join(", ")}`, tools);
       else finish({ ok: true, tools: tools ?? [] });
@@ -71,8 +74,9 @@ export function checkConnection(entry: ServerCommand | null | undefined, opts: {
     child.stderr.on("data", (d: Buffer) => { err = (err + d.toString()).slice(-500); });
     child.stdin.on("error", () => { /* child gone: handled by exit/error */ });
     child.on("error", (e) => fail("spawn_failed", e.message));
-    child.on("exit", (code, sig) => {
-      exited = true;
+    child.on("exit", () => { exited = true; });
+    // "close" fires after stdout is drained, so an unterminated tail is already in buf
+    child.on("close", (code, sig) => {
       if (stage === 3) return verdict();
       fail("spawn_failed", `exited before tools/list (${code ?? sig})${err ? `: ${err.slice(-500)}` : ""}`);
     });

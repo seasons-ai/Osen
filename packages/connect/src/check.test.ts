@@ -42,6 +42,10 @@ describe("Бесплатная проверка соединения", () => {
     expect(await checkConnection(stub, mode("stray"))).toMatchObject({ ok: false, reason: "stray_stdout", detail: "hello" });
   });
 
+  it("Лишний вывод без перевода строки: reports stray_stdout for an unterminated tail after tools/list", async () => {
+    expect(await checkConnection(stub, mode("tail"))).toMatchObject({ ok: false, reason: "stray_stdout", detail: "garbage" });
+  });
+
   it("reports timeout for a silent server within the deadline", async () => {
     const r = await checkConnection(stub, { ...mode("silent"), timeoutMs: 1500 });
     expect(r).toMatchObject({ ok: false, reason: "timeout" });
