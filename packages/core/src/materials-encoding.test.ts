@@ -70,7 +70,37 @@ describe("text encodings in materials", () => {
     refusedWith(put("s.txt", Buffer.from([0xff, 0xfe, 0x00, 0xd8, 0x61, 0x00])), UNKNOWN_RU);
     refusedWith(put("u32.txt", Buffer.from([0xff, 0xfe, 0, 0, 0x61, 0, 0, 0])), UNKNOWN_RU);
     refusedWith(put("u32be.txt", Buffer.from([0, 0, 0xfe, 0xff, 0, 0, 0, 0x61])), UNKNOWN_RU);
-    refusedWith(put("c.txt", utf16le("a\u0001b")), UNKNOWN_RU);
+  });
+
+  it("UTF-16 LE and BE with BOM and a control char get the same non-text reason as UTF-8 with that text", () => {
+    const t = "при\u0001вет";
+    const u8 = reasonOf(put("u8.txt", t)).replace(/^«[^»]*»: /, "");
+    expect(u8).toBe(NON_TEXT);
+    refusedWith(put("le.txt", utf16le(t)), NON_TEXT);
+    refusedWith(put("be.txt", utf16be(t)), NON_TEXT);
+  });
+
+  it("Western 8-bit (Latin-1) text is encodingUnknown, explicit and in a folder", () => {
+    const csv = "Prénom;Ville;Remarque\nRené;Genève;très bien, déjà payé\nJürgen;München;schön, Grüße\n";
+    refusedWith(put("latin1.csv", Buffer.from(csv, "latin1")), UNKNOWN_RU);
+    put("w/latin1.csv", Buffer.from(csv, "latin1"));
+    put("w/ok.txt", "plain");
+    const r = collectMaterials([join(root, "w")], opts);
+    expect(r.materials.map((m) => m.text)).toEqual(["plain"]);
+    expect(r.skipped).toEqual([{ name: "w/latin1.csv", reason: UNKNOWN_RU }]);
+  });
+
+  it("Russian Windows-1251 with Latin words and addresses, and Ukrainian, are accepted verbatim", () => {
+    const ru = "Имя;Город;Комментарий\nИван;Москва;оплачено, ivan@mail.ru, PDF-файл через Wi-Fi роутер, API\n";
+    const ua = "Олеся;Київ;їжак ґанок Європа\n";
+    expect(one(put("ru.csv", enc1251(ru))).text).toBe(ru);
+    expect(one(put("ua.csv", enc1251(ua))).text).toBe(ua);
+  });
+
+  it("threshold: exactly 20 % of Cyrillic letters next to a Latin letter accepted, just above rejected", () => {
+    const ok = "аx бx в г д е ж з и к";
+    expect(one(put("ok20.txt", enc1251(ok))).text).toBe(ok);
+    refusedWith(put("bad20.txt", enc1251("аx бx в г д е ж з и")), UNKNOWN_RU);
   });
 
   it("threshold: exactly 90 % Cyrillic accepted, just below rejected", () => {
