@@ -89,7 +89,8 @@ export function rebaseRule(line: string, base: string): string {
 }
 
 export function isEnvName(name: string): boolean {
-  return name === ".env" || name.startsWith(".env.");
+  const lower = name.toLowerCase(); // case-insensitive: on APFS .ENV and .env are one file
+  return lower === ".env" || lower.startsWith(".env.");
 }
 
 export function sha256Of(text: string): string {
