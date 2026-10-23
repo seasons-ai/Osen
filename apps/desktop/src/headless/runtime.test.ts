@@ -1,6 +1,10 @@
-import { readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 import { describe, expect, it } from "vitest";
+import { launchDir } from "../../../../packages/core/src/store/launch.ts";
 import { parseSource, visitAst } from "../../../../packages/core/src/ast-scan.testutil.ts";
 import type { Node } from "../../../../packages/core/src/ast-scan.testutil.ts";
 import { bundlePaths, dropRunAsNode } from "./runtime.ts";
@@ -68,4 +72,59 @@ describe.each(["osen-mcp.ts", "council.ts"])("entry %s", (file) => {
     expect(ocrCall).toContain("paths.ocrHelper");
     expect(lines["setOcrRuntime"]).toBeLessThan(lines["loadEnv"]!);
   });
+});
+
+const ENTRIES = [join(import.meta.dirname, "../../../../packages/mcp/src/main.ts"), join(import.meta.dirname, "osen-mcp.ts")];
+
+// Names called as `f()` and as `a.b.c()` in a source file.
+function callNames(file: string): Set<string> {
+  const names = new Set<string>();
+  const member = (n: Node): string => (n.type === "Identifier" ? (n["name"] as string) : n.type === "MemberExpression" ? `${member(n["object"] as Node)}.${member(n["property"] as Node)}` : "?");
+  visitAst(parseSource(readFileSync(file, "utf8")), (n: Node) => {
+    if (n.type === "CallExpression") names.add(member(n["callee"] as Node));
+  });
+  return names;
+}
+
+describe.each(ENTRIES)("MCP entry %s", (file) => {
+  it("delegates start-up and shutdown to runServer", () => {
+    const calls = callNames(file);
+    expect(calls.has("runServer")).toBe(true);
+    for (const banned of ["sweepLaunchDir", "cleanupActiveLaunches", "createServer", "process.on", "process.stdin.on"]) expect(calls.has(banned), banned).toBe(false);
+  });
+
+  it("sweeps stale launch files at start and exits 0 when stdin closes", async () => {
+    const home = mkdtempSync(join(tmpdir(), "osen-mcp-sweep-"));
+    try {
+      const dir = launchDir(home);
+      mkdirSync(dir, { recursive: true });
+      const old = ["x.old.err", "x.old.accepted.json"].map((n) => join(dir, n));
+      const fresh = ["y.new.err", "y.new.accepted.json"].map((n) => join(dir, n));
+      for (const [paths, age] of [[old, 120_000], [fresh, 1_000]] as const) {
+        for (const p of paths) {
+          writeFileSync(p, "");
+          utimesSync(p, new Date(Date.now() - age), new Date(Date.now() - age));
+        }
+      }
+      const env: NodeJS.ProcessEnv = { ...process.env, COUNCIL_DEV: "1", COUNCIL_HOME: home };
+      delete env["ELECTRON_RUN_AS_NODE"];
+      const child = spawn(process.execPath, [file], { env, stdio: ["pipe", "pipe", "ignore"] });
+      const exit = new Promise<number | null>((resolve) => child.on("exit", resolve));
+      const reply = new Promise<void>((resolve) => {
+        let buf = "";
+        child.stdout.on("data", (d: Buffer) => {
+          buf += d.toString();
+          if (buf.split("\n").some((l) => l.includes('"id":1'))) resolve();
+        });
+      });
+      child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: LATEST_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "test", version: "0" } } })}\n`);
+      await reply;
+      for (const p of old) expect(existsSync(p), p).toBe(false);
+      for (const p of fresh) expect(existsSync(p), p).toBe(true);
+      child.stdin.end();
+      expect(await exit).toBe(0);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
