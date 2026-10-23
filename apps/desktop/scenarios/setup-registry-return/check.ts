@@ -10,7 +10,8 @@
 //       C: participant 1 on "local" from the defaults (unavailable, "Start" disabled); the fake HTTP server starts on the provider port, "Settings" → back:
 //          "Start" enabled; the server stops, "Settings" → back: participant 1 is marked unavailable again
 //       D: config.json is broken while the setup is open, "Settings" → back: the form and the previous registry stay, the setup shows
-//          "Could not read the provider registry"; config.json is restored, "Settings" → back: the alert is gone
+//          "Could not read the provider registry"; "Back to templates" and a new setup: no alert; broken again, then config.json is
+//          restored, "Settings" → back: the alert is gone
 //       On the code before the change the limit stays 3 and "Start" stays disabled in C: the stand exits with code 1.
 // Model calls: 0 (scripted participants; the fake HTTP server only answers the model list).
 import { createServer } from "node:net";
@@ -39,7 +40,7 @@ async function seed(): Promise<void> {
     console.error(`COUNCIL_HOME ${dir} already exists and is not empty: the stand writes only to a new folder.`);
     process.exit(2);
   }
-  // A free port with nobody listening; with no models in config.json the model list is requested from the server,
+  // A free port with nobody listening. With no models in config.json the model list is requested from the server,
 // so the provider is unavailable until the CDP run starts the fake server there.
   const port = await new Promise<number>((ok, fail) => {
     const s = createServer().listen(0, "127.0.0.1", () => { const p = (s.address() as { port: number }).port; s.close(() => ok(p)); }).on("error", fail);
@@ -289,6 +290,21 @@ try {
       check(alert === newDiscussion(lang).registryFailed, `${lang} D: the setup shows "${newDiscussion(lang).registryFailed}"`, alert);
       kept(v, ["scripted", "scripted", "scripted"], `${lang} D`);
       check(v.start && v.addHint === t.limitReached(3), `${lang} D: the previous registry stays (limit 3, "Start" enabled)`, v);
+    } finally {
+      writeFileSync(settings.configPath, good);
+    }
+    // "Back to templates" and a new custom setup: the old reread error is not carried over.
+    await run(`document.querySelector(".main__setup .topbar__actions .btn").click()`);
+    await waitFor(`document.querySelector(".grid-cards button.card--dashed")`, "the gallery after back");
+    await run(`document.querySelector(".grid-cards button.card--dashed").click()`);
+    await waitFor(`document.querySelector(".setup textarea")`, "a new setup");
+    check(!(await evaluate(cdp, `Boolean(document.querySelector(".setup [data-registry-error]"))`)), `${lang} D: a new setup after "Back to templates" has no reread error`);
+    await setValue(".setup textarea", 0, TOPIC);
+    await scripted(3);
+    writeFileSync(settings.configPath, "{ broken");
+    try {
+      await viaSettings(null);
+      await after(`document.querySelector(".setup [data-registry-error]")`, "registry error again");
     } finally {
       writeFileSync(settings.configPath, good);
     }

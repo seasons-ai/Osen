@@ -294,7 +294,7 @@ export function NewFlow({ onStarted, rerun = null, active = true }: { onStarted(
       />
     );
   }
-  const back = () => { setPicked(null); setRerunUsed(true); };
+  const back = () => { setPicked(null); setRerunUsed(true); setReloadError(null); }; // the next setup starts without the previous reread error
   if (registry === null) {
     return (
       <>
