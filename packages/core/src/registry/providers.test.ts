@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliLocation } from "../cli-agents/discovery.ts";
 import { FAKE_MODELS, startFakeServer } from "../http/fake-server.ts";
 import type { FakeServer } from "../http/fake-server.ts";
-import { writeExecutable } from "../executable.testutil.ts";
+import { linkExecutable } from "../executable.testutil.ts";
 import { configPath } from "./config.ts";
 import type { CliProvider, HttpProvider, Provider, Registry } from "./config.ts";
 import { ensureRegistry, inspectProvider, inspectProviders } from "./providers.ts";
@@ -24,11 +24,15 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
 function stub(name: string, body: string): string {
   const p = join(dir, name);
-  return writeExecutable(p, `#!/bin/sh\n${body}\n`);
+  return linkExecutable(p, `#!/bin/sh\n${body}\n`);
 }
+// The script is constant (one shared inode); per-test values live in plain data files next to it.
 function fakeClaude(o: { version?: string; helpFile?: string; helpFails?: boolean } = {}) {
-  const help = o.helpFails ? "exit 1" : `/bin/cat '${o.helpFile ?? fixture("claude-2.1.288-help.txt")}'`;
-  stub("claude", `case "$1" in --version) echo '${o.version ?? "2.1.288 (Claude Code)"}';; --help) ${help};; esac`);
+  const p = stub("claude", `case "$1" in --version) /bin/cat "$0.version";; --help) if [ -e "$0.helpfail" ]; then exit 1; fi; /bin/cat "$(/bin/cat "$0.help")";; esac`);
+  writeFileSync(`${p}.version`, `${o.version ?? "2.1.288 (Claude Code)"}\n`);
+  writeFileSync(`${p}.help`, o.helpFile ?? fixture("claude-2.1.288-help.txt"));
+  rmSync(`${p}.helpfail`, { force: true });
+  if (o.helpFails) writeFileSync(`${p}.helpfail`, "");
 }
 function fakeCodex() {
   stub("codex", `case "$1" in --version) echo 'codex-cli 0.159.2';; exec) /bin/cat '${fixture("codex-0.159.2-exec-help.txt")}';; features) /bin/cat '${fixture("codex-0.159.2-features.txt")}';; esac`);

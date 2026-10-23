@@ -13,7 +13,7 @@ import { configPath, initialRegistry } from "./registry/config.ts";
 import { createHash } from "node:crypto";
 import { makeEncryptedPdf, makePdf } from "./pdf/fixture.ts";
 import { createSession } from "./engine.ts";
-import { writeExecutable } from "./executable.testutil.ts";
+import { linkExecutable } from "./executable.testutil.ts";
 import { createScriptedDriver, readScenario } from "./participants/scripted.ts";
 import { resolveDataDir } from "./store/data-dir.ts";
 import { runStoredSession } from "./store/run.ts";
@@ -414,14 +414,17 @@ function cliStub(agent: "claude" | "codex", o: { help?: string } = {}) {
   writeFileSync(join(root, "amend"), amend);
   writeFileSync(join(root, "agree"), agree);
   const path = join(root, agent);
-  writeExecutable(path, `#!/bin/sh
+  // Per-stub values live in data files so the script text is identical for every call (one linked prototype).
+  writeFileSync(`${path}.version`, `${agent === "claude" ? "2.1.288 (Claude Code)" : "codex-cli 0.159.2"}\n`);
+  writeFileSync(`${path}.help`, helpFile);
+  linkExecutable(path, `#!/bin/sh
 D="$(dirname "$0")"
 case "$1" in
-  --version) echo '${agent === "claude" ? "2.1.288 (Claude Code)" : "codex-cli 0.159.2"}'; exit 0;;
-  --help) /bin/cat '${helpFile}'; exit 0;;
+  --version) /bin/cat "$0.version"; exit 0;;
+  --help) /bin/cat "$(/bin/cat "$0.help")"; exit 0;;
   features) /bin/cat '${fixture("codex-0.159.2-features.txt")}'; exit 0;;
 esac
-if [ "$1" = exec ] && [ "$2" = --help ]; then /bin/cat '${helpFile}'; exit 0; fi
+if [ "$1" = exec ] && [ "$2" = --help ]; then /bin/cat "$(/bin/cat "$0.help")"; exit 0; fi
 : > "$D/args"; for a in "$@"; do printf '%s\\n' "$a" >> "$D/args"; done
 cat > "$D/stdin"
 n=$(cat "$D/count" 2>/dev/null || echo 0); echo $((n+1)) > "$D/count"
