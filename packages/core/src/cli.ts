@@ -88,10 +88,9 @@ const RUN_FLAGS = ["topic", "participant", "max-rounds", "framing", "turn-timeou
 const intFlag = (name: string, value: string | undefined, max?: number): number | undefined => {
   if (value === undefined) return undefined;
   const n = Number(value);
-  if (!/^\d+$/.test(value.trim()) || n < 1 || !Number.isSafeInteger(n)) {
-    throw new UsageError(cliMessages().intRequired(name));
-  }
-  if (max !== undefined && n > max) throw new UsageError(cliMessages().intRange(name, 1, max));
+  const valid = /^\d+$/.test(value.trim()) && n >= 1 && Number.isSafeInteger(n);
+  if (max !== undefined && (!valid || n > max)) throw new UsageError(cliMessages().intRange(name, 1, max));
+  if (!valid) throw new UsageError(cliMessages().intRequired(name));
   return n;
 };
 
