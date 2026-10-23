@@ -25,10 +25,12 @@ function stop(reason: string): never {
 }
 
 if (fileURLToPath(import.meta.url) === resolve(process.argv[1] ?? "")) {
-  if (process.platform !== "darwin") stop("text recognition helper builds only on macOS");
+  const helpers = ([["osen-ocr.swift", "osen-ocr"], ["fixture.swift", "osen-ocr-fixture"]] as const)
+    .filter(([src, out]) => !ifStale || isStale([join(ocr, src), fileURLToPath(import.meta.url)], join(ocr, "bin", out)));
+  // up-to-date helpers need no toolchain, so the platform check runs only when something is built
+  if (helpers.length > 0 && process.platform !== "darwin") stop("text recognition helper builds only on macOS");
   mkdirSync(join(ocr, "bin"), { recursive: true });
-  for (const [src, out] of [["osen-ocr.swift", "osen-ocr"], ["fixture.swift", "osen-ocr-fixture"]] as const) {
-    if (ifStale && !isStale([join(ocr, src), fileURLToPath(import.meta.url)], join(ocr, "bin", out))) continue;
+  for (const [src, out] of helpers) {
     const r = spawnSync("swiftc", ["-O", join(ocr, src), "-o", join(ocr, "bin", out)], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     if (r.error) stop(`swiftc is not available (${(r.error as NodeJS.ErrnoException).code ?? r.error.message})`);
     if (r.status !== 0) stop(`swiftc failed on ${src}: ${(r.stderr || "").trim().split("\n").slice(-3).join(" | ")}`);
