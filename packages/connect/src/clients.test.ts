@@ -268,6 +268,19 @@ describe("connect, update and disconnect", () => {
     disconnect("claude-desktop", cmd, s.deps);
     expect(json(s.files["claude-desktop"])).toEqual(orig);
   });
+  it("Пустой mcpServers: connect then disconnect keeps x and other servers, mcpServers empty or absent", () => {
+    const cmd = cmdOf(mkMain());
+    for (const orig of ['{"x":1,"mcpServers":{}}', '{"x":1}', '{"x":1,"mcpServers":{"fs":{"command":"npx","args":["y"]}}}']) {
+      const s = setup({ desktopApp: true });
+      put(s.files["claude-desktop"], orig);
+      expect(connect("claude-desktop", cmd, s.deps)).toMatchObject({ ok: true, changed: true });
+      expect(disconnect("claude-desktop", cmd, s.deps)).toMatchObject({ ok: true, changed: true });
+      const { mcpServers = {}, ...rest } = json(s.files["claude-desktop"]);
+      const { mcpServers: before = {}, ...restBefore } = JSON.parse(orig);
+      expect(rest).toEqual(restBefore);
+      expect(mcpServers).toEqual(before);
+    }
+  });
   it("desktop: corrupt file is a refusal and stays byte-identical", () => {
     const s = setup();
     put(s.files["claude-desktop"], "{oops");
