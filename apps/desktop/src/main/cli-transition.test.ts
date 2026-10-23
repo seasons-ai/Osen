@@ -7,7 +7,7 @@ import { setProcessLanguage } from "@model-council/core/i18n";
 import { installedPath, pinsPath, readPins, versionDir } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { CandidatesReport } from "../../../../packages/core/src/cli-agents/candidates.ts";
 import { VERIFIED_FILE } from "../../../../packages/core/src/cli-agents/verified-record.ts";
-import { writeExecutable } from "../../../../packages/core/src/executable.testutil.ts";
+import { detachExecutable, linkExecutable } from "../../../../packages/core/src/executable.testutil.ts";
 import { settings as catalog } from "../shared/messages/settings.ts";
 import { REMINDER_FILE, createCliTransition, readReminder, reminderPath } from "./cli-transition.ts";
 import type { CliTransitionApi, CliTransitionDeps } from "./cli-transition.ts";
@@ -47,7 +47,8 @@ function make(over: Partial<CliTransitionDeps> = {}): CliTransitionApi {
         async fetch(agent, version, d) {
           const exe = join(d, "bin", agent);
           mkdirSync(join(d, "bin"), { recursive: true });
-          writeExecutable(exe, fetchScript.replaceAll("@V", version));
+          linkExecutable(exe, fetchScript);
+          writeFileSync(`${exe}.version`, `${version} (fake)\n`);
           return { executable: exe, source: `fake:${agent}@${version}` };
         },
       },
@@ -75,7 +76,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "cli-transition-"));
   ms = T0;
   logs = []; running = false; checked = 0; listCalls = []; releases = {}; releasesError = null; hook = null;
-  fetchScript = '#!/bin/sh\ncase "$1" in --version) echo "@V (fake)";; esac\n';
+  fetchScript = '#!/bin/sh\ncase "$1" in --version) /bin/cat "$0.version";; esac\n';
 });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); setProcessLanguage("en"); });
 
@@ -143,6 +144,7 @@ describe("Requirement: Ежесуточная проверка кандидат�
     const intact = await make().forProvider("claude", status());
     expect(intact.target).toMatchObject({ version: "7.1.0" });
     expect(intact.broken).toEqual([]);
+    detachExecutable(installFile("claude", "7.1.0"));
     appendFileSync(installFile("claude", "7.1.0"), "# changed after installation\n");
     const c = await make().forProvider("claude", status());
     expect(c.target).toBeNull();
@@ -295,7 +297,7 @@ describe("Requirement: Ежесуточная проверка кандидат�
     const help = readFileSync(new URL("../../../../packages/core/src/cli-agents/fixtures/claude-2.1.288-help.txt", import.meta.url), "utf8");
     const helpFile = join(dir, "help.txt");
     writeFileSync(helpFile, help);
-    fetchScript = `#!/bin/sh\ncase "$1" in --version) echo "@V (fake)";; --help) /bin/cat '${helpFile}';; esac\n`;
+    fetchScript = `#!/bin/sh\ncase "$1" in --version) /bin/cat "$0.version";; --help) /bin/cat '${helpFile}';; esac\n`;
     const pinsBefore = pinsBytes(dir);
     await make().maybeCheck();
     expect(JSON.parse(reminderRaw()).lastCheck.candidates[0]).toMatchObject({ version: "7.5.0", status: "ok", recorded: true });
@@ -599,6 +601,7 @@ describe("Requirement: Переход и откат из карточки", () =
       if (r.state !== "loaded") throw new Error("no pins");
       return installedPath(dir, "claude", r.pins.agents.claude!.installed.find((i) => i.version === version)!);
     };
+    detachExecutable(file("7.1.0"));
     appendFileSync(file("7.1.0"), "# changed after installation\n");
     const t = make();
     let kept = pinsBytes(dir);
@@ -610,6 +613,7 @@ describe("Requirement: Переход и откат из карточки", () =
     await seedPins();
     const t2 = make();
     t2.switchCli("claude", "7.1.0");
+    detachExecutable(file("7.0.0"));
     appendFileSync(file("7.0.0"), "# changed after installation\n");
     kept = pinsBytes(dir);
     expect(() => t2.rollbackCli("claude")).toThrow(SettingsError);
@@ -626,6 +630,8 @@ describe("Requirement: Переход и откат из карточки", () =
       return installedPath(dir, "claude", r.pins.agents.claude!.installed.find((i) => i.version === version)!);
     };
     const t = make();
+    detachExecutable(file("7.1.0"));
+    detachExecutable(file("7.0.0"));
     chmodSync(file("7.1.0"), 0o644);
     let kept = pinsBytes(dir);
     expect(() => t.switchCli("claude", "7.1.0")).toThrow("The file of claude 7.1.0 is not executable; the pin is unchanged");
