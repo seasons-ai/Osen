@@ -7,6 +7,7 @@ import type { Language } from "../i18n/language.ts";
 import { getProcessLanguage } from "../i18n/process-language.ts";
 import { acceptanceMessages } from "../messages/acceptance.ts";
 import { providerMessages } from "../messages/providers.ts";
+import { cliEnv } from "../store/env.ts";
 import { createLogger } from "../store/log.ts";
 import type { Usage } from "../protocol/schema.ts";
 import { CODEX_UPDATE_OFF, HELP_ARGS, planLaunch } from "./args.ts";
@@ -339,6 +340,7 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
 } = {}): Promise<AcceptanceOutcome> {
   const m = acceptanceMessages(opts.language);
   const { signal } = opts;
+  const env = cliEnv(opts.env, { dataDir });
   const log = createLogger(dataDir, "cli-accept");
   const outcomes: ProbeOutcome[] = [];
   let calls = 0;
@@ -370,7 +372,7 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
   let flags: ReadonlySet<string> = new Set();
   let features: ReadonlySet<string> | undefined;
   try {
-    const ins = await (deps.inspect ?? inspectPinned)(plan, opts.env, signal, opts.inspectLimits);
+    const ins = await (deps.inspect ?? inspectPinned)(plan, env, signal, opts.inspectLimits);
     flags = ins.flags;
     features = ins.features;
   } catch (e) {
@@ -379,7 +381,7 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
     record({ probe: "valid_turn", ok: false, reason: failure.reason });
   }
 
-  const ctx: ProbeContext = { plan, env: opts.env, language: opts.language, ...(signal ? { signal } : {}), flags, ...(features ? { features } : {}) };
+  const ctx: ProbeContext = { plan, env, language: opts.language, ...(signal ? { signal } : {}), flags, ...(features ? { features } : {}) };
   for (const probe of PROBES) {
     if (failure) break;
     if (signal?.aborted) return interrupted();

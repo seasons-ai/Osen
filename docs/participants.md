@@ -34,6 +34,8 @@ Cost: the sha256 of the whole file is computed once and cached by file identity 
 
 A check without cost (stub CLIs, real `council` and MCP processes, no model calls): `COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the repository> node packages/core/scenarios/launch-guard/check.ts`. It prints one `ok -` line per step and exits non-zero if any step fails.
 
+**CLI process environment.** A CLI process (`claude`, `codex`) does not get variables that come only from a `.env` file: from the `.env` in the current folder or from the data folder's `.env`, and are absent or empty in Osen's own environment. This keeps an API key meant for an HTTP provider (for example `OPENAI_API_KEY`) from switching a CLI from the subscription to paid API billing. Variables set in the shell pass as they are. The same filtering applies to the version and help reads, the candidate check, the acceptance probes, the turns, the app's start-up lookup and the detached executor of `council_start` (it reads `.env` itself, so HTTP providers still find their keys). HTTP providers keep reading keys from `.env`. Other `.env` variables (for example a proxy) do not reach the CLIs either: set them in the shell. A check without cost (stub CLIs, real `council` and MCP processes, a fake HTTP server, no model calls): `COUNCIL_DEV=1 node packages/core/scenarios/cli-key-env/check.ts`.
+
 ## HTTP participants
 
 Any model behind an endpoint compatible with OpenAI Chat Completions (OpenRouter, a local server and others). The provider is described in the data folder's `config.json`, the key in `.env`.

@@ -3,6 +3,7 @@ import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { promisify } from "node:util";
 import { providerMessages } from "../messages/providers.ts";
+import { cliEnv } from "../store/env.ts";
 import { createLogger } from "../store/log.ts";
 import { checkPinnedLaunch, pinBinaryState } from "./launch-guard.ts";
 import type { GuardDeps } from "./launch-guard.ts";
@@ -228,7 +229,8 @@ export async function locateCli(agent: CliAgent, options: {
   dataDir?: string;
   deps?: Partial<DiscoveryDeps>;
 }): Promise<CliLocation> {
-  const { explicitPath, env, dataDir } = options;
+  const { explicitPath, dataDir } = options;
+  const env = cliEnv(options.env, { dataDir });
   try {
     if (options.deps) return await locate(agent, explicitPath, env, { ...realDeps, ...options.deps }, dataDir);
     const key = JSON.stringify([agent, explicitPath, env.PATH, dataDir, dataDir === undefined ? null : fileState(dataDir), dataDir === undefined ? null : pinsFileState(dataDir), explicitPath === undefined && dataDir !== undefined ? pinBinaryState(dataDir, agent) : null]);
