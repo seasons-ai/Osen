@@ -1,7 +1,8 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeExecutable } from "../executable.testutil.ts";
 import { resetDiscoveryCache } from "../cli-agents/discovery.ts";
 import { resetGuardCache } from "../cli-agents/launch-guard.ts";
 import { ifaceEntry, installStub, realEntry, runs, tamper } from "../cli-agents/launch-guard.fixture.ts";
@@ -36,8 +37,7 @@ beforeEach(() => {
   helpCalls = 0;
   mkdirSync(join(root, "bin"));
   pathRuns = join(root, "path-runs");
-  writeFileSync(join(root, "bin", "claude"), `#!/bin/sh\necho x >> '${pathRuns}'\necho '2.1.288 (Claude Code)'\n`);
-  chmodSync(join(root, "bin", "claude"), 0o755);
+  writeExecutable(join(root, "bin", "claude"), `#!/bin/sh\necho x >> '${pathRuns}'\necho '2.1.288 (Claude Code)'\n`);
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -114,8 +114,7 @@ describe(R, () => {
     expect(noPin.status).toMatchObject({ available: true, version: "2.1.288" });
     await pin();
     const other = join(root, "other");
-    writeFileSync(other, "#!/bin/sh\necho '9.9.9 (Claude Code)'\n");
-    chmodSync(other, 0o755);
+    writeExecutable(other, "#!/bin/sh\necho '9.9.9 (Claude Code)'\n");
     const explicit = await inspect({ provider: { ...claude, path: other } });
     expect(explicit.status).toMatchObject({ available: true, version: "9.9.9", path: other });
     expect(explicit.status.warning).toBeDefined();

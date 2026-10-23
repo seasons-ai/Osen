@@ -6,7 +6,7 @@
 //         spends the subscription, so it needs the owner's consent and an explicit --max-calls (at least 2). Writes into TURN_FIXTURE_DIR by default.
 // Both modes: locate and inspect the CLI with inspectProvider, run one turn with createCliDriver (the same isolation arguments as a discussion),
 // keep the raw output in a temporary folder outside git, anonymize it, verify the result and write <agent>-<version>-turn.<json|jsonl>.
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -14,6 +14,7 @@ import { parseClaudeOutput, parseCodexOutput } from "../../src/cli-agents/output
 import { createCliDriver } from "../../src/cli-agents/driver.ts";
 import { TURN_FIXTURE_DIR, anonymizeTurnOutput, findPersonalData, listTurnFixtures, turnFixtureName } from "../../src/cli-agents/turn-fixtures.ts";
 import type { CliAgent, CliRuntime } from "../../src/cli-agents/types.ts";
+import { writeExecutable } from "../../src/executable.testutil.ts";
 import { collectSessionMaterials } from "../../src/materials.ts";
 import { createSession } from "../../src/engine.ts";
 import { setOcrRuntime } from "../../src/ocr/run.ts";
@@ -54,14 +55,12 @@ esac`
   features) cat ${q(fixtureHelp("codex-0.159.2-features.txt"))} ;;
   *) exit 2 ;;
 esac`;
-  writeFileSync(file, `#!/bin/sh\n${body}\nexit 0\n`);
-  chmodSync(file, 0o755);
+  writeExecutable(file, `#!/bin/sh\n${body}\nexit 0\n`);
 }
 
 /** A login shell stand-in that prints only PATH (the CLI lookup must not run the owner's shell). */
 export function writeFakeShell(file: string): void {
-  writeFileSync(file, `#!/bin/sh\nprintf '\\n__COUNCIL_PATH__%s__COUNCIL_PATH__\\n' "$PATH"\n`);
-  chmodSync(file, 0o755);
+  writeExecutable(file, `#!/bin/sh\nprintf '\\n__COUNCIL_PATH__%s__COUNCIL_PATH__\\n' "$PATH"\n`);
 }
 
 // raw output of the stubs: real-looking, with personal data the anonymizer must remove

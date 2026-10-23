@@ -1,5 +1,6 @@
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { writeExecutable } from "../executable.testutil.ts";
 import { activePin, installPin, usePin } from "./pins.ts";
 import type { PackageSource } from "./pins.ts";
 import type { VerifiedEntry, VerifiedRecord } from "./verified-record.ts";
@@ -21,8 +22,7 @@ export function fetchSource(turn?: string): PackageSource {
     async fetch(agent, version, dir) {
       const exe = join(dir, "bin", agent);
       mkdirSync(join(dir, "bin"), { recursive: true });
-      writeFileSync(exe, stubScript(version, turn));
-      chmodSync(exe, 0o755);
+      writeExecutable(exe, stubScript(version, turn));
       return { executable: exe, source: `fake:${agent}@${version}` };
     },
   };

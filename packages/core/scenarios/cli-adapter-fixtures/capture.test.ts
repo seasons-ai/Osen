@@ -57,13 +57,13 @@ describe("fixture capture script", () => {
   it("--stub does not start the OCR helper for the repository material", () => {
     const dir = tmp();
     const helper = join(dir, "slow-ocr");
-    // the helper sandbox denies file writes, so a slow stub is the observable: one second per started helper
-    writeFileSync(helper, `#!/bin/sh\nsleep 1\necho '{"ok":false,"code":"no_text"}'\n`);
+    // the helper sandbox denies file writes, so a slow stub is the observable: five seconds per started helper (34 images would take at least 170 s, longer than capture's own 120 s deadline)
+    writeFileSync(helper, `#!/bin/sh\nsleep 5\necho '{"ok":false,"code":"no_text"}'\n`);
     chmodSync(helper, 0o755);
     const started = Date.now();
     const r = capture(["--stub", "--out", join(dir, "out")], { COUNCIL_OCR_HELPER: helper });
     const ms = Date.now() - started;
     expect(r.status, r.stdout + r.stderr).toBe(0);
-    expect(ms, `capture took ${ms} ms`).toBeLessThan(10_000);
-  });
+    expect(ms, `capture took ${ms} ms`).toBeLessThan(60_000);
+  }, 150_000);
 });

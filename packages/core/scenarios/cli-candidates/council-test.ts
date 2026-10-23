@@ -9,9 +9,10 @@
 //   releases values may also be any other JSON (e.g. an object): it is returned as is, to reach the "not a list" reason
 //   npmReleases: true — the real `npm view` release source (npmReleases from npm-source.ts) instead of the substitute one; `npm` is whatever the stand puts in PATH
 //   npm: true — the real npm package source (npm-source.ts) instead of the substitute one; `npm` is whatever the stand puts in PATH
-import { appendFileSync, chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { main } from "../../src/cli.ts";
+import { writeExecutable } from "../../src/executable.testutil.ts";
 import { npmReleases } from "../../src/cli-agents/npm-source.ts";
 import type { ReleaseSource } from "../../src/cli-agents/candidates.ts";
 import type { PackageSource } from "../../src/cli-agents/pins.ts";
@@ -64,8 +65,7 @@ const source: PackageSource = {
     mkdirSync(bin, { recursive: true });
     mkdirSync(stand.counter, { recursive: true });
     const exe = join(bin, agent);
-    copyFileSync(join(stubs, agent), exe);
-    chmodSync(exe, 0o755);
+    writeExecutable(exe, readFileSync(join(stubs, agent)));
     const settings = { VERSION: version, COUNTER: join(stand.counter, `${agent}-${version}`), ...files(agent, VARIANTS[`${agent}@${version}`] ?? "full"), ...(stand.hangHelp === `${agent}@${version}` && stand.hangPid ? { HANG_PID: stand.hangPid } : {}) };
     writeFileSync(join(bin, "stub.env"), `${Object.entries(settings).map(([k, v]) => `${k}=${q(v)}`).join("\n")}\n`);
     return { executable: exe, source: `stand:${agent}@${version}` };
