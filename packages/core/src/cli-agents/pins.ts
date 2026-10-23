@@ -283,7 +283,7 @@ function commit(dataDir: string, pins: PinsFile, agent: CliAgent, next: AgentPin
   return ok(text);
 }
 
-/** Failure of an install file: missing or no longer matching its recorded sha256; undefined when it matches. Synchronous: use and rollback stay synchronous. */
+/** Failure of an install file: missing, no longer matching its recorded sha256 or without the execute bit (the launch guard treats it as missing); undefined when it matches. Synchronous: use and rollback stay synchronous. */
 function changedFile(dataDir: string, agent: CliAgent, i: PinInstall): PinResult | undefined {
   const m = pinMessages();
   const p = installedPath(dataDir, agent, i);
@@ -293,7 +293,13 @@ function changedFile(dataDir: string, agent: CliAgent, i: PinInstall): PinResult
   } catch {
     return fail(2, m.useFileMissing(agent, i.version, p), m.useFileMissingNoPath(agent, i.version));
   }
-  return actual === i.sha256 ? undefined : fail(2, m.useSha256Mismatch(agent, i.version, p, i.sha256, actual), m.useSha256MismatchNoPath(agent, i.version, i.sha256, actual));
+  if (actual !== i.sha256) return fail(2, m.useSha256Mismatch(agent, i.version, p, i.sha256, actual), m.useSha256MismatchNoPath(agent, i.version, i.sha256, actual));
+  try {
+    accessSync(p, constants.X_OK);
+  } catch {
+    return fail(2, m.useFileNotExecutable(agent, i.version, p), m.useFileNotExecutableNoPath(agent, i.version));
+  }
+  return undefined;
 }
 
 export function usePin(dataDir: string, agentName: string, version: string, deps: { record: VerifiedRecord; now?: () => Date }): PinResult {

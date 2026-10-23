@@ -2647,7 +2647,7 @@ describe("run-prepared: the launch deadline is rechecked after slow provider che
       const r = await run(["run-prepared", file], { env: dev(home), inspectDeps: deps(cliStub("claude"), home, deadline, true) });
       expect(slept.under, "the slow check under the lock was reached before the deadline").toBe(true);
       expect(r.code).not.toBe(0);
-      expect(JSON.parse(r.err.split("\n")[0]!)).toEqual({ code: "stale_plan", message: cliMessages().launchExpired(deadline) });
+      expect(JSON.parse(r.err.split("\n")[0]!)).toEqual({ code: "launch_expired", message: cliMessages().launchExpired(deadline) });
       expect(readFileSync(eventsPath(home, "f1")).equals(before)).toBe(true);
       expect(existsSync(stopRequestPath(home, "f1"))).toBe(true);
       expect(existsSync(ownerFile)).toBe(true);

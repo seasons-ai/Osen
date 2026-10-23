@@ -135,6 +135,13 @@ try {
   assert.deepEqual(readdirSync(H).filter((x) => x.endsWith(".tmp")), []);
   ok("step 3 the record got exactly two new interface entries (claude 2.1.290, codex 0.160.0), sha256 of the installed stub bytes, no modelCalls, no real entries; <home>/cli-candidates and <home>/cli do not exist");
 
+  // ---- 2b: update check off for codex help and features list only ----
+  const argvOf = (name: string) => readFileSync(join(counters, `${name}.argv`), "utf8").split("\n").filter(Boolean);
+  const UPDATE_OFF = "-c check_for_update_on_startup=false";
+  assert.deepEqual(argvOf("codex-0.160.0"), ["--version", `exec --help ${UPDATE_OFF}`, `features list ${UPDATE_OFF}`]);
+  assert.deepEqual(argvOf("claude-2.1.290"), ["--version", "--help"]);
+  ok("step 2b codex candidate launches: --version, `exec --help -c check_for_update_on_startup=false`, `features list -c check_for_update_on_startup=false`; claude candidate: --version, --help without -c");
+
   // ---- 4 ----
   const bytes4 = readFileSync(recordFile(H));
   const mark4 = calls().length;
@@ -511,11 +518,30 @@ try {
   setReleases(RELEASES);
   rmSync(join(bin, "npm"), { force: true });
 
+  // ---- 7i: two checks at once in one data folder share cli-candidates/ (change 224) ----
+  const REPEATS = 20;
+  for (let i = 1; i <= REPEATS; i++) {
+    const Hc = prepare();
+    const pair = await Promise.all([run(Hc, ["cli", "candidates", "--json"]), run(Hc, ["cli", "candidates", "--json"])]);
+    for (const r of pair) {
+      assert.equal(r.code, 0, `repeat ${i}: exit ${r.code}\n${r.out}\n${r.err}`);
+      const d = oneJson(r);
+      assert.deepEqual(d.failures, [], `repeat ${i}: ${r.out}`);
+      assert.equal(d.candidates.length, 4, `repeat ${i}: ${r.out}`);
+      for (const c of d.candidates) {
+        assert.ok(["ok", "already_recorded", "violates"].includes(c.status), `repeat ${i}: ${c.agent}@${c.version} is ${c.status}`);
+        if (c.version === "2.1.290" || c.version === "0.160.0") assert.ok(c.status !== "violates", `repeat ${i}: ${c.agent}@${c.version} violates`);
+      }
+    }
+    assert.ok(!existsSync(join(Hc, "cli-candidates")), `repeat ${i}: cli-candidates/ is left`);
+  }
+  ok(`step 7i ${REPEATS} repeats of two simultaneous \`cli candidates\` in one data folder: exit 0 for both, no failures (no install_failed), every candidate ok, already_recorded or the expected violation, no cli-candidates folder afterwards`);
+
   // ---- 8 ----
   const files = readdirSync(counters);
   const kinds = new Set(files.map((f) => f.slice(f.lastIndexOf(".") + 1)));
   assert.ok(files.length > 0);
-  for (const k of kinds) assert.ok(["version", "help", "features"].includes(k), `unexpected launch kind: ${k} (${files.join(", ")})`);
+  for (const k of kinds) assert.ok(["version", "help", "features", "argv"].includes(k), `unexpected launch kind: ${k} (${files.join(", ")})`);
   assert.ok(!files.some((f) => f.endsWith(".turn")));
   assert.ok(kinds.has("version") && kinds.has("help") && kinds.has("features"));
   ok("step 8 launch counters over all runs: only --version, help and features list; not a single turn");
