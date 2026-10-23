@@ -1,10 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 import { parseSource, visitAst } from "../../../packages/core/src/ast-scan.testutil.ts";
 import type { Node } from "../../../packages/core/src/ast-scan.testutil.ts";
+import { writeStub } from "../../../packages/core/scenarios/launch-guard/stub.ts";
 import { TOOLS } from "../../../packages/mcp/src/server.ts";
 
 // Checks of the headless entry points (bin/osen-mcp, bin/council) in an Osen.app copy. `contents` is Osen.app/Contents,
@@ -198,6 +199,104 @@ export async function detachedStartLine(contents: string, work: string, timeoutM
   }
 }
 
+const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+const until = async (cond: () => boolean, ms: number) => { for (const end = Date.now() + ms; !cond() && Date.now() < end;) await sleep(100); return cond(); };
+
+/** bin/osen-mcp started with a stdio client that has sent initialize and awaited its reply (id 1). */
+async function startMcp(contents: string, env: NodeJS.ProcessEnv) {
+  const child = spawn(bin(contents, "osen-mcp"), [], { env, stdio: ["pipe", "pipe", "pipe"] });
+  let stderr = "", out = "", spawnError = "", code: number | null | "none" = "none";
+  child.on("error", (e) => { spawnError = e.message; });
+  child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+  child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+  child.on("close", (c) => { code = c; });
+  child.stdin.on("error", () => { /* the server died early: reported by the checks */ });
+  const send = (m: object) => child.stdin.write(`${JSON.stringify(m)}\n`);
+  send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: LATEST_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "headless-check", version: "1" } } });
+  send({ jsonrpc: "2.0", method: "notifications/initialized" });
+  const initialized = await until(() => out.includes('"id":1') || spawnError !== "", 30000);
+  return { child, send, initialized, exitCode: () => code, err: () => `${spawnError}${stderr ? ` (stderr: ${stderr.trim().slice(0, 200)})` : ""}` };
+}
+
+/** Start of bin/osen-mcp sweeps launch/ files older than 60 s, keeps fresh ones and logs the sweep. */
+export async function launchSweepLine(contents: string, work: string): Promise<Line> {
+  const { env, home } = dirs(work, "sweep");
+  const label = "MCP server osen-mcp without PATH: start removes launch/ files older than 60 s, keeps fresh ones";
+  const launch = join(home, "launch");
+  mkdirSync(launch, { recursive: true });
+  const old = ["x.old.err", "x.old.accepted.json"], fresh = ["y.new.err", "y.new.accepted.json"];
+  for (const f of [...old, ...fresh]) writeFileSync(join(launch, f), "{}");
+  const past = new Date(Date.now() - 120_000), recent = new Date(Date.now() - 1000);
+  for (const f of old) utimesSync(join(launch, f), past, past);
+  for (const f of fresh) utimesSync(join(launch, f), recent, recent);
+  const swept = () => existsSync(join(home, "logs", "app.log")) && readFileSync(join(home, "logs", "app.log"), "utf8").includes("Launch folder swept: 2 stale files removed");
+  const mcp = await startMcp(contents, env);
+  try {
+    await until(() => old.every((f) => !existsSync(join(launch, f))) && swept(), 5000);
+    const left = readdirSync(launch).sort();
+    const why = [
+      old.some((f) => left.includes(f)) ? "old files remain" : "",
+      fresh.some((f) => !left.includes(f)) ? "fresh files removed" : "",
+      swept() ? "" : "no sweep line in logs/app.log",
+    ].filter(Boolean).join(", ");
+    mcp.child.stdin.end();
+    await until(() => mcp.exitCode() !== "none", 10000);
+    const code = mcp.exitCode();
+    if (why || code !== 0) return { ok: false, text: `${label}: ${why || `exit code ${String(code)}`}; launch/ has [${left.join(", ")}] ${mcp.err()}` };
+    return { ok: true, text: label };
+  } finally {
+    mcp.child.kill(); // no-op after a normal exit
+  }
+}
+
+/** Closing bin/osen-mcp (SIGTERM, then stdin) while council_start waits for the executor leaves no launch/ files, no session, no executor. */
+export async function launchCloseLine(contents: string, work: string): Promise<Line> {
+  const { env, home } = dirs(work, "close");
+  const label = "MCP server osen-mcp: closing during the council_start wait leaves no launch/ files, no session, no executor";
+  // stub `claude` whose --help hangs 6 s and fails when run by an executor (run-prepared), as in step 199.4 of packages/mcp/scenarios/detached/check.ts
+  const stubDir = join(home, "stub");
+  mkdirSync(stubDir, { recursive: true });
+  writeStub(join(stubDir, "claude-real"), { agent: "claude", version: "1.0.0", mark: join(stubDir, "marks"), side: join(stubDir, "side") });
+  writeFileSync(join(stubDir, "claude"), `#!/bin/sh
+if [ "$1" = "--help" ]; then
+  case "$(ps -o command= -p "$PPID")" in
+    *run-prepared*) sleep 6; exit 1 ;;
+  esac
+fi
+exec "${stubDir}/claude-real" "$@"
+`);
+  chmodSync(join(stubDir, "claude"), 0o755);
+  writeFileSync(join(stubDir, "shell"), `#!/bin/sh\nprintf '\\n__COUNCIL_PATH__%s__COUNCIL_PATH__\\n' "$PATH"\n`);
+  chmodSync(join(stubDir, "shell"), 0o755);
+  const launch = join(home, "launch"), sessions = join(home, "sessions");
+  const launchLeft = () => (existsSync(launch) ? readdirSync(launch) : []);
+  const sessionsLeft = () => (existsSync(sessions) ? readdirSync(sessions) : []);
+  const executorsLeft = () => {
+    const ps = spawnSync("ps", ["-axo", "command="], { encoding: "utf8" });
+    return ps.status !== 0 ? ["ps failed"] : ps.stdout.split("\n").filter((l) => l.includes("run-prepared") && l.includes(home));
+  };
+  const mcp = await startMcp(contents, { ...env, PATH: `${stubDir}:/usr/bin:/bin`, SHELL: join(stubDir, "shell") });
+  try {
+    if (!mcp.initialized) return { ok: false, text: `${label}: no initialize reply ${mcp.err()}` };
+    const before = new Set(launchLeft());
+    const mine = () => launchLeft().filter((f) => !before.has(f));
+    mcp.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "council_start", arguments: { topic: "Entry points check", participants: [{ providerId: "claude", model: "default" }, { providerId: "scripted", model: "consensus/p1.json" }], maxRounds: 3 } } });
+    await until(() => mine().length > 0, 12000); // the server inspects the fresh stub first (macOS scans a new executable), then starts the executor
+    const during = mine();
+    if (during.length === 0) return { ok: false, text: `${label}: no launch file in launch/ while the server waits ${mcp.err()}` };
+    mcp.child.kill("SIGTERM");
+    mcp.child.stdin.end();
+    await until(() => mcp.exitCode() !== "none", 10000);
+    const code = mcp.exitCode(), after = mine();
+    if (code !== 0 || after.length > 0) return { ok: false, text: `${label}: exit code ${String(code)}, launch/ files left after the exit [${after.join(", ")}] (were [${during.join(", ")}]) ${mcp.err()}` };
+    await sleep(9000);
+    const why = [sessionsLeft().length > 0 ? `sessions [${sessionsLeft().join(", ")}]` : "", executorsLeft().length > 0 ? "executor process left" : "", mine().length > 0 ? `launch/ files [${mine().join(", ")}]` : ""].filter(Boolean).join(", ");
+    return why ? { ok: false, text: `${label}: 9 s later: ${why}` } : { ok: true, text: label };
+  } finally {
+    mcp.child.kill(); // no-op after the exit
+  }
+}
+
 /** All lines in order; `report` prints them. A folder `work` is created by the caller. */
 export async function reportHeadlessLines(contents: string, work: string, report: (ok: boolean, text: string) => void): Promise<void> {
   const wrappers = wrappersLine(contents);
@@ -206,5 +305,5 @@ export async function reportHeadlessLines(contents: string, work: string, report
   report(self.ok, self.text);
   // the runs below need the wrappers: without them the lines would only repeat the same fault
   if (!wrappers.ok) return;
-  for (const line of [await mcpLine(contents, work), helpLine(contents, work), scriptedRunLine(contents, work), await detachedStartLine(contents, work)]) report(line.ok, line.text);
+  for (const line of [await mcpLine(contents, work), helpLine(contents, work), scriptedRunLine(contents, work), await detachedStartLine(contents, work), await launchSweepLine(contents, work), await launchCloseLine(contents, work)]) report(line.ok, line.text);
 }

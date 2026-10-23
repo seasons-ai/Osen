@@ -1,12 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { sweepLaunchDir } from "@model-council/core";
 import { ToolError } from "./context.ts";
 import type { Tool, ToolContext } from "./context.ts";
 import { mcpMessages } from "./messages.ts";
 import { councilOptions } from "./options.ts";
 import { councilContinue, councilSay } from "./owner.ts";
 import { councilResume } from "./resume.ts";
-import { councilStart } from "./start.ts";
+import { cleanupActiveLaunches, councilStart } from "./start.ts";
 import { councilStatus, councilStop } from "./status.ts";
 
 export const TOOLS = [councilOptions, councilStart, councilStatus, councilStop, councilSay, councilContinue, councilResume];
@@ -31,4 +33,23 @@ export function createServer(ctx: ToolContext): McpServer {
     });
   }
   return server;
+}
+
+/** Shared start-up of both entry points (source and packaged): sweeps stale launch files, wires shutdown, serves MCP over stdio. */
+export async function runServer(ctx: Omit<ToolContext, "shutdown">): Promise<void> {
+  const swept = sweepLaunchDir(ctx.dataDir);
+  if (swept > 0) ctx.logger.info(`Launch folder swept: ${swept} stale files removed`);
+  const controller = new AbortController();
+  // ponytail: quit removes the files of launches still waiting, exits the server and wakes its waits; every session (council_start, council_resume) runs in its own detached executor and survives
+  const quit = (reason: string): void => {
+    ctx.logger.info(`MCP server is stopping: ${reason}`);
+    controller.abort();
+    cleanupActiveLaunches();
+    process.exit(0);
+  };
+  process.stdin.on("end", () => quit("stdin closed"));
+  process.stdin.on("close", () => quit("stdin closed"));
+  for (const s of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(s, () => quit(s));
+  process.on("unhandledRejection", (e) => ctx.logger.error("Unhandled promise rejection", e));
+  await createServer({ ...ctx, shutdown: controller.signal }).connect(new StdioServerTransport());
 }
