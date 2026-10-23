@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger, ProviderStatus } from "@model-council/core";
+import { writeExecutable } from "../../../../packages/core/src/executable.testutil.ts";
 import { installPin, pinsPath, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { PackageSource } from "../../../../packages/core/src/cli-agents/pins.ts";
 import { addLocalEntry, loadVerifiedRecord } from "../../../../packages/core/src/cli-agents/verified-record.ts";
@@ -22,8 +23,7 @@ export const fakeVersionSource: PackageSource = {
   async fetch(agent, version, dir) {
     const exe = join(dir, "node_modules", "pkg", "bin", agent);
     mkdirSync(join(dir, "node_modules", "pkg", "bin"), { recursive: true });
-    writeFileSync(exe, `#!/bin/sh\necho "${version} (fake)"\n`);
-    chmodSync(exe, 0o755);
+    writeExecutable(exe, `#!/bin/sh\necho "${version} (fake)"\n`);
     return { executable: exe, source: `fake:${agent}@${version}` };
   },
 };

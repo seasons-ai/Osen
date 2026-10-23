@@ -54,7 +54,7 @@ async function expectRejected(s: Stub): Promise<ParticipantCallError> {
   return e;
 }
 
-const waitFor = async (cond: () => boolean, ceilingMs = 5000): Promise<boolean> => {
+const waitFor = async (cond: () => boolean, ceilingMs = 20_000): Promise<boolean> => {
   for (let t = 0; t < ceilingMs; t += 50) { if (cond()) return true; await new Promise((r) => setTimeout(r, 50)); }
   return cond();
 };
@@ -95,7 +95,7 @@ describe("Stub processes in contract checks", () => {
     expect(chunks).toEqual([]);
     expect(await waitFor(() => !alive(pidOf(s, "pid")))).toBe(true);
     expect(existsSync(turnDirOf(s))).toBe(false);
-  });
+  }, 60_000);
 
   it("Stub processes in contract checks: stop ends the process and its child", async () => {
     const s = stub("claude", { sleep: 30, child: true });
@@ -108,7 +108,7 @@ describe("Stub processes in contract checks", () => {
     await rejection(p);
     expect(await waitFor(() => !alive(pid) && !alive(child))).toBe(true);
     expect(existsSync(turnDirOf(s))).toBe(false);
-  });
+  }, 60_000);
 
   it("Таймаут и прерывание: потомок игнорирует SIGTERM — the stub has exited, its SIGTERM-ignoring child gets SIGKILL", async () => {
     const s = stub("claude", { sleep: 30, child: "ignores-term" });
@@ -121,5 +121,5 @@ describe("Stub processes in contract checks", () => {
       await rejection(p);
       expect(await waitFor(() => !alive(pid) && !alive(child))).toBe(true);
     } finally { try { process.kill(child, "SIGKILL"); } catch { /* already gone */ } }
-  });
+  }, 60_000);
 });

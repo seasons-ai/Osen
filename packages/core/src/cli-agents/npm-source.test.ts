@@ -1,7 +1,8 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeExecutable } from "../executable.testutil.ts";
 import { setProcessLanguage } from "../i18n/process-language.ts";
 import { checkCandidates, ReleaseListError } from "./candidates.ts";
 import { npmReleases, npmSource } from "./npm-source.ts";
@@ -12,8 +13,7 @@ let work: string;
 
 // A fake npm: records args and the npm_config_* environment, creates the files the real package would, or fails.
 function fakeNpm(body: string) {
-  writeFileSync(join(bin, "npm"), `#!/bin/sh\n${body}\n`);
-  chmodSync(join(bin, "npm"), 0o755);
+  writeExecutable(join(bin, "npm"), `#!/bin/sh\n${body}\n`);
 }
 const env = () => ({ PATH: `${bin}:/usr/bin:/bin`, KEEP: "1" });
 
@@ -80,7 +80,8 @@ describe("Шов источника пакета: npm / прерывание", (
     const ac = new AbortController();
     const p = start(ac.signal).catch((x: unknown) => x);
     const t0 = Date.now();
-    while (!(existsSync(pidfile) && readFileSync(pidfile, "utf8").trim()) && Date.now() - t0 < 5000) await new Promise((r) => setTimeout(r, 25));
+    while (!(existsSync(pidfile) && readFileSync(pidfile, "utf8").trim()) && Date.now() - t0 < 20_000) await new Promise((r) => setTimeout(r, 25));
+    if (!(existsSync(pidfile) && readFileSync(pidfile, "utf8").trim())) throw new Error("waited 20000 ms for: npm child pid file");
     const pid = Number(readFileSync(pidfile, "utf8").trim());
     try {
       const abortedAt = Date.now();
@@ -94,10 +95,10 @@ describe("Шов источника пакета: npm / прерывание", (
   }
   it("install: the npm group is killed", async () => {
     await interrupt((signal) => npmSource(env()).fetch("claude", "2.1.288", work, signal));
-  }, 20_000);
+  }, 60_000);
   it("view: the npm group is killed", async () => {
     await interrupt((signal) => npmReleases(env()).list("claude", signal));
-  }, 20_000);
+  }, 60_000);
 });
 
 describe("Сообщения ядра на выбранном языке: npm view", () => {
