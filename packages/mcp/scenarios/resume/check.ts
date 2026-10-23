@@ -9,6 +9,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renam
 import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { killOwnedExecutor } from "./owned-executor.ts";
 import { eventsPath, materialPath, ownerMessagesDir, readEvents, readSession, resumeLockPath } from "@model-council/core";
 
 if (process.env.COUNCIL_DEV !== "1" || !process.env.COUNCIL_HOME?.trim()) {
@@ -122,6 +123,7 @@ const sessionIds = () => (existsSync(join(home, "sessions")) ? readdirSync(join(
 const stat = (id: string) => readSession(home, id)!.status;
 // Resume executors are detached (change 184): they outlive the server. Pids are only read from this stand's resume.lock files.
 const executorPids = new Set<number>();
+const exitedPids = new Set<number>(); // exit confirmed by the stand: never signalled again (the pid may be reused)
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const lockPid = async (id: string) => {
   const pid = await until(`${id}: executor pid in resume.lock`, () => Number(readFileSync(resumeLockPath(home, id), "utf8").trim()) || false);
@@ -132,6 +134,8 @@ async function stopAndWait(srv: Srv, id: string, pid: number) {
   await call(srv, "council_stop", { sessionId: id });
   await until(`${id}: stopped`, () => stat(id) === "stopped", 20000);
   await until(`${id}: executor ${pid} gone`, () => !alive(pid), 20000);
+  executorPids.delete(pid);
+  exitedPids.add(pid);
 }
 
 // ---- result output ----
@@ -441,7 +445,7 @@ async function main() {
       await stopAndWait(A, K2.id, pid);
       return `completed turns ${completed}, executor ${pid}`;
     } finally {
-      try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+      killOwnedExecutor(pid, home, exitedPids);
     }
   });
 
@@ -471,7 +475,7 @@ async function main() {
       await stopAndWait(A, W.id, pid);
       return `waitId ${w0.waitId}, executor ${pid}`;
     } finally {
-      try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+      killOwnedExecutor(pid, home, exitedPids);
     }
   });
 
@@ -520,7 +524,7 @@ try {
 } finally {
   for (const s of servers) { try { process.kill(s.pid, "SIGKILL"); } catch { /* already finished */ } }
   for (const k of kids) { try { k.kill("SIGKILL"); } catch { /* already finished */ } }
-  for (const p of executorPids) { try { process.kill(p, "SIGKILL"); } catch { /* already finished */ } }
+  for (const p of executorPids) killOwnedExecutor(p, home, exitedPids);
   console.log(`\nResult: ${passed} of ${total}`);
   console.log(`Stand: ${home} (${Math.round((Date.now() - t0) / 1000)} s)`);
 }
