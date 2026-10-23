@@ -167,9 +167,8 @@ describe("cliEnv", () => {
   });
 
   it("without dataDir only the cwd .env is read", () => {
-    const { dataDir, cwd } = setup("K_A=1\n", "K_C=1\n");
+    const { cwd } = setup("K_A=1\n", "K_C=1\n");
     expect(cliEnv({ K_A: "1", K_C: "1" }, { cwd, shell: {} })).toEqual({ K_A: "1" });
-    expect(dataDir).toBeTruthy();
   });
 
   it("does not change the input", () => {
