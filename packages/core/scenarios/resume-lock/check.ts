@@ -4,13 +4,16 @@
 // Legitimate rejections of the loser (code 2) are exactly two: «Сессию уже продолжает другой процесс.» (busy: the lock is taken) and
 // «идёт: исполнитель ещё работает.» (running: the winner has already written session_resumed, and planning sees a running session).
 // Any other reason (first of all «журнал сессии повреждён») and any other code is FAIL.
+// Round C1: a tail without a newline under a live executor gives running (CLI and MCP), after the stop — corrupted.
 // Writes only to COUNCIL_HOME (including scenarios in scen/) and does not delete it. LOCK_CHECK_PROCS (3..16, default 8), LOCK_CHECK_ROUNDS (default 5).
 import "../language-ru.ts";
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { readEvents, resumeLockPath, sessionDir } from "../../src/index.ts";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { eventsPath, readEvents, resumeLockPath, sessionDir } from "../../src/index.ts";
 
 if (process.env.COUNCIL_DEV !== "1" || !process.env.COUNCIL_HOME?.trim()) {
   console.error("COUNCIL_DEV=1 and COUNCIL_HOME are required. Usage: COUNCIL_DEV=1 COUNCIL_HOME=<folder> node packages/core/scenarios/resume-lock/check.ts");
@@ -50,17 +53,17 @@ for (const s of ["SIGINT", "SIGTERM"] as const) process.on(s, () => { killAll();
 
 const resp = (stance: string, solution: string | null) => ({ stance, reasoning: "Довод.", solution, answers: [], questions: [] });
 // Step 0 is the first round without agreement; step 1 is the resume turn: short for p1, slow for p2; agreement after that.
-function scen(tag: string, who: string): string {
+function scen(tag: string, who: string, delayMs = DELAY_MS): string {
   const steps = Array.from({ length: 6 }, (_, i) => ({
     response: i === 0 ? resp("amend", `Версия ${who}`) : resp("agree", null),
-    ...(i === 1 ? { delayMs: who === "p1" ? FAST_MS : DELAY_MS } : {}),
+    ...(i === 1 ? { delayMs: who === "p1" ? (delayMs === DELAY_MS ? FAST_MS : delayMs) : delayMs } : {}),
   }));
   const p = join(home, "scen", `${tag}-${who}.json`);
   writeFileSync(p, JSON.stringify({ steps }));
   return p;
 }
-async function createSession(tag: string): Promise<string> {
-  const c = council(["--topic", "Как назвать кота", "--participant", `scripted:${scen(tag, "p1")}`, "--participant", `scripted:${scen(tag, "p2")}`, "--max-rounds", "1"]);
+async function createSession(tag: string, delayMs = DELAY_MS): Promise<string> {
+  const c = council(["--topic", "Как назвать кота", "--participant", `scripted:${scen(tag, "p1", delayMs)}`, "--participant", `scripted:${scen(tag, "p2", delayMs)}`, "--max-rounds", "1"]);
   await c.done;
   const id = /^Сессия (\S+) ·/m.exec(c.out)?.[1];
   if (!id || c.code !== 3) throw new Error(`${tag}: initial session: code ${c.code} (expected 3), id ${id}\n${c.out}\n${c.err}`);
@@ -108,9 +111,55 @@ async function round(kind: "A" | "B", n: number) {
   if (problems.length) failed.push(label);
 }
 
+// Round C: a live executor and a line being written. The executor holds the session in a slow turn; a tail without "\n" is appended
+// (a line in progress). A second `council resume` and `council_resume` over MCP stdio must answer running, not corrupted, and leave the bytes.
+// After `council stop` the tail stays and the executor is dead: `council resume` answers corrupted.
+const CORRUPTED = "журнал сессии повреждён";
+async function tailRound() {
+  total++;
+  const problems: string[] = [];
+  const check = (ok: boolean, what: string, got: unknown) => { if (!ok) problems.push(`${what}: got ${got}`); };
+  const id = await createSession("c1", 30_000);
+  const exec = council(["resume", id, "--rounds", "1"]);
+  const t0 = Date.now();
+  const started = () => { const ev = readEvents(home, id)?.events ?? []; const i = ev.findIndex((e) => e.type === "session_resumed"); return i >= 0 && ev.slice(i).some((e) => e.type === "turn_started"); };
+  while (!started()) {
+    if (exec.code !== null || Date.now() - t0 > 20_000) throw new Error(`C1: the executor did not start a resume turn (code ${exec.code})\n${exec.err}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  appendFileSync(eventsPath(home, id), '{"seq":999,"ts":"2026-01-01T00:00:00.000Z","type":"turn_st');
+  const before = readFileSync(eventsPath(home, id));
+  const second = council(["resume", id, "--rounds", "1"]);
+  await second.done;
+  check(second.code === 2 && second.err.includes(RUNNING) && !second.err.includes(CORRUPTED), "second council resume: code 2 and running", `code ${second.code}: ${second.err.trim().slice(0, 160)}`);
+  const transport = new StdioClientTransport({ command: process.execPath, args: [join(root, "packages/mcp/src/main.ts")], cwd: root, stderr: "ignore", env });
+  const client = new Client({ name: "resume-lock-check", version: "0" });
+  await client.connect(transport);
+  let mcp: string;
+  try {
+    const r = (await client.callTool({ name: "council_resume", arguments: { sessionId: id, rounds: 1 } })) as { isError?: boolean; content: { text?: string }[] };
+    mcp = `${r.isError ? "isError " : ""}${r.content[0]?.text ?? ""}`;
+  } finally { await client.close(); }
+  check(mcp.startsWith("isError running:"), "council_resume over MCP: running", mcp.slice(0, 160));
+  check(readFileSync(eventsPath(home, id)).equals(before), "journal bytes after the two refusals", "changed");
+  check(exec.code === null, "the executor is alive after the refusals", `exited with ${exec.code}`);
+  const stop = council(["stop", id]);
+  await stop.done;
+  await exec.done;
+  check(readFileSync(eventsPath(home, id)).includes(Buffer.from('"type":"turn_st')), "the tail after the stop", "gone");
+  const after = readFileSync(eventsPath(home, id));
+  const third = council(["resume", id, "--rounds", "1"]);
+  await third.done;
+  check(third.code === 2 && third.err.includes(CORRUPTED), "council resume after the stop: corrupted", `code ${third.code}: ${third.err.trim().slice(0, 160)}`);
+  check(readFileSync(eventsPath(home, id)).equals(after), "journal bytes after the corrupted refusal", "changed");
+  console.log(`${problems.length ? "FAIL" : "OK  "} round C1 session ${id}: tail without a newline under a live executor — council resume and council_resume running; after stop — corrupted, bytes unchanged${problems.length ? "\n      " + problems.join("\n      ") : ""}`);
+  if (problems.length) failed.push("C1");
+}
+
 try {
   console.log(`council resume processes per round: ${N}, repeats of each kind: ${R}, COUNCIL_HOME=${home}`);
   for (const kind of ["A", "B"] as const) for (let n = 1; n <= R; n++) await round(kind, n);
+  await tailRound();
 } catch (e) {
   console.error(`Stand aborted: ${(e as Error).message}`);
   killAll();
