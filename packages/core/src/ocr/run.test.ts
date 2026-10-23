@@ -7,6 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { DOC_LIMITS } from "../documents/limits.ts";
 import { materialsMessages } from "../messages/materials.ts";
 import { makeImage } from "./fixture.ts";
+import { writeExecutable } from "../executable.testutil.ts";
 import { imageReason, OCR_LIMITS, runOcrHelper, setOcrRuntime, type OcrImageRequest } from "./run.ts";
 
 const REQ: OcrImageRequest = { mode: "image", ms: 10_000, rssBytes: OCR_LIMITS.rssBytes };
@@ -17,10 +18,13 @@ beforeAll(() => { dir = realpathSync(mkdtempSync(join(tmpdir(), "ocr-run-"))); }
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 afterEach(() => { setOcrRuntime(); delete process.env.COUNCIL_OCR_HELPER; });
 
-let n = 0;
+// one executable stub per file, rewritten in place: a new inode per call pays the macOS first-launch check
+// (seconds under load) inside the helper deadline; a non-executable stub goes to its own path by a plain write
 function stub(body: string, mode = 0o755): string {
-  const f = join(dir, `stub-${n++}.sh`);
-  writeFileSync(f, `#!/bin/sh\n${body}\n`);
+  const text = `#!/bin/sh\n${body}\n`;
+  if (mode & 0o111) return writeExecutable(join(dir, "stub.sh"), text, mode);
+  const f = join(dir, "stub-plain.sh");
+  writeFileSync(f, text);
   chmodSync(f, mode);
   return f;
 }
