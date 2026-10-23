@@ -78,7 +78,12 @@ export function loadTemplates(dirs: { builtinDir: string; userDir: string; langu
   for (const t of [...readDir(builtinDir, "builtin", errors), ...readDir(dirs.userDir, "user", errors)]) all.set(t.id, t);
   const templates = [...all.values()].sort((a, b) => a.category.localeCompare(b.category, language) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-  let neutralFraming = readNeutral(dirs.userDir);
+  let neutralFraming: string | null = null;
+  try {
+    neutralFraming = readNeutral(dirs.userDir);
+  } catch (e) {
+    errors.push({ source: "user", file: NEUTRAL_FRAMING_FILE, reason: templateMessages().cannotRead(errText(e)) });
+  }
   if (neutralFraming === "") errors.push({ source: "user", file: NEUTRAL_FRAMING_FILE, reason: templateMessages().neutralEmpty });
   if (!neutralFraming) {
     neutralFraming = readNeutral(builtinDir);
