@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,7 +7,10 @@ import type { ZipPart } from "./documents/fixture.ts";
 import { makePdf } from "./pdf/fixture.ts";
 import { setProcessLanguage } from "./i18n/process-language.ts";
 import { materialsMessages } from "./messages/materials.ts";
-import { setOcrRuntime } from "./ocr/run.ts";
+import { setDocumentExtractorRuntime, DOC_NOT_CACHED } from "./documents/extract.ts";
+import { writeExecutable } from "./executable.testutil.ts";
+import { OCR_NOT_CACHED, setOcrRuntime } from "./ocr/run.ts";
+import { PDF_NOT_CACHED, setPdfExtractorRuntime, setPdfOcrTesting } from "./pdf/extract.ts";
 import { archiveEntryPath, expandArchive } from "./materials-archive.ts";
 import { collectMaterials, collectSessionMaterials, MaterialsError, type CollectOptions } from "./materials.ts";
 import { readWorkspaceSnapshot, workspaceDir, writeWorkspaceSnapshot } from "./store/journal.ts";
@@ -17,7 +20,7 @@ const opts: CollectOptions = { materialsChars: 100_000, materialsIgnore: ["node_
 const m = () => materialsMessages();
 let root: string;
 beforeEach(() => { root = realpathSync(mkdtempSync(join(tmpdir(), "materials-archive-"))); });
-afterEach(() => { setOcrRuntime(); setProcessLanguage("ru"); rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { setOcrRuntime(); setDocumentExtractorRuntime(); setPdfExtractorRuntime(); setPdfOcrTesting(); setProcessLanguage("ru"); rmSync(root, { recursive: true, force: true }); });
 
 function put(rel: string, content: string | Uint8Array): string {
   const f = join(root, rel);
@@ -263,4 +266,235 @@ describe("ZIP archive as a folder", () => {
     const f = zipAt("redos.zip", [{ name: ".gitignore", data: `${" ".repeat(200_000)}x\n`, method: 0 }, { name: "a.txt", data: "a" }]);
     expect(names(collectMaterials([f], opts))).toEqual(["redos.zip/a.txt"]);
   }, 5000);
+
+  it("Архив ZIP как папка: имена без флага UTF-8 — CP866 или UTF-8", () => {
+    const cp866 = Uint8Array.from([0x8e, 0xe2, 0xe7, 0xf1, 0xe2, 0x2e, 0x74, 0x78, 0x74]);
+    const f = zipAt("n.zip", [{ name: cp866, data: "cp" }, { name: "readme.txt", data: "r" }]);
+    expect(collectMaterials([f], opts).materials.map((x) => [x.name, x.text])).toEqual([["n.zip/readme.txt", "r"], ["n.zip/Отчёт.txt", "cp"]]);
+    const u = zipAt("u.zip", [{ name: Buffer.from("Отчёт.txt"), data: "u" }]);
+    expect(names(collectMaterials([u], opts))).toEqual(["u.zip/Отчёт.txt"]);
+    const bad = zipAt("bad.zip", [{ name: cp866, utf8Flag: true, data: "cp" }]);
+    expect(refusal(() => collectMaterials([bad], opts)).reasons).toEqual([`«${bad}»: ${m().archiveDamaged}`]);
+    expect(m().archiveDamaged).toBe("архив повреждён");
+  }, SLOW);
+
+  it("Архив ZIP как папка: запись с неподдерживаемым методом пропущена с причиной, остальные собраны", () => {
+    const reasons = { ru: "запись сжата неподдерживаемым методом — читаются только записи без сжатия и Deflate", en: "entry is compressed with an unsupported method — only stored and Deflate entries are read" };
+    for (const lang of ["ru", "en"] as const) {
+      setProcessLanguage(lang);
+      for (const method of [12, 14, 93]) {
+        const f = zipAt(`m${method}${lang}.zip`, [{ name: "a.txt", data: "a", method: 0 }, { name: "b.txt", data: "junk", method }]);
+        const set = collectMaterials([f], opts);
+        expect(names(set)).toEqual([`m${method}${lang}.zip/a.txt`]);
+        expect(reasonOf(set, `m${method}${lang}.zip/b.txt`)).toBe(reasons[lang]);
+      }
+    }
+  }, SLOW);
+
+  it("Архив ZIP как папка: все записи с неподдерживаемым методом — отказ перечнем пропусков", () => {
+    const f = zipAt("all.zip", [{ name: "a.txt", data: "a", method: 12 }, { name: "b.txt", data: "b", method: 14 }]);
+    expect(refusal(() => collectMaterials([f], opts)).reasons).toEqual([`«${f}»: ${m().archiveNoFiles(2)}`, `«${f}»: all.zip/a.txt — ${m().archiveMethod}`, `«${f}»: all.zip/b.txt — ${m().archiveMethod}`]);
+  }, SLOW);
+
+  it("Архив ZIP как папка: .gitignore с неподдерживаемым методом — строка с причиной, правила не применены", () => {
+    const f = zipAt("g.zip", [{ name: ".gitignore", data: "out/\n", method: 12 }, { name: "out/x.txt", data: "x", method: 0 }, { name: "a.txt", data: "a", method: 0 }]);
+    const set = collectMaterials([f], opts);
+    expect(names(set)).toEqual(["g.zip/a.txt", "g.zip/out/x.txt"]);
+    expect(reasonOf(set, "g.zip/.gitignore")).toBe(m().archiveMethod);
+  }, SLOW);
+});
+
+// header-valid PNG without pixels: enough for a stub helper
+function png(): Buffer {
+  const u32 = (v: number) => { const b = Buffer.alloc(4); b.writeUInt32BE(v); return b; };
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), u32(13), Buffer.from("IHDR"), u32(10), u32(10), Buffer.alloc(5)]);
+}
+let stubN = 0;
+const OCR_OK = { ok: true, lines: [{ t: "stub text", x: 0, y: 0, w: 1, h: 0.1 }] };
+function ocrHelper(reply: unknown): void {
+  setOcrRuntime({ helper: writeExecutable(join(root, `stub-${stubN++}.sh`), `#!/bin/sh\nC=$(/bin/cat)\nprintf '%s\\n' '${JSON.stringify(reply)}'\n`) });
+}
+const noHelper = (): void => setOcrRuntime({ helper: join(root, "absent-osen-ocr") });
+function unstartableHelper(): void {
+  const f = join(root, `stub-${stubN++}.sh`);
+  writeFileSync(f, "#!/bin/sh\nexit 0\n");
+  chmodSync(f, 0o644);
+  setOcrRuntime({ helper: f });
+}
+// Substitute extractor: a document entry starting with PK\x03\x04BOOM gets REPLY, everything else (the archive itself, list and read modes) goes to the real extractor.
+const BOOM = Buffer.concat([Buffer.from([0x50, 0x4b, 3, 4]), Buffer.from("BOOM")]);
+const DOC_STUB = `import { appendFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+const arg = process.argv[2];
+const chunks = [];
+for await (const c of process.stdin) chunks.push(c);
+const input = Buffer.concat(chunks);
+if (process.env.COUNT_FILE) appendFileSync(process.env.COUNT_FILE, "x\\n");
+if (!JSON.parse(arg).mode && input.subarray(4, 8).toString() === "BOOM") { process.stdout.write(process.env.REPLY + "\\n"); process.exit(0); }
+const r = spawnSync(process.execPath, [process.env.REAL, arg], { input, env: {}, maxBuffer: 2 ** 28 });
+process.stdout.write(r.stdout);
+process.exit(r.status ?? 1);
+`;
+function docExtractor(reply: unknown, countFile?: string): void {
+  const script = join(root, "doc-stub.mjs");
+  writeFileSync(script, DOC_STUB);
+  setDocumentExtractorRuntime({ script, env: { REPLY: JSON.stringify(reply), REAL: join(import.meta.dirname, "documents/doc-extract.ts"), ...(countFile ? { COUNT_FILE: countFile } : {}) } });
+}
+const DOC_OK = { ok: true, text: "doc text", format: "docx" };
+const PDF_STUB = `for await (const c of process.stdin);\nprocess.stdout.write(process.env.REPLY + "\\n");\n`;
+function pdfExtractor(reply: unknown): void {
+  const script = join(root, "pdf-stub.mjs");
+  writeFileSync(script, PDF_STUB);
+  setPdfExtractorRuntime({ script, env: { REPLY: JSON.stringify(reply) } });
+}
+const PDF_OK = { ok: true, text: "pdf text", pages: 1 };
+const PDF_SCAN = { ok: true, pages: 1, parts: [""], blank: [1] };
+
+describe("Архив ZIP как папка: повторный сбор после временного сбоя записи", () => {
+  const archive = (rel: string, extra: ZipPart[]): string => zipAt(rel, [{ name: "note.txt", data: "n" }, ...extra]);
+
+  it("a missing OCR helper is not cached: the scan becomes a material once the helper appears", () => {
+    const f = archive("ocr.zip", [{ name: "scan.png", data: png() }]);
+    noHelper();
+    const first = collectMaterials([f], opts);
+    expect(names(first)).toEqual(["ocr.zip/note.txt"]);
+    expect(reasonOf(first, "ocr.zip/scan.png")).toBe(m().imgMissing);
+    ocrHelper(OCR_OK);
+    expect(collectMaterials([f], opts).materials.map((x) => [x.name, x.text])).toEqual([["ocr.zip/note.txt", "n"], ["ocr.zip/scan.png", "stub text"]]);
+  }, SLOW);
+
+  it("a helper that exceeds the deadline is not cached", () => {
+    const f = archive("slow.zip", [{ name: "scan.png", data: png() }]);
+    ocrHelper({ ok: false, code: "timeout" });
+    expect(reasonOf(collectMaterials([f], opts), "slow.zip/scan.png")).toBe(m().imgTimeout(30));
+    ocrHelper(OCR_OK);
+    expect(names(collectMaterials([f], opts))).toEqual(["slow.zip/note.txt", "slow.zip/scan.png"]);
+  }, SLOW);
+
+  it("a document extractor timeout on an entry is not cached", () => {
+    const f = archive("doc.zip", [{ name: "d.docx", data: BOOM }]);
+    docExtractor({ ok: false, code: "timeout" });
+    expect(reasonOf(collectMaterials([f], opts), "doc.zip/d.docx")).toBe(m().docTimeout(30));
+    docExtractor(DOC_OK);
+    expect(collectMaterials([f], opts).materials.map((x) => [x.name, x.text])).toEqual([["doc.zip/d.docx", "doc text"], ["doc.zip/note.txt", "n"]]);
+  }, SLOW);
+
+  it("an archive with only a scan and no helper is refused with the skip list, the next collection reads it", () => {
+    const f = zipAt("only.zip", [{ name: "scan.png", data: png() }]);
+    noHelper();
+    expect(refusal(() => collectMaterials([f], opts)).reasons).toEqual([`«${f}»: ${m().archiveNoFiles(1)}`, `«${f}»: only.zip/scan.png — ${m().imgMissing}`]);
+    ocrHelper(OCR_OK);
+    expect(collectMaterials([f], opts).materials.map((x) => [x.name, x.text])).toEqual([["only.zip/scan.png", "stub text"]]);
+  }, SLOW);
+
+  it("an unchanged archive without transient skips is not read again", () => {
+    const f = archive("cached.zip", [{ name: "d.docx", data: BOOM }]);
+    const count = join(root, "count");
+    docExtractor(DOC_OK, count);
+    const first = collectMaterials([f], opts);
+    const launches = readFileSync(count, "utf8");
+    expect(launches.length).toBeGreaterThan(0);
+    expect(collectMaterials([f], opts)).toEqual(first);
+    expect(readFileSync(count, "utf8")).toBe(launches);
+  }, SLOW);
+
+  // Every code of the three exported lists: a second collection reads the entry again; damaged and no_text are served from the cache.
+  // Excluded: PDF ocr_folder — an archive PDF gets no folder budget (extractPdfText is called without one), so the code cannot occur for an entry.
+  const PDF_EXCLUDED = ["ocr_folder"];
+  const PDF_VIA_HELPER: Record<string, "missing" | "start" | "page_timeout" | "timeout" | "memory" | "failed"> = {
+    ocr_missing: "missing", ocr_start: "start", ocr_page_timeout: "page_timeout", ocr_timeout: "timeout", ocr_memory: "memory", ocr_failed: "failed",
+  };
+  const OCR_PRODUCE: Record<string, () => void> = {
+    timeout: () => ocrHelper({ ok: false, code: "timeout" }), memory: () => ocrHelper({ ok: false, code: "memory" }), missing: noHelper, start: unstartableHelper,
+    failed: () => ocrHelper({ ok: false, code: "vision" }), damaged: () => ocrHelper({ ok: false, code: "damaged" }), no_text: () => ocrHelper({ ok: false, code: "no_text" }),
+  };
+  const cases: { kind: string; code: string; transient: boolean; entry: ZipPart; produce: () => void; succeed: () => void }[] = [
+    ...[...OCR_NOT_CACHED, "damaged", "no_text"].map((code) => ({
+      kind: "ocr", code, transient: OCR_NOT_CACHED.includes(code as never), entry: { name: "scan.png", data: png() }, produce: OCR_PRODUCE[code]!, succeed: () => ocrHelper(OCR_OK),
+    })),
+    ...[...DOC_NOT_CACHED, "damaged", "no_text"].map((code) => ({
+      kind: "doc", code, transient: DOC_NOT_CACHED.includes(code as never), entry: { name: "d.docx", data: BOOM }, produce: () => docExtractor({ ok: false, code }), succeed: () => docExtractor(DOC_OK),
+    })),
+    ...[...PDF_NOT_CACHED.filter((c) => !PDF_EXCLUDED.includes(c)), "damaged", "no_text"].map((code) => ({
+      kind: "pdf", code, transient: PDF_NOT_CACHED.includes(code as never), entry: { name: "p.pdf", data: "%PDF-1.4 stub" },
+      produce: () => {
+        const via = PDF_VIA_HELPER[code];
+        if (via) { pdfExtractor(PDF_SCAN); setPdfOcrTesting({ run: () => ({ ok: false, code: via }) }); } else pdfExtractor({ ok: false, code });
+      },
+      succeed: () => { setPdfOcrTesting(); pdfExtractor(PDF_OK); },
+    })),
+  ];
+
+  it("every code of the exported lists has a producer", () => {
+    const covered = new Set(cases.filter((c) => c.transient).map((c) => `${c.kind}:${c.code}`));
+    const listed = [...OCR_NOT_CACHED.map((c) => `ocr:${c}`), ...DOC_NOT_CACHED.map((c) => `doc:${c}`), ...PDF_NOT_CACHED.filter((c) => !PDF_EXCLUDED.includes(c)).map((c) => `pdf:${c}`)];
+    expect(listed.filter((k) => !covered.has(k))).toEqual([]);
+    expect(OCR_PRODUCE).toBeDefined();
+  });
+
+  it.each(cases.map((c, i) => ({ ...c, i })))("$kind $code: transient=$transient", ({ i, kind, code, transient, entry, produce, succeed }) => {
+    const f = archive(`c${i}.zip`, [entry]);
+    produce();
+    const first = collectMaterials([f], opts);
+    expect(names(first), `${kind}:${code}`).toEqual([`c${i}.zip/note.txt`]);
+    const reason = reasonOf(first, `c${i}.zip/${entry.name as string}`);
+    expect(reason).toBeDefined();
+    succeed();
+    const second = collectMaterials([f], opts);
+    if (transient) {
+      expect(names(second)).toContain(`c${i}.zip/${entry.name as string}`);
+      expect(reasonOf(second, `c${i}.zip/${entry.name as string}`)).toBeUndefined();
+    } else {
+      expect(names(second)).toEqual([`c${i}.zip/note.txt`]);
+      expect(reasonOf(second, `c${i}.zip/${entry.name as string}`)).toBe(reason);
+    }
+  }, SLOW);
+});
+
+describe("Архив ZIP как папка: показ пропусков и причины", () => {
+  it("an archive inside a folder that is also attached separately is expanded, not skipped", () => {
+    put("d/notes.md", "n");
+    const z = put("d/export.zip", makeZip([{ name: "a.txt", data: "a" }]));
+    for (const paths of [[join(root, "d"), z], [z, join(root, "d")]]) {
+      const set = collectMaterials(paths, opts);
+      expect(names(set).sort()).toEqual(["d/notes.md", "export.zip/a.txt"]);
+      expect(set.skipped.map((s) => s.name)).not.toContain("d/export.zip");
+    }
+    const alone = collectMaterials([join(root, "d")], opts);
+    expect(reasonOf(alone, "d/export.zip")).toBe(m().archiveInFolder);
+  }, SLOW);
+
+  it("a NUL in an unsafe entry name is shown as \\u0000, also for a repeated name", () => {
+    const one = zipAt("nul.zip", [{ name: "a/\u0000b.txt", data: "x" }, { name: "ok.txt", data: "o" }]);
+    expect(collectMaterials([one], opts).skipped).toEqual([{ name: "nul.zip/a/\\u0000b.txt", reason: m().archiveUnsafeName }]);
+    const two = zipAt("nul2.zip", [{ name: "a/\u0000b.txt", data: "x" }, { name: "a/\u0000b.txt", data: "y" }]);
+    const lines = refusal(() => collectMaterials([two], opts)).reasons;
+    expect(lines.join("\n")).not.toContain("\u0000");
+    expect(lines.filter((l) => l.includes("nul2.zip/a/\\u0000b.txt"))).toHaveLength(2);
+  }, SLOW);
+});
+
+describe("Архив ZIP как папка: причина сбоя процесса извлечения на языке сессии", () => {
+  const STUB = `for await (const c of process.stdin);
+if (!JSON.parse(process.argv[2]).mode) { process.stdout.write('{"ok":false,"code":"unsupported"}\\n'); process.exit(0); }
+if (process.env.MODE === "exit") process.exit(3);
+if (process.env.MODE === "signal") process.kill(process.pid, "SIGKILL");
+process.stdout.write('{"ok":false,"code":"failed","detail":"worker exit"}\\n');
+`;
+  const expected = {
+    ru: { exit: "процесс извлечения завершился с кодом 3", signal: "процесс извлечения остановлен сигналом SIGKILL", reply: "рабочий поток извлечения остановился" },
+    en: { exit: "the extraction process exited with code 3", signal: "the extraction process was stopped by signal SIGKILL", reply: "the extraction worker stopped" },
+  };
+  it.each(["ru", "en"] as const)("%s: exit code, signal and worker failure come from the catalog", (lang) => {
+    setProcessLanguage(lang);
+    const script = join(root, "fail-stub.mjs");
+    writeFileSync(script, STUB);
+    for (const mode of ["exit", "signal", "reply"] as const) {
+      setDocumentExtractorRuntime({ script, env: { MODE: mode } });
+      const f = zipAt(`${lang}${mode}.zip`, [{ name: "a.txt", data: "a" }]);
+      const reasons = refusal(() => collectMaterials([f], opts)).reasons;
+      expect(reasons).toEqual([`«${f}»: ${m().archiveFailed(expected[lang][mode])}`]);
+      expect(reasons[0]).not.toMatch(/\bexit \d|worker error|worker exit/);
+    }
+  }, SLOW);
 });

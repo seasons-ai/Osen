@@ -22,6 +22,7 @@ export function openZip(bytes: Uint8Array, limits: Pick<DocLimits, "ratio" | "un
   if (count === 0xffff || cdSize === MAX32 || cdOffset === MAX32 || count === 0 || cdOffset + cdSize > bytes.length) bad();
   const entries = new Map<string, ZipEntry>();
   const decoder = new TextDecoder("utf-8", { fatal: true });
+  const cp866 = new TextDecoder("ibm866");
   let pos = cdOffset;
   for (let n = 0; n < count; n++) {
     if (pos + 46 > bytes.length || v.getUint32(pos, true) !== CEN) bad();
@@ -29,7 +30,9 @@ export function openZip(bytes: Uint8Array, limits: Pick<DocLimits, "ratio" | "un
     const end = pos + 46 + nameLen + extraLen + commentLen;
     if (end > cdOffset + cdSize) bad();
     let name = "";
-    try { name = decoder.decode(bytes.subarray(pos + 46, pos + 46 + nameLen)); } catch { bad(); }
+    const raw = bytes.subarray(pos + 46, pos + 46 + nameLen);
+    // flag bit 11: UTF-8 or the archive is damaged; without it UTF-8 when valid, else CP866 (the legacy DOS code page of archivers)
+    try { name = decoder.decode(raw); } catch { if (v.getUint16(pos + 8, true) & 0x800) bad(); name = cp866.decode(raw); }
     const localOffset = v.getUint32(pos + 42, true);
     if (localOffset === MAX32) bad();
     if (entries.has(name)) {

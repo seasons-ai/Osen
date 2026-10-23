@@ -1,7 +1,7 @@
 import { DocError, type DocFailure, type DocLimits } from "./limits.ts";
 import { openZip, type Zip, type ZipEntry } from "./zip.ts";
 
-export type ArchiveEntryKind = "file" | "dir" | "symlink" | "encrypted";
+export type ArchiveEntryKind = "file" | "dir" | "symlink" | "encrypted" | "method";
 export interface ArchiveEntry { name: string; size: number; kind: ArchiveEntryKind }
 export type ArchiveList = { ok: true; entries: ArchiveEntry[]; duplicates: string[] } | { ok: false; code: DocFailure };
 export type ArchiveRead = { ok: true; entries: ({ i: number; data: string } | { i: number; code: DocFailure })[] } | { ok: false; code: DocFailure };
@@ -12,7 +12,8 @@ const MAX32 = 0xffffffff;
 function kindOf(e: ZipEntry): ArchiveEntryKind {
   if (e.name.endsWith("/")) return "dir";
   if ((e.madeBy >>> 8) === 3 && ((e.external >>> 16) & 0o170000) === 0o120000) return "symlink";
-  return e.flags & 1 ? "encrypted" : "file";
+  if (e.flags & 1) return "encrypted";
+  return e.method !== 0 && e.method !== 8 ? "method" : "file";
 }
 
 export function listArchive(bytes: Uint8Array, limits: Limits): ArchiveList {
@@ -27,8 +28,9 @@ export function listArchive(bytes: Uint8Array, limits: Limits): ArchiveList {
   if (all.length + duplicates.length > limits.parts) return { ok: false, code: "zip_parts" };
   if (all.reduce((sum, e) => sum + e.size, 0) > limits.unpackedBytes) return { ok: false, code: "zip_size" };
   for (const e of all) {
-    if (kindOf(e) === "dir" || kindOf(e) === "encrypted") continue;
-    if ((e.method !== 0 && e.method !== 8) || e.size === MAX32 || e.compressedSize === MAX32) return { ok: false, code: "damaged" };
+    const kind = kindOf(e);
+    if (kind === "dir" || kind === "encrypted" || kind === "method") continue;
+    if (e.size === MAX32 || e.compressedSize === MAX32) return { ok: false, code: "damaged" };
     if (e.size > 0 && (e.compressedSize === 0 || e.size / e.compressedSize > limits.ratio)) return { ok: false, code: "zip_ratio" };
   }
   try {
