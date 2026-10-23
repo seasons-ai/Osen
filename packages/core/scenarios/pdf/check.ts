@@ -11,6 +11,7 @@ import { chmodSync, closeSync, copyFileSync, existsSync, ftruncateSync, mkdirSyn
 import net from "node:net";
 import { join, resolve } from "node:path";
 import { PDF_LIMITS, extractPdfText, sha256Of } from "../../src/index.ts";
+import { findOldReason } from "./old-reason.ts";
 import { makeEncryptedPdf, makeImageOnlyPdf, makeMalformedPdf, makePdf, makeScanPdf } from "../../src/pdf/fixture.ts";
 
 const repo = resolve(import.meta.dirname, "../../../..");
@@ -386,16 +387,7 @@ async function main() {
   const textOf = (r: ReturnType<typeof spawnSync>) => { const j = JSON.parse(r.stdout.toString().trim()); return j.ok ? j.text : `REJECTED ${JSON.stringify(j)}`; };
   // The old refusal reason must be gone from the sources, docs and mockups (the literal is split so this file does not match itself).
   const OLD = ["в PDF нет", " текстового слоя", " — распознавание не выполняется"].join("");
-  const hits: string[] = [];
-  const walk = (d: string) => {
-    for (const e of readdirSync(d, { withFileTypes: true })) {
-      if (e.name === "node_modules" || e.name === "out" || e.name === "bin" || e.name === "release" || e.name === "dist" || e.name.startsWith(".")) continue;
-      const f = join(d, e.name);
-      if (e.isDirectory()) walk(f);
-      else if (e.isFile() && statSync(f).size < 4 * 2 ** 20 && readFileSync(f, "utf8").includes(OLD)) hits.push(f);
-    }
-  };
-  for (const d of ["packages", "docs", "design"]) if (existsSync(join(repo, d))) walk(join(repo, d));
+  const hits = findOldReason(repo, OLD);
   assert.deepEqual(hits, [], "the old «no text layer» reason is still present");
   ok("the old no-text-layer refusal reason is absent from packages/, docs/, design/");
   const sourceScan = spawnSync(process.execPath, [join(repo, "packages/core/src/pdf/pdf-extract.ts"), arg], { input: ocrBytes, env: {}, timeout: 30000, maxBuffer: 2 ** 26 });
