@@ -1,5 +1,6 @@
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { writeExecutable } from "../executable.testutil.ts";
+import { linkExecutable } from "../executable.testutil.ts";
 
 // Node stub of a CLI for the acceptance probes: codex-style JSONL output, or claude-style JSON when argv has --print.
 // The mode comes from STUB_MODE in the environment:
@@ -23,6 +24,8 @@ import { writeExecutable } from "../executable.testutil.ts";
 // STUB_LOG (optional): every turn launch appends its pid, one line per launch.
 // STUB_ARGV_LOG (optional): every launch appends its full argv (space-joined, one line), before any mode is applied.
 // Options (writeAcceptanceStub): version line for --version, help text for --help, features text for `features list`; each answers only when given.
+// They are read from <script>.json (always written, so the script text is identical for every call and can be hard-linked);
+// a missing or unreadable json makes the stub print its path to stderr and exit 1.
 const SCRIPT = `const fs = require("node:fs");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
@@ -85,7 +88,8 @@ export interface StubInspection { version?: string; help?: string; features?: st
 /** Writes the stub into dir and returns its path; the shebang is the running node, so PATH is not needed. */
 export function writeAcceptanceStub(dir: string, inspection: StubInspection = {}): string {
   const file = join(dir, "cli-stub.js");
-  const head = `const INSPECTION = ${JSON.stringify(inspection)};\nconst argv = process.argv.slice(2);\nif (process.env.STUB_ARGV_LOG) require("node:fs").appendFileSync(process.env.STUB_ARGV_LOG, argv.join(" ") + "\\n");\nconst HANG = { help_hang: argv.includes("--help"), features_hang: argv[0] === "features" }[process.env.STUB_MODE];\nif (process.env.STUB_MODE === "help_fail" && argv.includes("--help")) { process.stderr.write("boom"); process.exit(3); }\nif (HANG) { const c = require("node:child_process").spawn("sleep", ["30"], { stdio: "ignore" }); require("node:fs").writeFileSync(process.env.STUB_PIDFILE, String(c.pid)); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0); }\nif (argv.includes("--version") && INSPECTION.version !== undefined) { process.stdout.write(INSPECTION.version + "\\n"); process.exit(0); }\nif (argv.includes("--help") && INSPECTION.help !== undefined) { process.stdout.write(INSPECTION.help); process.exit(0); }\nif (argv[0] === "features" && INSPECTION.features !== undefined) { process.stdout.write(INSPECTION.features); process.exit(0); }\n`;
-  writeExecutable(file, `#!${process.execPath}\n${head}${SCRIPT}`);
+  const head = `let INSPECTION;\ntry { INSPECTION = JSON.parse(require("node:fs").readFileSync(__filename + ".json", "utf8")); } catch { process.stderr.write("cannot read " + __filename + ".json\\n"); process.exit(1); }\nconst argv = process.argv.slice(2);\nif (process.env.STUB_ARGV_LOG) require("node:fs").appendFileSync(process.env.STUB_ARGV_LOG, argv.join(" ") + "\\n");\nconst HANG = { help_hang: argv.includes("--help"), features_hang: argv[0] === "features" }[process.env.STUB_MODE];\nif (process.env.STUB_MODE === "help_fail" && argv.includes("--help")) { process.stderr.write("boom"); process.exit(3); }\nif (HANG) { const c = require("node:child_process").spawn("sleep", ["30"], { stdio: "ignore" }); require("node:fs").writeFileSync(process.env.STUB_PIDFILE, String(c.pid)); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0); }\nif (argv.includes("--version") && INSPECTION.version !== undefined) { process.stdout.write(INSPECTION.version + "\\n"); process.exit(0); }\nif (argv.includes("--help") && INSPECTION.help !== undefined) { process.stdout.write(INSPECTION.help); process.exit(0); }\nif (argv[0] === "features" && INSPECTION.features !== undefined) { process.stdout.write(INSPECTION.features); process.exit(0); }\n`;
+  writeFileSync(`${file}.json`, JSON.stringify(inspection));
+  linkExecutable(file, `#!${process.execPath}\n${head}${SCRIPT}`);
   return file;
 }

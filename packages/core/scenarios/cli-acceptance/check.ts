@@ -13,6 +13,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdir
 import { homedir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { isInsideRepo } from "../inside-repo.ts";
+import { detachExecutable } from "../../src/executable.testutil.ts";
 import { findPersonalData } from "../../src/cli-agents/turn-fixtures.ts";
 
 if (process.env.COUNCIL_DEV !== "1") {
@@ -306,7 +307,9 @@ try {
   // ---- 6b: changed installed file ----
   const h6b = H("changed");
   await install(h6b);
-  appendFileSync(stubOf(h6b)!, "\n// changed\n");
+  const changed = stubOf(h6b)!;
+  detachExecutable(changed);
+  appendFileSync(changed, "\n// changed\n");
   const rb = await accept(h6b, ["--candidate", "--max-calls", "7"]);
   assert.equal(rb.code, 2, rb.err);
   assert.match(rb.err, /sha256/);

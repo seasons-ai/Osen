@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { detachExecutable } from "./executable.testutil.ts";
 import { main } from "./cli.ts";
 import { writeAcceptanceStub } from "./cli-agents/acceptance-stub.fixture.ts";
 import { pinsPath } from "./cli-agents/pins.ts";
@@ -109,7 +110,9 @@ describe("council cli accept", () => {
   it("installed file changed: sha256 mismatch refused, exit 2, no plan, no probe", async () => {
     const h = home();
     await installCandidate(h);
-    appendFileSync(findStub(join(h, "cli", "codex", "9.9.9"))!, "\n// changed\n");
+    const changed = findStub(join(h, "cli", "codex", "9.9.9"))!;
+    detachExecutable(changed);
+    appendFileSync(changed, "\n// changed\n");
     const r = await run(["cli", "accept", "codex", "9.9.9", "--candidate", "--max-calls", "7"], h);
     expect(r.code).toBe(2);
     expect(r.err).toContain("sha256");
