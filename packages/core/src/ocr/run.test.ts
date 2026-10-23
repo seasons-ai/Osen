@@ -212,7 +212,8 @@ describe("imageReason", () => {
     expect(imageReason({ code: "timeout" })).toBe("распознавание текста дольше 30 секунд");
     expect(imageReason({ code: "memory" })).toBe("распознавание текста заняло больше 512 МиБ памяти");
     expect(imageReason({ code: "chars" })).toBe("текст изображения больше 20000000 знаков");
-    expect(imageReason({ code: "failed", detail: "vision" })).toBe("не удалось распознать текст изображения — vision");
+    expect(imageReason({ code: "failed", detail: "helper:vision" })).toBe("не удалось распознать текст изображения — помощник распознавания сообщил об ошибке");
+    expect(imageReason({ code: "failed" })).toBe("не удалось распознать текст изображения — ответ не разобран");
   });
 });
 
