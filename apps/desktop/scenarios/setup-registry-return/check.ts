@@ -111,15 +111,22 @@ type Lang = "en" | "ru";
 const languages = (arg("--languages")?.split(",") ?? ["en", "ru"]) as Lang[];
 const cdp = await connect(await pageTarget(Number(arg("--cdp"))));
 
+// Conditions and actions are fixed code; a value they need is passed as a CDP argument (callIn), never spliced into the code.
 const waitFor = async (cond: string, what: string, ms = 15000) => {
   for (const t0 = Date.now(); Date.now() - t0 < ms; await sleep(80)) if (await evaluate(cdp, `Boolean(${cond})`).catch(() => false)) return;
   throw new Error(`timed out waiting for ${what}`);
 };
+const waitIn = async (what: string, fn: (...a: any[]) => unknown, ...args: unknown[]) => {
+  for (const t0 = Date.now(); Date.now() - t0 < 8000; await sleep(80)) if (await callIn(cdp, fn, ...args).catch(() => false)) return;
+  throw new Error(`timed out waiting for ${what}`);
+};
 const run = (code: string) => evaluate(cdp, `(async () => { ${code} })()`);
 const rail = async (i: number, ready: string) => {
-  await run(`document.querySelectorAll(".rail__item")[${i}].click()`);
+  await callIn(cdp, (n: number) => (document.querySelectorAll(".rail__item")[n] as HTMLElement).click(), i);
   await waitFor(ready, `rail item ${i}`);
 };
+const setLanguage = (lang: string) => callIn(cdp, (l: string) => (window as any).council.setLanguage(l).then(() => true), lang);
+const addHintIs = (t: string) => document.querySelector(".setup__add .muted")?.textContent === t;
 // Native value setter: React sees the change as typed input (a select gets a change event).
 const setValue = (selector: string, index: number, value: string) => callIn(cdp, (sel: string, i: number, v: string) => {
   const el = document.querySelectorAll(sel)[i] as HTMLInputElement | HTMLSelectElement | undefined;
@@ -170,7 +177,7 @@ const originalLang = (await evaluate(cdp, "window.council.language()") as { lang
 const TOPIC = "Which report to prepare first — SETUP-233";
 
 // Defaults are reset through the bridge between variants: the stand prepares state, the window checks are done through the UI.
-const setMax = (max: number) => evaluate(cdp, `window.council.settings().then((v) => window.council.saveDefaults({ ...v.defaults, maxParticipants: ${max} })).then(() => true)`);
+const setMax = (max: number) => callIn(cdp, (m: number) => (window as any).council.settings().then((v: any) => (window as any).council.saveDefaults({ ...v.defaults, maxParticipants: m })).then(() => true), max);
 
 async function freshSetup(): Promise<void> {
   await rail(1, `!document.querySelector(".setup")`); // "History" drops the kept setup
@@ -184,7 +191,7 @@ async function freshSetup(): Promise<void> {
   const { nodeId } = await cdp.send("DOM.querySelector", { nodeId: doc.root.nodeId, selector: "#stand-233-file" });
   await cdp.send("DOM.setFileInputFiles", { nodeId, files: [notePath] });
   await run(`const i = document.getElementById("stand-233-file"); const dt = new DataTransfer(); for (const f of i.files) dt.items.add(f); document.querySelector(".setup-materials").dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt })); i.remove();`);
-  await waitFor(`[...document.querySelectorAll(".setup-material__name")].some((x) => x.textContent.includes(${JSON.stringify(NOTE)}))`, "the dropped file in materials");
+  await waitIn("the dropped file in materials", (name: string) => [...document.querySelectorAll(".setup-material__name")].some((x) => x.textContent!.includes(name)), NOTE);
 }
 
 async function scripted(count: number): Promise<void> {
@@ -205,7 +212,7 @@ async function viaSettings(max: number | null): Promise<void> {
     for (let i = 0; i < 10; i++) {
       const v = Number(await evaluate(cdp, `[...document.querySelectorAll(".settings-limits .stepper")].at(-1).querySelector(".stepper__value").textContent`));
       if (v === max) break;
-      await run(`[...document.querySelectorAll(".settings-limits .stepper")].at(-1).querySelector('[data-step="${v > max ? -1 : 1}"]').click()`);
+      await callIn(cdp, (step: string) => ([...document.querySelectorAll(".settings-limits .stepper")].at(-1)!.querySelector(`[data-step="${step}"]`) as HTMLElement).click(), v > max ? "-1" : "1");
       await sleep(60);
     }
     await run(`[...document.querySelectorAll("main .btn--primary")].filter((b) => b.offsetParent !== null).at(-1).click()`);
@@ -235,7 +242,7 @@ let server: Awaited<ReturnType<typeof startFakeServer>> | null = null;
 try {
   for (const lang of languages) {
     console.log(`--- ${lang}`);
-    await evaluate(cdp, `Promise.resolve(window.council.setLanguage(${JSON.stringify(lang)})).then(() => true)`);
+    await setLanguage(lang);
     const t = sessionSetup(lang), s = setupText(lang);
 
     // A: the limit becomes 2 while 3 participants are in the setup.
@@ -245,7 +252,8 @@ try {
     let v = await view();
     check(v.start && !v.add && v.addHint === t.limitReached(3), `${lang} A before: 3 scripted participants, "Start" enabled, limit 3`, v);
     await viaSettings(2);
-    v = await after(`document.querySelector(".setup__add .muted")?.textContent === ${JSON.stringify(t.limitReached(2))}`, "limit 2 in the setup");
+    await waitIn("limit 2 in the setup", addHintIs, t.limitReached(2)).catch(() => {});
+    v = await view();
     kept(v, ["scripted", "scripted", "scripted"], `${lang} A`);
     check(v.addHint === t.limitReached(2), `${lang} A: the setup shows limit 2`, v.addHint);
     check(!v.start && v.hint.toLowerCase().includes(s.hintMax(2).toLowerCase()), `${lang} A: "Start" disabled with the limit hint`, { start: v.start, hint: v.hint });
@@ -255,7 +263,8 @@ try {
     await freshSetup();
     await scripted(3);
     await viaSettings(5);
-    v = await after(`document.querySelector(".setup__add .muted")?.textContent === ${JSON.stringify(t.atMost(5))}`, "limit 5 in the setup");
+    await waitIn("limit 5 in the setup", addHintIs, t.atMost(5)).catch(() => {});
+    v = await view();
     kept(v, ["scripted", "scripted", "scripted"], `${lang} B`);
     check(v.add && v.addHint === t.atMost(5), `${lang} B: "Add participant" enabled, at most 5`, { add: v.add, addHint: v.addHint });
     check(v.start, `${lang} B: "Start" enabled`, v.hint);
@@ -318,7 +327,7 @@ try {
 } finally {
   await server?.close().catch(() => {});
   await setMax(3).catch(() => {});
-  await evaluate(cdp, `Promise.resolve(window.council.setLanguage(${JSON.stringify(originalLang)})).then(() => true)`).catch(() => {});
+  await setLanguage(originalLang).catch(() => {});
   await rail(1, `!document.querySelector(".setup")`).catch(() => {});
   cdp.close();
 }
