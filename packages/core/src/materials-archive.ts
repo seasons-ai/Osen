@@ -3,12 +3,12 @@ import ignore from "ignore";
 import type { Ignore } from "ignore";
 import { listArchiveEntries, readArchiveEntries } from "./documents/archive-run.ts";
 import type { ArchiveEntry } from "./documents/archive.ts";
-import { DOC_LIMITS, documentReason, extractDocumentText, type DocFailure } from "./documents/extract.ts";
+import { DOC_LIMITS, DOC_NOT_CACHED, documentReason, extractDocumentText, type DocFailure } from "./documents/extract.ts";
 import { CFB_SIGNATURE } from "./documents/cfb.ts";
 import { nonTextReason, TAIL_BYTES } from "./documents/kinds.ts";
-import { extractPdfText, pdfReason } from "./pdf/extract.ts";
+import { extractPdfText, PDF_NOT_CACHED, pdfReason } from "./pdf/extract.ts";
 import { imageDimensions, imageSignature } from "./ocr/image-header.ts";
-import { imageReason, OCR_LIMITS, runOcrHelper } from "./ocr/run.ts";
+import { imageReason, OCR_LIMITS, OCR_NOT_CACHED, runOcrHelper } from "./ocr/run.ts";
 import { materialsMessages } from "./messages/materials.ts";
 import { decodeFileText } from "./text-encoding.ts";
 import { compare, errText, isEnvName, nameKey, rebaseRule } from "./materials.ts";
@@ -54,7 +54,8 @@ function failureReason(f: { code: DocFailure; detail?: string }): string {
   }
 }
 
-const TRANSIENT: readonly DocFailure[] = ["timeout", "memory", "failed"];
+// control characters of a name are shown as \uXXXX: the raw character must not reach a skip or refusal line
+const shownName = (name: string): string => name.replace(/[\u0000-\u001f\u007f-\u009f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
 const tailOf = (buf: Buffer): Buffer | undefined => (buf.length >= TAIL_BYTES ? buf.subarray(buf.length - TAIL_BYTES) : undefined);
 
@@ -63,13 +64,14 @@ type Out = { rel: string; text?: string; skip?: string; idx?: number };
 
 // Mirrors readText in materials.ts on bytes: PDF (with scan recognition), documents, RTF/DOC, images, text with its encodings and the kind reasons of change 216;
 // a reader added there later must be wired here too.
-function readEntryBytes(bytes: Uint8Array, state: { recognized: number; fallback?: boolean }): { text: string } | { skip: string } {
+// state.transient: an entry was skipped by a code that is not cached either, so the expansion is not cached
+function readEntryBytes(bytes: Uint8Array, state: { recognized: number; transient?: boolean }): { text: string } | { skip: string } {
   const m = materialsMessages();
   const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const head = buf.subarray(0, Math.min(buf.length, HEAD_BYTES));
   if (head.subarray(0, 5).toString("latin1") === "%PDF-") {
     const r = extractPdfText(bytes);
-    if (r.ok && r.fallback) state.fallback = true;
+    if (r.ok ? r.fallback : PDF_NOT_CACHED.includes(r.code)) state.transient = true;
     return r.ok ? { text: r.text } : { skip: pdfReason(r) };
   }
   // an empty ZIP is only the end record: as in readText it is an archive, here a nested one
@@ -79,6 +81,7 @@ function readEntryBytes(bytes: Uint8Array, state: { recognized: number; fallback
     if (r.ok) return { text: r.text };
     if (r.code === "unsupported") return { skip: m.archiveNested };
     if (r.code === "bytes") return { skip: m.zipTooLarge(DOC_LIMITS.bytes / 2 ** 20) };
+    if (DOC_NOT_CACHED.includes(r.code)) state.transient = true;
     return { skip: documentReason(r) };
   }
   // RTF (a UTF-8 BOM before it is allowed) and Compound File Binary (DOC, encrypted Office) go to the same extractor as in readText
@@ -86,6 +89,7 @@ function readEntryBytes(bytes: Uint8Array, state: { recognized: number; fallback
   if (head.subarray(bom, bom + 5).toString("latin1") === "{\\rtf" || (head.length >= 8 && head.subarray(0, 8).equals(CFB_SIGNATURE))) {
     const r = extractDocumentText(bytes);
     if (r.ok) return { text: r.text };
+    if (DOC_NOT_CACHED.includes(r.code)) state.transient = true;
     return { skip: r.code === "unsupported" ? nonTextReason(head, tailOf(buf)) : documentReason(r) };
   }
   const format = imageSignature(head, buf.length);
@@ -97,6 +101,7 @@ function readEntryBytes(bytes: Uint8Array, state: { recognized: number; fallback
     if (dims.width * dims.height > OCR_LIMITS.pixels) return { skip: imageReason({ code: "pixels" }) };
     state.recognized++;
     const r = runOcrHelper({ mode: "image", ms: OCR_LIMITS.ms, rssBytes: OCR_LIMITS.rssBytes }, bytes);
+    if (!r.ok && OCR_NOT_CACHED.includes(r.code)) state.transient = true;
     return r.ok ? { text: r.text } : { skip: imageReason(r) };
   }
   const text = decodeFileText(head, () => buf);
@@ -112,7 +117,7 @@ function readBatches<T extends { idx?: number }>(
     if (batch.length === 0) return;
     checkTime();
     const r = readArchiveEntries(bytes, batch.map((o) => o.idx!), declared);
-    if (!r.ok) throw new Refuse([failureReason(r)], TRANSIENT.includes(r.code));
+    if (!r.ok) throw new Refuse([failureReason(r)], DOC_NOT_CACHED.includes(r.code));
     for (const o of batch) {
       checkTime();
       each(o, r.entries.get(o.idx!));
@@ -157,7 +162,7 @@ export function expandArchive(abs: string, prefix: string, options: CollectOptio
     if (Date.now() >= deadline) throw new Refuse([m.archiveTimeout(totalMs / 1000)], true);
   };
   let result: ArchiveResult;
-  const seen: { fallback?: boolean } = {};
+  const seen: { transient?: boolean } = {};
   try {
     result = expand(bytes, prefix, options, checkTime, seen);
   } catch (e) {
@@ -165,31 +170,31 @@ export function expandArchive(abs: string, prefix: string, options: CollectOptio
     result = { refused: e.lines };
     if (e.transient) return result;
   }
-  // a PDF read without the OCR helper is not cached: the helper may appear before the next collection
-  if (seen.fallback) return result;
+  // a PDF read without the OCR helper and a skip by a timeout, a memory limit or a missing helper are not cached: the cause may be gone at the next collection
+  if (seen.transient) return result;
   cache.set(key, result);
   if ("materials" in result) cacheChars += result.materials.reduce((s, x) => s + x.text.length, 0);
   if (cacheChars > CACHE_CHARS) { cache.clear(); cacheChars = 0; }
   return result;
 }
 
-function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTime: () => void, seen: { fallback?: boolean }): ArchiveResult {
+function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTime: () => void, seen: { transient?: boolean }): ArchiveResult {
   const m = materialsMessages();
   const listed = listArchiveEntries(bytes);
-  if (!listed.ok) throw new Refuse([failureReason(listed)], TRANSIENT.includes(listed.code));
+  if (!listed.ok) throw new Refuse([failureReason(listed)], DOC_NOT_CACHED.includes(listed.code));
   const { entries } = listed;
   if (entries.length === 0) return { refused: [m.archiveEmpty] };
 
   const out: Out[] = [];
   const dupSkip = (rel: string) => out.push({ rel, skip: m.archiveDuplicate });
-  for (const name of listed.duplicates) dupSkip(name);
+  for (const name of listed.duplicates) dupSkip(archiveEntryPath(name) ? name : shownName(name));
 
   // virtual tree of the safe entries; implicit parent folders come from the paths
   const root: Node = { name: "", dir: true, children: new Map() };
   entries.forEach((entry, idx) => {
     const segments = archiveEntryPath(entry.name);
     if (!segments) {
-      out.push({ rel: entry.name, skip: m.archiveUnsafeName });
+      out.push({ rel: shownName(entry.name), skip: m.archiveUnsafeName });
       return;
     }
     let cur = root;
@@ -212,7 +217,7 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
 
   // .gitignore files of the archive are fetched first, in one call
   const useRules = options.gitignore !== false;
-  const ruleText = new Map<Node, string | { error: string }>();
+  const ruleText = new Map<Node, string | { error: string; plain?: boolean }>();
   if (useRules) {
     const wanted: Node[] = [];
     const collect = (n: Node) => {
@@ -225,7 +230,8 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
     const toRead: Node[] = [];
     for (const n of wanted) {
       const e = entries[n.idx!]!;
-      if (e.kind !== "file") ruleText.set(n, { error: e.kind === "encrypted" ? "encrypted" : "ELOOP" });
+      if (e.kind === "method") ruleText.set(n, { error: m.archiveMethod, plain: true });
+      else if (e.kind !== "file") ruleText.set(n, { error: e.kind === "encrypted" ? "encrypted" : "ELOOP" });
       else if (e.size > RULES_MAX_BYTES) ruleText.set(n, { error: m.rulesTooLarge(RULES_MAX_BYTES / 2 ** 20) });
       else toRead.push(n);
     }
@@ -237,6 +243,7 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
   const shownRule = new Map<string, string>();
   const walk = (dir: Node, rel: string, rules: Ignore | undefined): void => {
     let unread: string | undefined;
+    let unreadPlain = false;
     const gi = [...dir.children.values()].find((c) => !c.dir && c.name === ".gitignore");
     if (rules && gi) {
       const t = ruleText.get(gi);
@@ -250,7 +257,7 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
         } catch (e) {
           unread = errText(e);
         }
-      } else unread = t?.error ?? "failed";
+      } else { unread = t?.error ?? "failed"; unreadPlain = t?.plain === true; }
     }
     for (const child of dir.children.values()) {
       const name = child.name;
@@ -258,7 +265,7 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
       const entry: ArchiveEntry | undefined = child.idx === undefined ? undefined : entries[child.idx];
       const skip = (reason: string, r = eRel) => out.push({ rel: r, skip: reason });
       if (!child.dir && isEnvName(name)) skip(m.envSkipped);
-      else if (name.startsWith(".")) skip(name === ".gitignore" && unread !== undefined ? m.readFailed(unread) : m.hiddenName);
+      else if (name.startsWith(".")) skip(name === ".gitignore" && unread !== undefined ? (unreadPlain ? unread : m.readFailed(unread)) : m.hiddenName);
       else if (options.materialsIgnore.includes(name)) skip(m.ignoredByList);
       else if (child.dir && rel === "" && name === "__MACOSX") skip(m.archiveMacos, `${eRel}/`);
       else {
@@ -274,6 +281,7 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
         } else if (child.dir) walk(child, eRel, rules);
         else if (entry!.kind === "symlink") skip(m.symlink);
         else if (entry!.kind === "encrypted") skip(m.docEncrypted);
+        else if (entry!.kind === "method") skip(m.archiveMethod);
         else if (entry!.size > DOC_LIMITS.bytes) skip(m.archiveEntryBytes(DOC_LIMITS.bytes / 2 ** 20));
         else out.push({ rel: eRel, idx: child.idx! });
       }
@@ -283,7 +291,7 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
   out.sort((a, b) => compare(a.rel, b.rel));
 
   // entries are read in the final order, in batches of declared size
-  const state: { recognized: number; fallback?: boolean } = { recognized: 0 };
+  const state: { recognized: number; transient?: boolean } = { recognized: 0 };
   readBatches(bytes, entries, out.filter((o) => o.idx !== undefined), checkTime, (o, data) => {
     if (data === undefined || typeof data === "string") o.skip = data === "encrypted" ? m.docEncrypted : m.archiveDamaged;
     else {
@@ -297,7 +305,7 @@ function expand(bytes: Buffer, prefix: string, options: CollectOptions, checkTim
     }
   });
 
-  if (state.fallback) seen.fallback = true;
+  if (state.transient) seen.transient = true;
   const materials: { name: string; text: string }[] = [];
   const skipped: SkippedMaterial[] = [];
   for (const o of out) {

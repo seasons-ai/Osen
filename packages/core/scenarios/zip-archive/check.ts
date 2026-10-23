@@ -17,6 +17,8 @@ import { collectMaterials, setDocumentExtractorRuntime, setProcessLanguage } fro
 import { listArchiveEntries, readArchiveEntries } from "../../src/documents/archive-run.ts";
 import { makeDocx, makeZip, p } from "../../src/documents/fixture.ts";
 import { materialsMessages } from "../../src/messages/materials.ts";
+import { setOcrRuntime } from "../../src/ocr/run.ts";
+import { writeExecutable } from "../../src/executable.testutil.ts";
 
 const repo = resolve(import.meta.dirname, "../../../..");
 const home = process.env.COUNCIL_HOME;
@@ -56,6 +58,25 @@ const put = (rel: string, data: Uint8Array | string): string => {
   writeFileSync(f, data);
   return f;
 };
+// Header-valid PNG without pixels: enough for a stub OCR helper.
+function png(): Buffer {
+  const u32 = (v: number) => { const b = Buffer.alloc(4); b.writeUInt32BE(v); return b; };
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), u32(13), Buffer.from("IHDR"), u32(10), u32(10), Buffer.alloc(5)]);
+}
+let stubN = 0;
+const ocrStub = (reply: unknown) => setOcrRuntime({ helper: writeExecutable(join(work, `ocr-stub-${stubN++}.sh`), `#!/bin/sh\nC=$(/bin/cat)\nprintf '%s\\n' '${JSON.stringify(reply)}'\n`) });
+const OCR_OK = { ok: true, lines: [{ t: "stub text", x: 0, y: 0, w: 1, h: 0.1 }] };
+// Substitute extractor: a ZIP is not a document; in the entry-listing mode it fails the way the test asks (MODE).
+const FAIL_STUB = `for await (const c of process.stdin);
+if (!JSON.parse(process.argv[2]).mode) { process.stdout.write('{"ok":false,"code":"unsupported"}\\n'); process.exit(0); }
+if (process.env.MODE === "exit") process.exit(3);
+if (process.env.MODE === "signal") process.kill(process.pid, "SIGKILL");
+process.stdout.write('{"ok":false,"code":"failed","detail":"worker exit"}\\n');
+`;
+// Names are written out by hand: "Отчёт.txt" in CP866.
+const CP866_REPORT = Uint8Array.from([0x8e, 0xe2, 0xe7, 0xf1, 0xe2, 0x2e, 0x74, 0x78, 0x74]);
+const cp866Zip = () => makeZip([{ name: "readme.txt", data: "читай" }, { name: CP866_REPORT, data: "отчёт" }]);
+const method12Zip = () => makeZip([{ name: "a.txt", data: "a", method: 0 }, { name: "b.txt", data: "b", method: 12 }]);
 const sparseZip = (rel: string): string => {
   const f = put(rel, Buffer.from([0x50, 0x4b, 0x03, 0x04]));
   truncateSync(f, 150 * 2 ** 20);
@@ -293,6 +314,94 @@ async function suite(lang: "ru" | "en") {
   assert.deepEqual(readdirSync(join(sdir(id9), "workspace")).sort(), ["proj", "proj.zip", "proj.zip (2)"]);
   ok(`${tag} 9: folder proj and archives proj.zip from two dirs - proj/, proj.zip/, proj.zip (2)/ in the materials and in the written session snapshot`);
 
+  // ---- 11. Entry names without the UTF-8 flag, an unsupported method, NUL in a name, an archive in a folder and attached separately ----
+  const outC = await preview(put("cp866.zip", cp866Zip()));
+  assert.ok(outC.includes(t.summary(2, 10)), `summary${outC}`);
+  assert.ok(outC.includes(": cp866.zip/readme.txt\nчитай") && outC.includes(": cp866.zip/Отчёт.txt\nотчёт"), `cp866 names${outC}`);
+  const rC = await run(session("s11c", [join(fx, "cp866.zip")]));
+  assert.equal(rC.code, 0, `code ${rC.code}${dump(rC.r)}`);
+  const idC = sessionId(rC.r);
+  assert.deepEqual(materialsOf(idC).map((x) => x.name), ["cp866.zip/readme.txt", "cp866.zip/Отчёт.txt"]);
+  assert.deepEqual(allFiles(join(sdir(idC), "workspace")).map((f) => relative(join(sdir(idC), "workspace"), f)).sort(), ["cp866.zip/readme.txt", "cp866.zip/Отчёт.txt"]);
+  ok(`${tag} 11a: CP866 names without the UTF-8 flag - cp866.zip/readme.txt and cp866.zip/Отчёт.txt in the preview, the session materials and workspace/cp866.zip/`);
+
+  const outM = await preview(put("m12.zip", method12Zip()));
+  assert.ok(outM.includes(t.summary(1, 1)) && outM.includes(": m12.zip/a.txt\na"), `method summary${outM}`);
+  skipLine(outM, "m12.zip/b.txt", m.archiveMethod);
+  const rM = await run(session("s11m", [join(fx, "m12.zip")]));
+  assert.equal(rM.code, 0, `code ${rM.code}${dump(rM.r)}`);
+  assert.deepEqual(materialsOf(sessionId(rM.r)).map((x) => x.name), ["m12.zip/a.txt"]);
+  ok(`${tag} 11b: an entry with compression method 12 is skipped with "${m.archiveMethod}", the stored entry is collected, the archive is not damaged`);
+
+  const outN = await preview(put("nul.zip", makeZip([{ name: "ok.txt", data: "ok" }, { name: "a/\u0000b.txt", data: "x" }])));
+  assert.ok(outN.includes(t.summary(1, 2)), `nul summary${outN}`);
+  skipLine(outN, "nul.zip/a/\\u0000b.txt", m.archiveUnsafeName);
+  assert.ok(!outN.includes("\u0000"), "NUL in the preview");
+  const rN = await run(session("s11n", [join(fx, "nul.zip")]));
+  assert.equal(rN.code, 0, `code ${rN.code}${dump(rN.r)}`);
+  assert.ok(!rN.r.out.includes("\u0000") && !rN.r.err.includes("\u0000"), "NUL in the council output");
+  const idN = sessionId(rN.r);
+  assert.ok(!allFiles(sdir(idN)).filter((f) => /\.(jsonl|json)$/.test(f)).some((f) => readFileSync(f, "latin1").includes("\u0000")), "NUL in the session journal");
+  ok(`${tag} 11c: the unsafe name a/<NUL>b.txt is shown as nul.zip/a/\\u0000b.txt; no NUL byte in the preview, the council output and the session journal`);
+
+  put("f/notes.md", "n");
+  const exportZip = put("f/export.zip", makeZip([{ name: "a.txt", data: "a" }]));
+  const outF = await preview(join(fx, "f"), exportZip);
+  assert.ok(outF.includes(t.summary(2, 2)) && outF.includes(": f/notes.md\nn") && outF.includes(": export.zip/a.txt\na"), `folder and archive${outF}`);
+  assert.ok(!outF.includes(m.archiveInFolder) && !outF.includes("f/export.zip"), `no skip line for the archive attached separately${outF}`);
+  const rF = await run(session("s11f", [join(fx, "f"), exportZip]));
+  assert.equal(rF.code, 0, `code ${rF.code}${dump(rF.r)}`);
+  assert.deepEqual(materialsOf(sessionId(rF.r)).map((x) => x.name).sort(), ["export.zip/a.txt", "f/notes.md"]);
+  ok(`${tag} 11d: folder f (notes.md, export.zip) plus export.zip attached separately - f/notes.md and export.zip/a.txt collected, no "${m.archiveInFolder}" line`);
+
+  // ---- 12. In-process: re-collection after a transient failure, scan-only archive, extractor failure reasons ----
+  const reasonOf = (set: { skipped: { name: string; reason: string }[] }, name: string) => set.skipped.find((x) => x.name === name)?.reason;
+  const collect = (f: string) => collectMaterials([f], { materialsChars: 100_000, materialsIgnore: [] });
+  try {
+    const scanZip = put("scan.zip", makeZip([{ name: "note.txt", data: "n" }, { name: "scan.png", data: png() }]));
+    setOcrRuntime({ helper: "/nonexistent/osen-ocr" });
+    const first = collect(scanZip);
+    assert.deepEqual(first.materials.map((x) => x.name), ["scan.zip/note.txt"]);
+    assert.equal(reasonOf(first, "scan.zip/scan.png"), m.imgMissing);
+    ocrStub(OCR_OK);
+    assert.deepEqual(collect(scanZip).materials.map((x) => [x.name, x.text]), [["scan.zip/note.txt", "n"], ["scan.zip/scan.png", "stub text"]], "scan.png is not a material after the helper appeared");
+    ok(`${tag} 12a: the same archive collected again after the OCR helper appeared - scan.png was skipped ("${m.imgMissing}"), then a material with the recognized text`);
+
+    const slowZip = put("slow.zip", makeZip([{ name: "note.txt", data: "n" }, { name: "scan.png", data: png() }]));
+    ocrStub({ ok: false, code: "timeout" });
+    assert.equal(reasonOf(collect(slowZip), "slow.zip/scan.png"), m.imgTimeout(30));
+    ocrStub(OCR_OK);
+    assert.deepEqual(collect(slowZip).materials.map((x) => x.name), ["slow.zip/note.txt", "slow.zip/scan.png"], "scan.png is not a material after the timeout");
+    ok(`${tag} 12b: a helper that exceeded its deadline (stub reply timeout) is not remembered: the next collection reads scan.png`);
+
+    const onlyZip = put("only.zip", makeZip([{ name: "scan.png", data: png() }]));
+    setOcrRuntime({ helper: "/nonexistent/osen-ocr" });
+    let reasons: string[] = [];
+    try { collect(onlyZip); assert.fail("a scan-only archive without a helper must be refused"); } catch (e) { reasons = (e as { reasons?: string[] }).reasons ?? assert.fail(String(e)); }
+    assert.deepEqual(reasons, [`«${onlyZip}»: ${m.archiveNoFiles(1)}`, `«${onlyZip}»: only.zip/scan.png — ${m.imgMissing}`]);
+    ocrStub(OCR_OK);
+    assert.deepEqual(collect(onlyZip).materials.map((x) => [x.name, x.text]), [["only.zip/scan.png", "stub text"]], "the refusal was remembered");
+    ok(`${tag} 12c: a scan-only archive without a helper is refused with the skip list; with the helper the same archive gives scan.png as a material`);
+  } finally { setOcrRuntime(); }
+
+  const stubScript = join(work, "fail-stub.mjs");
+  writeFileSync(stubScript, FAIL_STUB);
+  const expectedFail = {
+    ru: { exit: "процесс извлечения завершился с кодом 3", signal: "процесс извлечения остановлен сигналом SIGKILL", reply: "рабочий поток извлечения остановился" },
+    en: { exit: "the extraction process exited with code 3", signal: "the extraction process was stopped by signal SIGKILL", reply: "the extraction worker stopped" },
+  }[lang];
+  try {
+    for (const mode of ["exit", "signal", "reply"] as const) {
+      setDocumentExtractorRuntime({ script: stubScript, env: { MODE: mode } });
+      const f = put(`fail-${mode}.zip`, makeZip([{ name: "a.txt", data: "a" }]));
+      let rs: string[] = [];
+      try { collect(f); assert.fail("expected a refusal"); } catch (e) { rs = (e as { reasons?: string[] }).reasons ?? assert.fail(String(e)); }
+      assert.deepEqual(rs, [`«${f}»: ${m.archiveFailed(expectedFail[mode])}`], `${mode}: reason`);
+      assert.ok(!/\bexit \d|worker error|worker exit/.test(rs[0]!.replace(expectedFail[mode], "")), `${mode}: raw text in the reason: ${rs[0]}`);
+    }
+  } finally { setDocumentExtractorRuntime(); }
+  ok(`${tag} 12d: extractor failure (exit code 3, a signal, a worker reply) - the reason is the catalog text «${expectedFail.exit}» / «${expectedFail.signal}» / «${expectedFail.reply}», no raw exit/worker texts`);
+
   // ---- the stand's own invariants ----
   assert.ok(!allFiles(work).filter((f) => !f.startsWith(fx)).some((f) => readFileSync(f, "latin1").includes(SECRET)), "the control secret was found in the stand files");
 }
@@ -306,7 +415,7 @@ function bundled() {
     { name: "enc.txt", data: "z", encrypted: true }, { name: "link", data: "README.md", unixMode: 0o120777 }, { name: "README.md", data: "dup" },
   ]);
   const bomb = makeZip([{ name: "a.bin", data: "a", declaredSize: 1000 }]);
-  const probe = () => {
+  const probe = (bytes: Uint8Array) => {
     const list = listArchiveEntries(bytes);
     assert.ok(list.ok, `list: ${JSON.stringify(list)}`);
     const indices = list.entries.flatMap((e, i) => (e.kind === "file" ? [i] : []));
@@ -314,16 +423,20 @@ function bundled() {
     assert.ok(read.ok, `read: ${JSON.stringify(read)}`);
     return { list, bomb: listArchiveEntries(bomb), read: [...read.entries].map(([i, v]) => [i, typeof v === "string" ? v : sha(v)]) };
   };
+  const cases: [string, Uint8Array][] = [["mixed", bytes], ["CP866", cp866Zip()], ["method 12", method12Zip()]];
   try {
-    const source = probe();
-    assert.ok(source.list.ok && source.list.entries.length >= 4);
+    const source = cases.map(([, b]) => probe(b));
+    assert.ok(source[0]!.list.ok && source[0]!.list.entries.length >= 4);
+    assert.ok(source[1]!.list.ok && source[1]!.list.entries.some((e) => e.name === "Отчёт.txt" && e.kind === "file"), "CP866 name in the source listing");
+    assert.ok(source[2]!.list.ok && source[2]!.list.entries.some((e) => e.name === "b.txt" && e.kind === "method"), "method entry in the source listing");
     const runtimes: [string, { command: string; script: string; env: Record<string, string> }][] = [["Node", { command: process.execPath, script: bundle, env: {} }]];
     if (existsSync(electron)) runtimes.push(["Electron with ELECTRON_RUN_AS_NODE=1", { command: electron, script: bundle, env: { ELECTRON_RUN_AS_NODE: "1" } }]);
     else console.log("skipped: no Electron binary (npm install)");
     for (const [name, rt] of runtimes) {
       setDocumentExtractorRuntime(rt);
-      assert.deepEqual(probe(), source, `${name}: the bundled extractor differs from the source one`);
-      ok(`10: bundled doc-extract.mjs under ${name} - the same entries (${source.list.ok ? source.list.entries.length : 0}), the same bytes of ${source.read.length} files and the same bomb refusal as doc-extract.ts`);
+      cases.forEach(([what, b], i) => assert.deepEqual(probe(b), source[i], `${name}: the bundled extractor differs from the source one (${what})`));
+      const n = source[0]!.list.ok ? source[0]!.list.entries.length : 0;
+      ok(`10: bundled doc-extract.mjs under ${name} - the same entries (${n}), the same bytes of ${source[0]!.read.length} files and the same bomb refusal as doc-extract.ts; the CP866 archive (Отчёт.txt) and the method 12 archive (kind method) give the same entry names and kinds`);
     }
   } finally { setDocumentExtractorRuntime(); }
 }

@@ -1,6 +1,7 @@
 import { crc32, deflateRawSync } from "node:zlib";
 
-export interface ZipPart { name: string; data: Uint8Array | string; method?: 0 | 8; declaredSize?: number; encrypted?: boolean; unixMode?: number }
+/** name as raw bytes and utf8Flag (general purpose bit 11) let tests build names a real archiver would write; any other method number stores the body as given */
+export interface ZipPart { name: string | Uint8Array; utf8Flag?: boolean; data: Uint8Array | string; method?: number; declaredSize?: number; encrypted?: boolean; unixMode?: number }
 
 export function makeZip(parts: ZipPart[]): Uint8Array {
   const chunks: Buffer[] = [];
@@ -10,9 +11,9 @@ export function makeZip(parts: ZipPart[]): Uint8Array {
     const raw = typeof part.data === "string" ? Buffer.from(part.data, "utf8") : Buffer.from(part.data);
     const method = part.method ?? 8;
     const body = method === 8 ? deflateRawSync(raw) : raw;
-    const name = Buffer.from(part.name, "utf8");
+    const name = typeof part.name === "string" ? Buffer.from(part.name, "utf8") : Buffer.from(part.name);
     const size = part.declaredSize ?? raw.length;
-    const flags = part.encrypted ? 1 : 0;
+    const flags = (part.encrypted ? 1 : 0) | (part.utf8Flag ? 0x800 : 0);
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
@@ -234,7 +235,7 @@ export function makeXlsx(spec: XlsxSpec): Uint8Array {
     parts.push({ name: path, data: xml(`<worksheet xmlns="${SML}"><sheetData>${data}</sheetData></worksheet>`) });
   });
   // the generated sheets are written in file-name order, so scrambled files come out in the reverse of the workbook order
-  parts.sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
+  parts.sort((a, b) => (a.name as string).localeCompare(b.name as string, "en", { numeric: true }));
   if (!spec.noSharedPart && (shared.length > 0 || spec.sharedXml !== undefined)) {
     sheetRels.push(`<Relationship Id="rIdS" Type="${REL}/sharedStrings" Target="sharedStrings.xml"/>`);
     parts.push({ name: "xl/sharedStrings.xml", data: xml(`<sst xmlns="${SML}">${spec.sharedXml ?? shared.map((s) => `<si><t xml:space="preserve">${esc(s)}</t></si>`).join("")}</sst>`) });
@@ -293,7 +294,7 @@ export function makePptx(spec: PptxSpec): Uint8Array {
     }
     parts.push({ name: `ppt/slides/_rels/slide${k}.xml.rels`, data: xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join("")}</Relationships>`) });
   });
-  parts.sort((a, b) => a.name.localeCompare(b.name, "en", { numeric: true }));
+  parts.sort((a, b) => (a.name as string).localeCompare(b.name as string, "en", { numeric: true }));
   const mainType = spec.macro ? "application/vnd.ms-powerpoint.presentation.macroEnabled.main+xml" : `${PML}.presentation.main+xml`;
   return makeZip([
     {

@@ -39,7 +39,7 @@ export function extractDocumentText(bytes: Uint8Array, limits: DocLimits = DOC_L
   return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
 }
 
-const NOT_CACHED: readonly DocFailure[] = ["timeout", "memory", "failed", "textutil_unavailable"];
+export const DOC_NOT_CACHED: readonly DocFailure[] = ["timeout", "memory", "failed", "textutil_unavailable"];
 const CACHE_CHARS = 20_000_000;
 const cache = new Map<string, DocumentResult>();
 let cacheChars = 0;
@@ -51,7 +51,7 @@ export function readDocumentText(fd: number, limits: DocLimits = DOC_LIMITS): Do
   const hit = cache.get(key);
   if (hit) return hit;
   const result = extractDocumentText(readFileSync(fd), limits);
-  if (result.ok || !NOT_CACHED.includes(result.code)) {
+  if (result.ok || !DOC_NOT_CACHED.includes(result.code)) {
     cache.set(key, result);
     if (result.ok) cacheChars += result.text.length;
     if (cacheChars > CACHE_CHARS) { cache.clear(); cacheChars = 0; }

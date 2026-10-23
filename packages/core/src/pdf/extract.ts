@@ -98,7 +98,7 @@ function recognizeBlank(bytes: Uint8Array, limits: PdfLimits, scan: PdfScan, bud
   return /\S/.test(text) ? { ok: true, text, pages: scan.pages } : { ok: false, code: "no_text" };
 }
 
-const NOT_CACHED: readonly PdfFailure[] = ["timeout", "memory", "failed", "ocr_missing", "ocr_start", "ocr_page_timeout", "ocr_timeout", "ocr_memory", "ocr_failed", "ocr_folder"];
+export const PDF_NOT_CACHED: readonly PdfFailure[] = ["timeout", "memory", "failed", "ocr_missing", "ocr_start", "ocr_page_timeout", "ocr_timeout", "ocr_memory", "ocr_failed", "ocr_folder"];
 const CACHE_CHARS = 20_000_000;
 const cache = new Map<string, PdfResult>();
 let cacheChars = 0;
@@ -111,7 +111,7 @@ export function readPdfText(fd: number, limits: PdfLimits = PDF_LIMITS, budget?:
   if (hit) return hit;
   const result = extractPdfText(readFileSync(fd), limits, budget);
   if (result.ok && result.fallback) return result;
-  if (result.ok || !NOT_CACHED.includes(result.code)) {
+  if (result.ok || !PDF_NOT_CACHED.includes(result.code)) {
     cache.set(key, result);
     if (result.ok) cacheChars += result.text.length;
     if (cacheChars > CACHE_CHARS) { cache.clear(); cacheChars = 0; }
