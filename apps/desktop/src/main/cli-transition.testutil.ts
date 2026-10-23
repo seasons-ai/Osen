@@ -1,6 +1,8 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Logger, ProviderStatus } from "@model-council/core";
+import { writeExecutable } from "../../../../packages/core/src/executable.testutil.ts";
 import { installPin, pinsPath, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { PackageSource } from "../../../../packages/core/src/cli-agents/pins.ts";
 import { addLocalEntry, loadVerifiedRecord } from "../../../../packages/core/src/cli-agents/verified-record.ts";
@@ -22,8 +24,28 @@ export const fakeVersionSource: PackageSource = {
   async fetch(agent, version, dir) {
     const exe = join(dir, "node_modules", "pkg", "bin", agent);
     mkdirSync(join(dir, "node_modules", "pkg", "bin"), { recursive: true });
-    writeFileSync(exe, `#!/bin/sh\necho "${version} (fake)"\n`);
-    chmodSync(exe, 0o755);
+    writeExecutable(exe, `#!/bin/sh\necho "${version} (fake)"\n`);
+    return { executable: exe, source: `fake:${agent}@${version}` };
+  },
+};
+
+const warmed = new Map<string, string>();
+/**
+ * Same script as fakeVersionSource, but every install of one agent@version is a hard link to one warmed file:
+ * macOS checks each new inode at its first launch (see writeExecutable), which under load costs seconds per install.
+ * The inode is shared, so tests that modify an installed file must use fakeVersionSource.
+ */
+export const linkedVersionSource: PackageSource = {
+  async fetch(agent, version, dir) {
+    const bin = join(dir, "node_modules", "pkg", "bin");
+    mkdirSync(bin, { recursive: true });
+    let src = warmed.get(`${agent}@${version}`);
+    if (!src) {
+      src = writeExecutable(join(mkdtempSync(join(tmpdir(), "cli-linked-exe-")), agent), `#!/bin/sh\necho "${version} (fake)"\n`);
+      warmed.set(`${agent}@${version}`, src);
+    }
+    const exe = join(bin, agent);
+    linkSync(src, exe);
     return { executable: exe, source: `fake:${agent}@${version}` };
   },
 };
@@ -35,9 +57,9 @@ export function record(dataDir: string, agent: "claude" | "codex", version: stri
 }
 
 /** Installs versions through 176; the first `real` one becomes active at `now`. */
-export async function installVersions(dataDir: string, agent: "claude" | "codex", versions: { version: string; candidate?: boolean }[], now: () => Date): Promise<void> {
+export async function installVersions(dataDir: string, agent: "claude" | "codex", versions: { version: string; candidate?: boolean }[], now: () => Date, source: PackageSource = fakeVersionSource): Promise<void> {
   for (const v of versions) {
-    const r = await installPin(dataDir, agent, { version: v.version, ...(v.candidate ? { candidate: true } : {}) }, { source: fakeVersionSource, record: loadVerifiedRecord(dataDir), now });
+    const r = await installPin(dataDir, agent, { version: v.version, ...(v.candidate ? { candidate: true } : {}) }, { source, record: loadVerifiedRecord(dataDir), now });
     if (!r.ok) throw new Error(r.text);
   }
 }
