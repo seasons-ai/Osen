@@ -13,7 +13,7 @@ const put = (file: string, text: string) => { mkdirSync(dirname(file), { recursi
 const read = (file: string) => (existsSync(file) ? readFileSync(file, "utf8") : null);
 const json = (file: string) => JSON.parse(read(file) ?? "{}");
 
-function setup(over: { claude?: boolean; codex?: boolean; desktopApp?: boolean; addFails?: boolean; codexRaw?: string } = {}) {
+function setup(over: { claude?: boolean; codex?: boolean; desktopApp?: boolean; addFails?: boolean; addFailsFor?: (args: string[]) => boolean; codexRaw?: string } = {}) {
   const home = tmp();
   const calls: string[] = [];
   const claudeFile = join(home, ".claude.json"), codexState = join(home, ".codex/fake-state.json");
@@ -28,6 +28,7 @@ function setup(over: { claude?: boolean; codex?: boolean; desktopApp?: boolean; 
       const ok = (stdout = "") => ({ ok: true, stdout, stderr: "" });
       if (bin === "claude") {
         if (over.addFails && args[1] === "add") return { ok: false, stdout: "", stderr: "boom\n" };
+        if (args[1] === "add" && over.addFailsFor?.(args)) return { ok: false, stdout: "", stderr: `boom ${args[6]}\n` };
         const d = json(claudeFile);
         d.mcpServers ??= {};
         if (args[1] === "add") d.mcpServers[args[4]!] = { type: "stdio", command: args[6], args: args.slice(7), env: {} };
@@ -254,6 +255,32 @@ describe("connect, update and disconnect", () => {
       const s = setup({ addFails: true });
       expect(await connect(c, cmdOf(mkMain()), s.deps)).toMatchObject({ ok: false, refusal: "failed", state: "not_connected", reason: { code: "cli", detail: "boom" } });
     }
+  });
+  const stale = (s: ReturnType<typeof setup>, cmd: ServerCommand) => seedEntry("claude-code", s, "osen", { command: "/nonexistent/node", args: cmd.args });
+  it("Сбой действия клиента: Добавление при замене упало — previous entry restored, original reason", async () => {
+    const cmd = cmdOf(mkMain());
+    const s = setup({ addFailsFor: (a) => a[6] === "node" });
+    stale(s, cmd);
+    expect(await update("claude-code", cmd, s.deps)).toMatchObject({ ok: false, refusal: "failed", state: "stale_path", reason: { code: "cli", detail: "boom node" } });
+    expect(json(s.files["claude-code"]).mcpServers.osen).toMatchObject({ command: "/nonexistent/node", args: cmd.args });
+  });
+  it("Сбой действия клиента: Откат при замене тоже упал — reason of the first add", async () => {
+    const cmd = cmdOf(mkMain());
+    const s = setup({ addFailsFor: () => true });
+    stale(s, cmd);
+    expect(await update("claude-code", cmd, s.deps)).toMatchObject({ ok: false, refusal: "failed", state: "not_connected", reason: { code: "cli", detail: "boom node" } });
+    expect(s.mutating()).toEqual([
+      "claude mcp remove --scope user osen",
+      `claude mcp add --scope user osen -- node ${cmd.args[0]}`,
+      `claude mcp add --scope user osen -- /nonexistent/node ${cmd.args[0]}`,
+    ]);
+  });
+  it("Сбой действия клиента: Замена записи Codex — one add, no remove", async () => {
+    const cmd = cmdOf(mkMain());
+    const s = setup();
+    seedEntry("codex", s, "osen", { command: "/nonexistent/node", args: cmd.args });
+    expect(await update("codex", cmd, s.deps)).toMatchObject({ ok: true, state: "connected" });
+    expect(s.mutating()).toEqual([`codex mcp add osen -- node ${cmd.args[0]}`]);
   });
   it("desktop: foreign keys and servers are kept, a missing file is created", async () => {
     const s = setup({ desktopApp: true });
