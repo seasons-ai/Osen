@@ -174,3 +174,16 @@ describe("readOutput: output limit boundary and typed failures", () => {
     expect((e as Error).message).toBe(`${path} a b exited with 3: boom`);
   });
 });
+
+describe("Таймаут и прерывание: Ход завершился сам, потомок остался", () => {
+  it("the leader exits 0 with its answer, a SIGTERM-ignoring child holds stdout: the result is unchanged and the group is killed after the grace", async () => {
+    const pidfile = join(dir, "pid");
+    const r = await run(stub(`sh -c 'trap "" TERM; echo $$ > ${pidfile}; exec sleep 30' &\nwhile [ ! -s ${pidfile} ]; do sleep 0.05; done\necho answer\nexit 0`), { killGraceMs: 300 });
+    const pid = readPid(pidfile);
+    try {
+      expect(r).toMatchObject({ exitCode: 0, signal: null, stdout: "answer\n", aborted: false });
+      await waitFor("grandchild gone", () => !alive(pid), 3000);
+      expect(alive(pid)).toBe(false);
+    } finally { reap(pid); }
+  }, 60_000);
+});

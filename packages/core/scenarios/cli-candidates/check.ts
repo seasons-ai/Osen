@@ -557,6 +557,77 @@ try {
   assert.ok(!existsSync(join(L, "cli-candidates")));
   ok("step 9 other commands: `providers` and a session launch (scripted participants) do not create <home>/cli-candidates");
 
+  // ---- 10-12: CLI reads outside a turn and a turn that ended on its own leave no descendant (change 260) ----
+  // One claude stub, mode from STUB_MODE: the SIGTERM-ignoring descendant writes its pid to STUB_PIDFILE; checked by pid, never by name.
+  const groupBin = join(work, "group-bin");
+  mkdirSync(groupBin, { recursive: true });
+  const turnFixture = join(repo, "packages/core/src/cli-agents/fixtures/claude-2.1.288-turn.synthetic.json");
+  const helpFixture = join(repo, "packages/core/src/cli-agents/fixtures/claude-2.1.288-help.txt");
+  // help and init: the descendant holds no pipes (the old reads returned and left it); turn: it holds stdout for 30 s
+  writeFileSync(join(groupBin, "claude"), `#!/bin/sh
+ignorer() { sh -c 'trap "" TERM; echo $$ > "$1"; exec sleep 30' sh "$STUB_PIDFILE"; }
+waitpid() { while [ ! -s "$STUB_PIDFILE" ]; do sleep 0.05; done; }
+case "$1" in
+  --version) echo '2.1.288 (Claude Code)' ;;
+  --help)
+    if [ "$STUB_MODE" = help ]; then ignorer >/dev/null 2>&1 </dev/null & waitpid; exec sleep 30; fi
+    cat '${helpFixture}' ;;
+  *)
+    read -r line
+    case "$line" in
+      *control_request*)
+        id=$(printf '%s' "$line" | sed 's/.*"request_id":"\\([^"]*\\)".*/\\1/')
+        if [ "$STUB_MODE" = init ]; then ignorer >/dev/null 2>&1 </dev/null & waitpid; fi
+        printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{"models":[{"value":"default"},{"value":"haiku"}]}}}\\n' "$id"
+        exit 0 ;;
+    esac
+    cat > /dev/null; cat '${turnFixture}'
+    if [ "$STUB_MODE" = turn ]; then ignorer </dev/null & waitpid; fi
+    exit 0 ;;
+esac
+`);
+  chmodSync(join(groupBin, "claude"), 0o755);
+  const groupRun = (h: string, args: string[], mode: string, pidfile: string) => run(h, args, { extraEnv: { PATH: `${groupBin}:/usr/bin:/bin`, STUB_MODE: mode, STUB_PIDFILE: pidfile } });
+  const descendant = (pidfile: string): number => { assert.ok(existsSync(pidfile), `no descendant pid file ${pidfile}`); return Number(readFileSync(pidfile, "utf8").trim()); };
+  const goneAfterGrace = async (step: string, pid: number): Promise<void> => {
+    await sleep(3000);
+    const left = alive(pid);
+    if (left) try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+    assert.equal(left, false, `${step}: the SIGTERM-ignoring descendant ${pid} is alive 3 s after the command returned`);
+  };
+  type ProviderDoc = { providers: { id: string; available: boolean; reason?: string; models: string[]; modelsConfirmed: boolean }[] };
+  const claudeOf = (r: Result) => (JSON.parse(r.out) as ProviderDoc).providers.find((p) => p.id === "claude");
+
+  const pid10 = join(work, "group-help.pid");
+  const r10 = await groupRun(prepare(false), ["providers", "--json"], "help", pid10);
+  assert.equal(r10.code, 0, r10.err);
+  const c10 = claudeOf(r10);
+  assert.equal(c10?.available, false, r10.out);
+  assert.match(c10?.reason ?? "", /^Could not read the help of claude: no answer within 10000 ms/, r10.out);
+  await goneAfterGrace("step 10", descendant(pid10));
+  ok("step 10 `providers --json`, claude --help hangs with a SIGTERM-ignoring descendant: claude unavailable with the help read reason (no answer within 10000 ms), 3 s later the descendant is gone");
+
+  const pid11 = join(work, "group-init.pid");
+  const r11 = await groupRun(prepare(false), ["providers", "--json"], "init", pid11);
+  assert.equal(r11.code, 0, r11.err);
+  const c11 = claudeOf(r11);
+  assert.deepEqual([c11?.available, c11?.models, c11?.modelsConfirmed], [true, ["haiku"], true], r11.out);
+  await goneAfterGrace("step 11", descendant(pid11));
+  ok("step 11 `providers --json`, the initialize answer leaves a SIGTERM-ignoring descendant: the model list is received and confirmed, 3 s later the descendant is gone");
+
+  const pid12 = join(work, "group-turn.pid");
+  const H12 = prepare(false);
+  const r12 = await groupRun(H12, ["--topic", "Stand topic", "--participant", scripted("p1.json"), "--participant", "claude:default", "--max-rounds", "1"], "turn", pid12);
+  const sessions12 = readdirSync(join(H12, "sessions"));
+  assert.equal(sessions12.length, 1, r12.out + r12.err);
+  const events12 = readFileSync(join(H12, "sessions", sessions12[0]!, "events.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
+  const done12 = events12.find((e) => e.type === "turn_completed" && e.participantId === "p2");
+  assert.ok(done12, `no turn_completed of p2: ${r12.out}${r12.err}`);
+  assert.ok(!events12.some((e) => e.type === "turn_failed" && e.participantId === "p2"), `p2 turn failed: ${r12.out}${r12.err}`);
+  assert.equal(JSON.stringify(done12).includes("Anonymized reasoning."), true, JSON.stringify(done12));
+  await goneAfterGrace("step 12", descendant(pid12));
+  ok(`step 12 a claude turn prints its answer and exits 0 while a SIGTERM-ignoring descendant holds stdout for 30 s: turn_completed of p2 with the fixture answer (council exit ${r12.code}), 3 s later the descendant is gone`);
+
   // ---- safety ----
   assert.deepEqual(names(), namesBefore);
   ok("safety: top-level entries of ~/.claude and ~/.codex unchanged; every launched binary was a stand stub (PATH held only the stand bin and /usr/bin:/bin, SHELL was a stub)");
