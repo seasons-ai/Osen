@@ -23,6 +23,7 @@ export interface ModelDeps {
 
 const RESPONSE_TIMEOUT_MS = 10_000;
 const STDERR_TAIL_MAX = 2_000;
+const KILL_GRACE_MS = 2_000; // as runProcess by default
 // Service request without a user message: the model is not started. --bare is not used: it disables the keychain.
 const REQUIRED_FLAGS = ["--print", "--input-format", "--output-format", "--verbose", "--no-session-persistence"];
 const REQUEST_ARGS = ["--print", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--no-session-persistence"];
@@ -83,16 +84,29 @@ export async function claudeInitialize(path: string, env: Env, args: readonly st
       let stdout = "";
       let stderr = "";
       let settled = false;
+      // SIGTERM to the group, SIGKILL after the stop grace if anyone is left; polling the group lets a one-shot command exit as soon as it is empty.
+      const endGroup = (): void => {
+        const pid = child.pid;
+        try {
+          if (pid === undefined) throw new Error("no pid");
+          process.kill(-pid, "SIGTERM");
+        } catch {
+          try { child.kill(); } catch { /* already finished */ }
+          return;
+        }
+        const deadline = Date.now() + KILL_GRACE_MS;
+        const poll = setInterval(() => {
+          try { process.kill(-pid, 0); } catch { clearInterval(poll); return; }
+          if (Date.now() < deadline) return;
+          clearInterval(poll);
+          try { process.kill(-pid, "SIGKILL"); } catch { /* already gone */ }
+        }, 50);
+      };
       const settle = (outcome: () => void): void => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        try {
-          if (child.pid === undefined) throw new Error("no pid");
-          process.kill(-child.pid, "SIGTERM");
-        } catch {
-          try { child.kill(); } catch { /* already finished */ }
-        }
+        endGroup();
         outcome();
       };
       const timer = setTimeout(() => {
