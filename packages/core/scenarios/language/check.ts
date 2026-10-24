@@ -8,7 +8,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { isInsideRepo } from "../inside-repo.ts";
+import { isInsideRepo, isInsideRepoBeforeCreate } from "../inside-repo.ts";
 import { foldEvents, planResume, ResumeRejectedError, readSession, setProcessLanguage, tokenUsage, readTariffs } from "../../src/index.ts";
 import type { Language } from "../../src/index.ts";
 import { finishReasonText } from "../../src/protocol/finish-reason.ts";
@@ -32,6 +32,7 @@ const repo = resolve(import.meta.dirname, "../../../..");
 const councilTs = join(repo, "packages/core/src/council.ts");
 const rawHome = process.env.COUNCIL_HOME;
 if (!rawHome) { console.error("Set COUNCIL_HOME: a new folder inside the project."); process.exit(1); }
+if (!isInsideRepoBeforeCreate(repo, rawHome)) { console.error(`COUNCIL_HOME ${resolve(rawHome)} is outside the project.`); process.exit(1); }
 mkdirSync(resolve(rawHome), { recursive: true });
 const work = realpathSync(resolve(rawHome));
 if (!isInsideRepo(realpathSync(repo), work)) { console.error(`COUNCIL_HOME ${work} is outside the project.`); process.exit(1); }
