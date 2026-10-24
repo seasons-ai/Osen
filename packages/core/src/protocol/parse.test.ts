@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { describe, it, expect } from "vitest";
 import { initialState } from "./state.ts";
+import { getProcessLanguage, setProcessLanguage } from "../i18n/process-language.ts";
 import type { SessionState, QuestionState } from "./state.ts";
 import {
   RAW_LIMIT, extractJsonObject, parseTurnResponse, truncateRaw, buildCorrectionPrompt, parseFileRequest, parseDraftResponse,
@@ -265,8 +266,8 @@ describe("Parsing a response does not depend on language", () => {
   it("The same failure: an invalid response is rejected in both languages, only the text differs", () => {
     const raw = JSON.stringify({ stance: "amend", reasoning: " ", solution: "x", answers: [], questions: [{ to: "p1", text: "?" }] });
     const noAnswers = JSON.stringify({ stance: "agree", reasoning: "r", solution: null, questions: [] });
-    expect(parseTurnResponse(noAnswers, withLang(state(), "en"), "p1")).toEqual(parseTurnResponse(noAnswers, withLang(state(), "ru"), "p1"));
-    expect(parseTurnResponse(noAnswers, withLang(state(), "en"), "p1").ok).toBe(false);
+    expect(parseTurnResponse(noAnswers, withLang(state(), "en"), "p1")).toEqual({ ok: false, errors: ["answers: expected array"] });
+    expect(parseTurnResponse(noAnswers, withLang(state(), "ru"), "p1")).toEqual({ ok: false, errors: ["answers: ожидается массив"] });
     const en = parseTurnResponse(raw, withLang(state(), "en"), "p1");
     const ru = parseTurnResponse(raw, withLang(state(), "ru"), "p1");
     expect(en).toEqual({ ok: false, errors: ["reasoning: string must not be blank"] });
@@ -274,6 +275,31 @@ describe("Parsing a response does not depend on language", () => {
     expect(errs(parseTurnResponse(resp({ questions: [{ to: "p1", text: "?" }] }), withLang(state(), "en"), "p1"))).toEqual(["A question to yourself is not allowed."]);
     expect(parseDraftResponse("text", "en")).toEqual({ ok: false, errors: ["No JSON object found in the answer."] });
     expect(truncateRaw("x".repeat(RAW_LIMIT + 1), "en").endsWith(` … [truncated, ${RAW_LIMIT + 1} characters in total]`)).toBe(true);
+  });
+
+  // Change 253: built-in zod texts follow the session language, not the process one.
+  it("Built-in schema check description in the session language (process en|ru x session en|ru x turn|draft x bogus|missing stance)", () => {
+    const expected = { ru: "stance: ожидается одно из: amend, agree, object", en: "stance: expected one of: amend, agree, object" };
+    const before = getProcessLanguage();
+    try {
+      for (const processLanguage of ["en", "ru"] as const) {
+        setProcessLanguage(processLanguage);
+        for (const language of ["en", "ru"] as const) {
+          for (const stance of [{ stance: "bogus" }, { stance: undefined }]) {
+            const raw = JSON.stringify({ reasoning: "r", solution: "s", answers: [], questions: [], ...stance });
+            const label = `process ${processLanguage}, session ${language}, ${raw}`;
+            for (const r of [parseTurnResponse(raw, withLang(state(), language), "p1"), parseDraftResponse(raw, language)]) {
+              expect(r.ok, label).toBe(false);
+              const errors = r.ok ? [] : r.errors;
+              expect(errors, label).toEqual([expected[language]]);
+              expect(errors.join("\n"), label).not.toContain("Invalid option");
+            }
+          }
+        }
+      }
+    } finally {
+      setProcessLanguage(before);
+    }
   });
 });
 

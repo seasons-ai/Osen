@@ -233,6 +233,47 @@ if (!old) {
     late.map((c) => journal(c.prompt)).join("\n---\n"));
 }
 
+// ---------- G: built-in schema check descriptions in the session language (change 253) ----------
+{
+  const bad = (stance: unknown) => ({ raw: JSON.stringify({ ...(stance === undefined ? {} : { stance }), reasoning: "r", solution: null, answers: [], questions: [] }) });
+  const ONE_OF = { ru: "- stance: ожидается одно из: amend, agree, object", en: "- stance: expected one of: amend, agree, object" } as const;
+  const FIX = { ru: "# Исправь предыдущий ответ\n", en: "# Fix your previous answer\n" } as const;
+  const fixOf = (calls: Call[]) => calls.find((c) => c.participantId === "p1" && (c.prompt.includes(FIX.ru) || c.prompt.includes(FIX.en)));
+  const errorsOf = (prompt: string) => prompt.slice(prompt.lastIndexOf("\n# "), prompt.lastIndexOf("\n\n", prompt.lastIndexOf(":\n")));
+  // The session is created under its own language; the bad reply comes in the continuation under the other process language.
+  const cases: { name: string; session: Language; process: Language; stance: unknown }[] = [
+    { name: "G1: ru session under COUNCIL_LANG=en, stance \"bogus\"", session: "ru", process: "en", stance: "bogus" },
+    { name: "G2: ru session under COUNCIL_LANG=en, no stance", session: "ru", process: "en", stance: undefined },
+    { name: "G3: en session under COUNCIL_LANG=ru, stance \"bogus\"", session: "en", process: "ru", stance: "bogus" },
+  ];
+  for (const [n, g] of cases.entries()) {
+    const ps = [
+      scenario(`g${n}-1`, [resp("amend", "Name it Orbit."), bad(g.stance), resp("agree", null), resp("agree", null)]),
+      scenario(`g${n}-2`, [resp("object", null, "Not yet."), resp("agree", null), resp("agree", null)]),
+    ];
+    const first = await start(`G${n + 1}`, g.session, ps, ["--max-rounds", "1"]);
+    const c = await resume(first.home, first.id, g.process);
+    const fix = fixOf(c.calls);
+    const es = events(first.home, first.id);
+    const failed = es.find((x) => x.type === "turn_failed") as Extract<SessionEvent, { type: "turn_failed" }> | undefined;
+    check(`${g.name}: continuation code 0, consensus`, c.r.code === 0 && foldEvents(es).finish?.status === "consensus", dump(c.r));
+    check(`${g.name}: the fix request describes the error in the session language, no "Invalid option"`,
+      !!fix && fix.prompt.includes(FIX[g.session]) && fix.prompt.includes(`${ONE_OF[g.session]}\n`) && !fix.prompt.includes("Invalid option") && (g.session === "ru" || !CYR.test(errorsOf(fix.prompt))),
+      fix ? errorsOf(fix.prompt) : "no fix request");
+    check(`${g.name}: the turn failure record is in the session language`, !!failed && failed.message.includes(ONE_OF[g.session].slice(2)) && !failed.message.includes("Invalid option"), JSON.stringify(failed));
+  }
+  const ds = [
+    scenario("g4-1", [bad("bogus"), resp("amend", "Name it Orbit."), resp("agree", null), resp("agree", null), resp("agree", null)]),
+    scenario("g4-2", [resp("amend", "Name it Nova."), resp("amend", "Name it Orbit."), resp("agree", null), resp("agree", null), resp("agree", null)]),
+  ];
+  const d = await start("G4", "ru", ds, ["--drafts", "--synthesizer", "p2", "--max-rounds", "2"]);
+  const fix = fixOf(d.calls);
+  const failedDraft = events(d.home, d.id).find((x) => x.type === "draft_attempt_failed") as Extract<SessionEvent, { type: "draft_attempt_failed" }> | undefined;
+  check("G4: ru session with independent drafts — the draft fix request describes the error in Russian, no \"Invalid option\"",
+    !!fix && fix.prompt.includes(FIX.ru) && fix.prompt.includes(`${ONE_OF.ru}\n`) && !fix.prompt.includes("Invalid option") && failedDraft?.message.includes(ONE_OF.ru.slice(2)) === true,
+    `${dump(d.r)}\n${fix ? errorsOf(fix.prompt) : "no fix request"}\n${JSON.stringify(failedDraft)}`);
+}
+
 const all = readdirSync(work).filter((d) => existsSync(sessionsDir(join(work, d)))).flatMap((d) => ids(join(work, d)).map((id) => events(join(work, d), id)));
 check("In all journals the language is only in session_created", all.length > 0 && all.every(onlyCreatedHasLanguage));
 console.log(`\nResult: ${passed} of ${total}; model calls: 0 (scripted participants)`);
