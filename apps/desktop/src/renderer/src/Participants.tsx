@@ -26,8 +26,8 @@ export function agreementReset(state: SessionState, running: boolean): boolean {
 }
 
 /** Token spend relative to the cap; null — no cap and no spend. */
-export function tokenMeter(state: SessionState): { total: number; cap: number | null; incomplete: boolean; pct: number; warn: boolean } | null {
-  const { total, cap, incomplete } = spend(state);
+export function tokenMeter(state: SessionState, live = false): { total: number; cap: number | null; incomplete: boolean; pct: number; warn: boolean } | null {
+  const { total, cap, incomplete } = spend(state, live);
   if (cap === null) return total > 0 ? { total, cap, incomplete, pct: 0, warn: false } : null;
   return { total, cap, incomplete, pct: Math.min(100, Math.round((total / cap) * 100)), warn: total * 5 >= cap * 4 };
 }
@@ -37,7 +37,7 @@ export function ParticipantsPanel({ state, running }: { state: SessionState; run
   const { session } = state;
   if (session === null) return null;
   const p = progress(state);
-  const tm = tokenMeter(state);
+  const tm = tokenMeter(state, running);
   const pct = p.drafting ? (p.drafting.total === 0 ? 0 : Math.round((p.drafting.accepted / p.drafting.total) * 100)) : p.active === 0 ? 0 : Math.round((p.agreed / p.active) * 100);
   return (
     <section className="session-col" aria-label={t.participants}>
@@ -87,10 +87,10 @@ export function ParticipantsPanel({ state, running }: { state: SessionState; run
   );
 }
 
-export function RoundCounter({ state }: { state: SessionState }): ReactNode {
+export function RoundCounter({ state, running = false }: { state: SessionState; running?: boolean }): ReactNode {
   const t = useMessages(feed);
   const { round, maxRounds, drafting } = progress(state);
-  const { total, incomplete } = spend(state);
+  const { total, incomplete } = spend(state, running);
   const parts = [drafting ? t.draftsCounter : t.roundOf(Math.max(round, 1), maxRounds), t.turnsCount(state.turns.length)];
   if (total > 0) parts.push(t.tokensShort(`${incomplete ? "≥" : ""}${formatTokens(total)}`));
   return <span className="session-counter mono">{parts.join(" · ")}</span>;

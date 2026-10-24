@@ -252,6 +252,51 @@ describe("tokenUsage", () => {
   });
 });
 
+describe("Spend relative to the cap: turn running", () => {
+  const SHA = "b".repeat(64);
+  const U: Usage = { inputTokens: 150, outputTokens: 100 };
+  const head = (drafts = false): UBody => ({
+    type: "session_created", pid: 1,
+    session: {
+      id: "s", createdAt: "2026-01-01T00:00:00Z", origin: "cli", topic: "t", templateId: null, framing: "",
+      participants: ["p1", "p2", "p3"].map((id) => ({ id, name: id, providerId: "scripted", model: "m", role: null })),
+      limits: { maxRounds: 3, turnTimeoutSec: 60, contextChars: 1000, maxTotalTokens: 1200 },
+      ...(drafts ? { drafts: { enabled: true as const, synthesizerId: "p1" } } : {}),
+    },
+  });
+  const running = (...extra: UBody[]) => [head(), ...doneU(1, U), ...doneU(2, U, 10, "p2"), { type: "turn_started", turn: 3, round: 1, participantId: "p3" } as UBody, ...extra];
+  const dst = (draftId: string, participantId: string, attempt = 1): UBody => ({ type: "draft_attempt_started", draftId, participantId, attempt });
+  const dok = (draftId: string, participantId: string, usage: Usage): UBody =>
+    ({ type: "draft_completed", draftId, participantId, attempts: 1, durationMs: 7, usage, chars: 3, sha256: SHA, reasoning: "r" });
+
+  it("a running turn is not incomplete with live, the sum is unchanged", () => {
+    const s = foldU(running());
+    expect(tokenUsage(s, { live: true })).toMatchObject({ total: 500, incomplete: false });
+    expect(tokenUsage(s)).toMatchObject({ total: 500, incomplete: true });
+  });
+  it("a turn completed without tokens stays incomplete with live", () => {
+    expect(tokenUsage(foldU([head(), ...doneU(1, {}), { type: "turn_started", turn: 2, round: 1, participantId: "p2" }]), { live: true }).incomplete).toBe(true);
+  });
+  it("a gap in file-request attempt numbers of the running turn stays incomplete with live", () => {
+    const failAt = (attempt: number): UBody => ({ type: "turn_failed", turn: 3, round: 1, participantId: "p3", attempt, kind: "invalid_response", message: "m", usage: U });
+    const s = foldU(running(failAt(1), failAt(3)));
+    expect(tokenUsage(s, { live: true }).incomplete).toBe(true);
+  });
+  it("a running draft attempt in the drafting phase is not incomplete with live", () => {
+    const s = foldU([head(true), dst("d1", "p1"), dok("d1", "p1", U), dst("d2", "p2")]);
+    expect(tokenUsage(s, { live: true })).toMatchObject({ total: 250, incomplete: false });
+    expect(tokenUsage(s).incomplete).toBe(true);
+  });
+  it("a lost draft attempt of an earlier slot stays incomplete with live while the next slot runs", () => {
+    const s = foldU([head(true), dst("d1", "p1"), dst("d2", "p2")]);
+    expect(tokenUsage(s, { live: true }).incomplete).toBe(true);
+  });
+  it("after drafts_finished a draft attempt without outcome stays incomplete with live", () => {
+    const s = foldU([head(true), dst("d1", "p1"), dok("d1", "p1", U), dst("d2", "p2"), { type: "drafts_finished" }]);
+    expect(tokenUsage(s, { live: true }).incomplete).toBe(true);
+  });
+});
+
 describe("independent drafts: order and counters", () => {
   const sess = (drafts?: { enabled: true; synthesizerId: string }): SessionState => ({
     ...base(),
