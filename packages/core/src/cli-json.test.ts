@@ -1,10 +1,11 @@
-import { appendFileSync, existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { main } from "./cli.ts";
 import type { CliIo } from "./cli.ts";
 import { setProcessLanguage } from "./i18n/index.ts";
+import { configPath, initialRegistry } from "./registry/config.ts";
 import { appendEvent, createSessionJournal, eventsPath, readEvents } from "./store/journal.ts";
 import { applyEvent } from "./protocol/fold.ts";
 import { initialState, sessionTotals } from "./protocol/state.ts";
@@ -199,6 +200,28 @@ describe("council --json", () => {
     expect(claude.baseUrl).toBeNull();
     expect(claude.verified).toBeNull();
     expect(JSON.stringify(d)).not.toContain("searchPath");
+  });
+
+  it("providers and doctor: a found cli with a recorded version carries source and verified", async () => {
+    const home = tmp();
+    writeFileSync(configPath(home), JSON.stringify(initialRegistry(["claude", "codex"])));
+    const verified = { level: "real" as const, checkedAt: "2026-10-01T00:00:00.000Z" };
+    const found = async (agent: "claude" | "codex") => agent === "claude"
+      ? { agent, found: true as const, path: "/nope/claude", version: "2.1.288", source: "pin" as const, searchPath: "", verified }
+      : { agent, found: false as const, searchPath: "", reason: "not found" };
+    const inspectDeps = { locate: found, listModels: async () => ({ models: [], confirmed: false, reason: "no list" }), readHelp: async () => "" };
+    for (const cmd of ["providers", "doctor"]) {
+      const d = doc(await run([cmd, "--json"], home, { inspectDeps }));
+      const byId = (id: string) => d.providers.find((p: { id: string }) => p.id === id);
+      expect([byId("claude").source, byId("claude").verified], cmd).toEqual(["pin", verified]);
+      expect([byId("codex").source, byId("codex").verified], cmd).toEqual([null, null]);
+      expect(Object.keys(byId("claude")), cmd).toEqual(["id", "kind", "label", "available", "reason", "warning", "path", "version", "source", "verified", "baseUrl", "keyEnv", "keySet", "models", "modelsConfirmed", "modelsReason"]);
+    }
+    // a found cli whose version is not in the record: level none, checkedAt null, source as found
+    const none = { level: "none" as const, checkedAt: null };
+    const unrecorded = async (agent: "claude" | "codex") => ({ agent, found: true as const, path: `/nope/${agent}`, version: "0.0.1", source: agent === "claude" ? "explicit" as const : "path" as const, searchPath: "", verified: none });
+    const d = doc(await run(["providers", "--json"], home, { inspectDeps: { ...inspectDeps, locate: unrecorded } }));
+    expect(d.providers.map((p: { source: unknown; verified: unknown }) => [p.source, p.verified])).toEqual([["explicit", none], ["path", none]]);
   });
 
   it("templates and lineups: one document each, empty lineups give []", async () => {
