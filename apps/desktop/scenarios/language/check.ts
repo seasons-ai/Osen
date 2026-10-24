@@ -16,7 +16,8 @@ import type { Language } from "../../../../packages/core/src/i18n/index.ts";
 import { createBridge } from "../../src/main/bridge.ts";
 import { closeWarningText, createLanguageState } from "../../src/main/language.ts";
 import { shell } from "../../src/shared/messages/shell.ts";
-import type { BridgeEvent } from "../../src/shared/bridge.ts";
+import type { BridgeEvent, LanguageView } from "../../src/shared/bridge.ts";
+import { languageChoiceIgnored } from "../../src/shared/settings.ts";
 import { seedJournals } from "../tariffs/fixture.ts";
 
 delete process.env["COUNCIL_LANG"];
@@ -76,7 +77,7 @@ function open(dir: string, extraEnv: Record<string, string> = {}) {
 }
 type R = { ok: true; value: unknown } | { ok: false; error: string };
 const call = async (b: ReturnType<typeof open>["bridge"], action: string, ...args: unknown[]) => (await b.call(action, args)) as R;
-const view = async (b: ReturnType<typeof open>["bridge"]) => { const r = await call(b, "language"); assert.ok(r.ok); return r.value as { language: string; source: string; locked: boolean }; };
+const view = async (b: ReturnType<typeof open>["bridge"]) => { const r = await call(b, "language"); assert.ok(r.ok); return r.value as { language: string; source: string; locked: boolean; damaged: boolean }; };
 
 if (seedOnly) {
   const dir = dataDir(true, root);
@@ -103,7 +104,7 @@ await check("empty folder", async () => {
   const dir = dataDir(false);
   const { bridge } = open(dir);
   const v = await view(bridge);
-  assert.deepEqual(v, { language: "en", source: "default", locked: false });
+  assert.deepEqual(v, { language: "en", source: "default", locked: false, damaged: false });
   assert.equal(existsSync(prefs(dir)), false);
   assert.equal(getProcessLanguage(), "en");
   return `language ${v.language}, source ${v.source}, locked ${v.locked}, process language ${getProcessLanguage()}, preferences.json not created`;
@@ -126,7 +127,7 @@ await check("the variable takes precedence over the file", async () => {
   const dir = dataDir(false);
   writeFileSync(prefs(dir), '{ "language": "en" }\n');
   const v = await view(open(dir, { COUNCIL_LANG: "ru" }).bridge);
-  assert.deepEqual(v, { language: "ru", source: "env", locked: true });
+  assert.deepEqual(v, { language: "ru", source: "env", locked: true, damaged: false });
   return `file en, COUNCIL_LANG=ru: language ${v.language}, source ${v.source}, locked ${v.locked}`;
 });
 
@@ -134,7 +135,7 @@ await check("unknown variable value", async () => {
   const dir = dataDir(false);
   writeFileSync(prefs(dir), '{ "language": "ru" }\n');
   const v = await view(open(dir, { COUNCIL_LANG: "de" }).bridge);
-  assert.deepEqual(v, { language: "ru", source: "file", locked: false });
+  assert.deepEqual(v, { language: "ru", source: "file", locked: false, damaged: false });
   return `file ru, COUNCIL_LANG=de: language ${v.language}, source ${v.source}, locked ${v.locked}`;
 });
 
@@ -142,7 +143,7 @@ await check("variable in the data folder's .env", async () => {
   const dir = dataDir(false);
   writeFileSync(join(dir, ".env"), "COUNCIL_LANG=ru\n");
   const v = await view(open(dir).bridge);
-  assert.deepEqual(v, { language: "ru", source: "env", locked: true });
+  assert.deepEqual(v, { language: "ru", source: "env", locked: true, damaged: false });
   return `COUNCIL_LANG=ru only in the data folder's .env (loadEnv): language ${v.language}, source ${v.source}`;
 });
 
@@ -151,7 +152,7 @@ await check("change via the bridge", async () => {
   const { bridge, events } = open(dir);
   const r = await call(bridge, "setLanguage", "ru");
   assert.ok(r.ok, r.ok ? "" : r.error);
-  assert.deepEqual(r.value, { language: "ru", source: "file", locked: false });
+  assert.deepEqual(r.value, { language: "ru", source: "file", locked: false, damaged: false });
   assert.deepEqual(JSON.parse(readFileSync(prefs(dir), "utf8")), { language: "ru" });
   assert.deepEqual(Object.keys(JSON.parse(readFileSync(prefs(dir), "utf8"))), ["language"]);
   const lang = events.filter((e) => e.type === "language");
@@ -196,6 +197,51 @@ await check("corrupted file", async () => {
   assert.ok(n2.ok);
   assert.deepEqual(n2.value, []);
   return `language ${v.language}, notices 1 («${notices[0]!.slice(0, 48)}…»), bytes unchanged; after choosing «Русский» the file is replaced, notices 0`;
+});
+
+await check("corrupted file, the current language chosen", async () => {
+  const dir = dataDir(false);
+  writeFileSync(prefs(dir), "not json");
+  const { bridge, events } = open(dir);
+  const v = await view(bridge);
+  assert.deepEqual(v, { language: "en", source: "default", locked: false, damaged: true });
+  const n = await call(bridge, "notices");
+  assert.ok(n.ok);
+  assert.equal((n.value as string[]).length, 1);
+  // the panel's own decision: the click on the current "English" is not dropped while the file is damaged
+  assert.equal(languageChoiceIgnored(v as LanguageView, "en", false), false);
+  const r = await call(bridge, "setLanguage", "en");
+  assert.ok(r.ok, r.ok ? "" : r.error);
+  assert.deepEqual(JSON.parse(readFileSync(prefs(dir), "utf8")), { language: "en" });
+  assert.equal((await view(bridge)).damaged, false);
+  const n2 = await call(bridge, "notices");
+  assert.ok(n2.ok);
+  assert.deepEqual(n2.value, []);
+  assert.equal(events.filter((e) => e.type === "language").length, 1);
+  return `damaged ${v.damaged}, notices 1; after choosing the current «English» the file is ${JSON.stringify(JSON.parse(readFileSync(prefs(dir), "utf8")))}, damaged false, notices 0`;
+});
+
+await check("the current language chosen without a file and with the variable", async () => {
+  const none = dataDir(false);
+  const opened = open(none);
+  const a = await view(opened.bridge);
+  assert.deepEqual(a, { language: "en", source: "default", locked: false, damaged: false });
+  assert.equal(languageChoiceIgnored(a as LanguageView, "en", false), true);
+  // even past the panel the bridge does not create the file for the language already in effect
+  const s = await call(opened.bridge, "setLanguage", "en");
+  assert.ok(s.ok, s.ok ? "" : s.error);
+  assert.equal(existsSync(prefs(none)), false);
+  assert.equal(opened.events.length, 0);
+  const locked = dataDir(false);
+  const { bridge, events } = open(locked, { COUNCIL_LANG: "en" });
+  const b = await view(bridge);
+  assert.deepEqual(b, { language: "en", source: "env", locked: true, damaged: false });
+  assert.equal(languageChoiceIgnored(b as LanguageView, "en", false), true);
+  const r = await call(bridge, "setLanguage", "en");
+  assert.equal(r.ok, false);
+  assert.equal(existsSync(prefs(locked)), false);
+  assert.equal(events.length, 0);
+  return `no file: damaged false, the click is dropped, setLanguage(en) through the bridge does not create the file either; COUNCIL_LANG=en: damaged false, the click is dropped, the bridge refuses, the file is not created`;
 });
 
 await check("corrupted file with the variable set", async () => {

@@ -1,6 +1,8 @@
 import { ROUNDS_BOUNDS } from "./setup.ts";
 import type { Billing, RosterEntry } from "./setup.ts";
 import { settings } from "./messages/settings.ts";
+import type { LanguageView } from "./bridge.ts";
+import type { Language } from "@model-council/core/i18n";
 
 // "Settings" screen data: the contract between main and renderer. Key values are not included — only the variable name and a flag.
 
@@ -138,5 +140,9 @@ export function checkDefaults(values: DefaultsValues, providerIds: readonly stri
     participants,
   };
 }
+
+// A language choice in "Settings" that changes nothing is dropped; the current language still goes through while preferences.json is damaged — the write fixes it.
+export const languageChoiceIgnored = (view: LanguageView, language: Language, busy: boolean): boolean =>
+  busy || view.locked || (language === view.language && !view.damaged);
 
 export const hasErrors = (errors: object): boolean => Object.values(errors).some((v) => v !== null);
