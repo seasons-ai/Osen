@@ -27,6 +27,8 @@ npm run release
 
 Both commands refresh `origin/main` and refuse unsynchronized or dirty trees. The preview writes no files or tags. Preparation runs `typecheck` and the full test suite, creates `codex/release-vX.Y.Z`, updates the desktop version and lockfile, inserts the CHANGELOG section, and commits `chore(release): vX.Y.Z`. It does not tag or push. The level comes from commits after the latest reachable version tag; an explicit level/version is supported: `npm run release -- patch` (`minor`, `major` or `X.Y.Z`). For the initial public history without a reachable tag, the root commit is the baseline only if its desktop version matches the current version. Unrelated old local tags and history remain untouched.
 
+A commit on `main` whose title does not match the format is left out of the CHANGELOG: the preview counts it in "commits" but not in "matching the format". Such a commit cannot be rewritten without a force push, so its entry is restored by a follow-up PR titled with the original change's Conventional Commits title and a body naming the skipped commit; for example `62667c2` (#118) reached `main` with an empty title and is restored by the commit titled `fix(222-ooxml-variants-and-format-texts): …`.
+
 Push the branch printed by the command and open a PR titled `chore(release): vX.Y.Z`. After successful CI, squash merge with that title; GitHub may append its `(#123)` PR number. Then publish its tag from synchronized main:
 
 ```bash
