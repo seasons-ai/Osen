@@ -474,16 +474,19 @@ describe("Архив ZIP как папка: повторный сбор посл
 });
 
 describe("Архив ZIP как папка: показ пропусков и причины", () => {
-  it("an archive inside a folder that is also attached separately is expanded, not skipped", () => {
+  it("an archive inside a folder that is also attached separately is expanded, not skipped, on ru and en", () => {
     put("d/notes.md", "n");
     const z = put("d/export.zip", makeZip([{ name: "a.txt", data: "a" }]));
-    for (const paths of [[join(root, "d"), z], [z, join(root, "d")]]) {
-      const set = collectMaterials(paths, opts);
-      expect(names(set).sort()).toEqual(["d/notes.md", "export.zip/a.txt"]);
-      expect(set.skipped.map((s) => s.name)).not.toContain("d/export.zip");
+    for (const lang of ["ru", "en"] as const) {
+      setProcessLanguage(lang);
+      for (const paths of [[join(root, "d"), z], [z, join(root, "d")]]) {
+        const set = collectMaterials(paths, opts);
+        expect(names(set).sort()).toEqual(["d/notes.md", "export.zip/a.txt"]);
+        expect(set.skipped.map((s) => s.name)).not.toContain("d/export.zip");
+      }
+      const alone = collectMaterials([join(root, "d")], opts);
+      expect(reasonOf(alone, "d/export.zip")).toBe(lang === "ru" ? "архив внутри папки не раскрывается — приложите его отдельно" : "an archive inside a folder is not expanded — attach it separately");
     }
-    const alone = collectMaterials([join(root, "d")], opts);
-    expect(reasonOf(alone, "d/export.zip")).toBe(m().archiveInFolder);
   }, SLOW);
 
   it("a NUL in an unsafe entry name is shown as \\u0000, also for a repeated name", () => {
