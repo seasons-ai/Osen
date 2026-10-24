@@ -28,13 +28,15 @@ export function createLanguageState(deps: LanguageStateDeps): LanguageState {
   let current = resolved.language;
   let source = resolved.source;
   let invalid = resolved.invalid;
-  const view = (): LanguageView => ({ language: current, source, locked: source === "env" });
+  const view = (): LanguageView => ({ language: current, source, locked: source === "env", damaged: invalid !== null && source !== "env" });
   return {
     view,
     set(value) {
       const language = parseLanguage(value);
       if (!language) throw new LanguageRejectedError(shell().languageInvalid);
       if (source === "env") throw new LanguageRejectedError(shell().languageLocked);
+      // no file and the language already in effect: nothing to fix, the file is not created
+      if (language === current && source === "default" && invalid === null) return view();
       try {
         writeLanguage(deps.dataDir, language);
       } catch (e) {

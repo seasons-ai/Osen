@@ -57,7 +57,7 @@ function setup(over: Partial<BridgeDeps> = {}) {
     copyText: vi.fn(),
     exportSession: vi.fn(async () => ({ path: "/x.md" })),
     setPinned: vi.fn(),
-    language: { view: vi.fn(() => ({ language: "ru" as const, source: "default" as const, locked: false })), set: vi.fn((l: unknown) => ({ language: l as "en", source: "file" as const, locked: false })), invalidNotice: vi.fn(() => null) },
+    language: { view: vi.fn(() => ({ language: "ru" as const, source: "default" as const, locked: false, damaged: false })), set: vi.fn((l: unknown) => ({ language: l as "en", source: "file" as const, locked: false, damaged: false })), invalidNotice: vi.fn(() => null) },
     appearance: { view: vi.fn(() => ({ mode: "dark" as const, lightTheme: "tuman" as const, theme: "osen" as const })), set: vi.fn((i: unknown) => ({ mode: "light" as const, lightTheme: (i as { lightTheme: "len" }).lightTheme, theme: (i as { lightTheme: "len" }).lightTheme })), systemChanged: vi.fn(), background: vi.fn(() => "#17130F") },
     settings: {
       view: vi.fn(async () => "view" as never),
@@ -772,8 +772,8 @@ describe("bridge: language and refusal texts", () => {
 
   it("language and setLanguage go through the dependency", async () => {
     const { deps, bridge } = setup();
-    expect(await bridge.call("language", [])).toEqual({ ok: true, value: { language: "ru", source: "default", locked: false } });
-    expect(await bridge.call("setLanguage", ["en"])).toEqual({ ok: true, value: { language: "en", source: "file", locked: false } });
+    expect(await bridge.call("language", [])).toEqual({ ok: true, value: { language: "ru", source: "default", locked: false, damaged: false } });
+    expect(await bridge.call("setLanguage", ["en"])).toEqual({ ok: true, value: { language: "en", source: "file", locked: false, damaged: false } });
     expect(deps.language.set).toHaveBeenCalledWith("en");
   });
 

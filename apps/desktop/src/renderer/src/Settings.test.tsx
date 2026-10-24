@@ -285,7 +285,7 @@ describe("SettingsScreen: language", () => {
     const input = { id: null, label: "Локальный", baseUrl: "http://127.0.0.1:8787/v1", apiKeyEnv: "" };
     const state = loaded({}, { form: { input, saving: false, error: null } });
     const ctx = (language: "en" | "ru") => renderToStaticMarkup(
-      <LanguageProvider initial={{ language, source: "file", locked: false }}>
+      <LanguageProvider initial={{ language, source: "file", locked: false, damaged: false }}>
         <SettingsScreen state={state} now={new Date("2026-01-01T12:00:00")} />
       </LanguageProvider>);
     const e = ctx("en");
@@ -308,7 +308,7 @@ describe("SettingsScreen: language", () => {
 
 describe("Connections tab in SettingsScreen", () => {
   const withLang = (s: SettingsState) => renderToStaticMarkup(
-    <LanguageProvider initial={{ language: "ru", source: "file", locked: false }}>
+    <LanguageProvider initial={{ language: "ru", source: "file", locked: false, damaged: false }}>
       <SettingsScreen state={s} now={new Date("2026-01-01T12:00:00")} />
     </LanguageProvider>);
   it("tab button is third and selecting it renders the tab", () => {
@@ -439,7 +439,7 @@ describe("CLI transition on the Providers tab", () => {
     const off = vi.fn();
     const reload = vi.fn();
     const stop = followCliTransition({ subscribe: (l: (e: BridgeEvent) => void) => { listener = l; return off; } }, reload);
-    listener({ type: "language", view: { language: "en", source: "file", locked: false } });
+    listener({ type: "language", view: { language: "en", source: "file", locked: false, damaged: false } });
     expect(reload).not.toHaveBeenCalled();
     listener({ type: "cli-transition" });
     expect(reload).toHaveBeenCalledTimes(1);
