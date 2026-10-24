@@ -1,6 +1,7 @@
 // Live check of the MCP server and skill rename to osen (change 81, steps 1–3 of the Live Scenario); step 4 — the installer does not
 // migrate the legacy model-council data folder, council does (change 98); step 5 — an osen folder with another repository copy's
-// marker is foreign: install, uninstall and preview do not change it (change 112).
+// marker is foreign: install, uninstall and preview do not change it (change 112); with no osen server entry the server is not added
+// next to a foreign skill folder, with another copy's marker or without a marker (change 257).
 // The server is a child process over stdio; the installer is the real `node skill/install.ts` with a fake HOME and fake
 // `claude` and `codex` first in PATH: they edit $HOME/.claude.json and the stand's entries file and write calls to a log.
 // The owner's global agent settings are not changed. Participants are scripted, model calls 0.
@@ -259,6 +260,34 @@ const codexServers = (home: string) => readJson(join(home, ".codex/fake-state.js
 
   const deploy = readFileSync(join(root, "docs/deploy.md"), "utf8");
   check(5, "docs/deploy.md: the skill installer is not said to migrate", !deploy.includes("skill installer"));
+}
+
+// ---- step 5, change 257: a foreign osen skill folder and no osen server entry: the server is not added ----
+for (const [what, marker] of [["another copy's marker", "/другая/копия\n"], ["no marker", null]] as const) {
+  const home = join(work, `home-e-${marker === null ? "nomarker" : "other"}`);
+  seedLegacy(home);
+  for (const a of ["claude", "codex"]) {
+    put(join(home, `.${a}/skills/osen/SKILL.md`), "от другой копии\n");
+    if (marker !== null) put(join(home, `.${a}/skills/osen/.osen-install`), marker);
+  }
+  // drop the legacy server entries too: the agent configs hold only the foreign `other` server
+  const c = readJson(join(home, ".claude.json")), x = readJson(join(home, ".codex/fake-state.json"));
+  delete c.mcpServers["model-council"]; delete x.servers["model-council"];
+  put(join(home, ".claude.json"), JSON.stringify(c)); put(join(home, ".codex/fake-state.json"), JSON.stringify(x));
+  // Claude Desktop already has its own connected entry, so only the agents' servers are in question
+  put(join(home, "Library/Application Support/Claude/claude_desktop_config.json"), JSON.stringify({ mcpServers: { osen: { command: process.execPath, args: [main] } } }));
+  for (const a of ["claude", "codex"]) rmSync(join(home, `.${a}/skills/model-council`), { recursive: true, force: true });
+  const before = tree(home);
+  for (const flags of [[], ["--dry-run"]]) {
+    const label = `${what}${flags.length ? " --dry-run" : ""}`;
+    resetLog();
+    const r = install(home, ...flags);
+    const lines = r.out.split("\n");
+    const ok = ["Claude Code", "Codex"].every((a) => lines.some((l) => l.startsWith(`${a} · скилл · расхождение`)) && lines.some((l) => l.startsWith(`${a} · сервер · расхождение: сервер не добавлен: папка скилла osen чужая`)));
+    check(5, `no osen server, foreign skill (${label}): skill mismatch, "сервер не добавлен" for both agents, code 1, no "Перезапусти агентов"`, r.code === 1 && ok && !r.out.includes("Перезапусти агентов"), `${r.code}\n${r.out}`);
+    check(5, `no osen server, foreign skill (${label}): HOME byte for byte unchanged, osen not in the agent configs, no add/remove calls`,
+      JSON.stringify(tree(home)) === JSON.stringify(before) && !claudeServers(home).osen && !codexServers(home).osen && mutating().length === 0, mutating().join("; "));
+  }
 }
 
 if (failed) { console.log(`\nFailed: ${failed}. The stand folder is kept: ${work}`); process.exit(1); }
