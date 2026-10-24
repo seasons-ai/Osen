@@ -53,7 +53,7 @@ Any model behind an endpoint compatible with OpenAI Chat Completions (OpenRouter
 }
 ```
 
-   `baseUrl` is the address up to `/chat/completions`, `http` or `https` only. `apiKeyEnv` is the name of the variable holding the key; the key itself is not in `config.json`, and a field containing it is rejected. For a local server without authorization, leave `apiKeyEnv` out. Leave `models` empty: the list is requested from the endpoint.
+   `baseUrl` is the address up to `/chat/completions`, `http` or `https` only. `apiKeyEnv` is the name of the variable holding the key; the key itself is not in `config.json`, and a field containing it is rejected. For a local server without authorization, leave `apiKeyEnv` out. `models` holds only the models added by the owner; the list is always requested from the endpoint and merged with them. If the endpoint has no list, the provider stays available with the added models.
 
 2. Put the key into the data folder's `.env` as a single line `OPENROUTER_API_KEY=<value>`. The key is read from an environment variable; the environment is supplemented from the data folder's `.env`, then from the `.env` in the current folder. A variable set in the environment takes precedence over the files; an empty value counts as unset.
 
