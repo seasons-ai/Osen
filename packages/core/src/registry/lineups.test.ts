@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createRegistry, configPath } from "./config.ts";
 import { LineupsError, lineupsPath, readLineups, saveLineup } from "./lineups.ts";
 import type { Lineup, LineupParticipant } from "./lineups.ts";
+import { resumeLockPath } from "../store/journal.ts";
+import { acquireResumeLock } from "../store/resume.ts";
 
 const tmps: string[] = [];
 const tmp = () => {
@@ -116,6 +118,24 @@ describe("Local named lineups: lineups.json file", () => {
     expect(bytes(dir)).toBe(before);
     expect(existsSync(`${lineupsPath(dir)}.tmp`)).toBe(false);
     expect(existsSync(join(dir, "lineups.lock"))).toBe(false);
+  });
+
+  it("7a. lock: a live resume.lock (data folder or session) does not block saving a lineup", async () => {
+    const dir = tmp();
+    const session = join(dir, "sessions", "s1");
+    mkdirSync(session, { recursive: true });
+    for (const p of [join(dir, "resume.lock"), join(session, "resume.lock")]) writeFileSync(p, String(process.pid));
+    await saveLineup(dir, { name: "a", participants: two }, { lockWaitMs: 100 });
+    expect(readLineups(dir).map((l) => l.name)).toEqual(["a"]);
+    expect(existsSync(join(dir, "lineups.lock"))).toBe(false);
+    expect(readFileSync(join(session, "resume.lock"), "utf8")).toBe(String(process.pid));
+
+    // And back: a live lineups.lock does not block taking a session's resume lock.
+    writeFileSync(join(dir, "lineups.lock"), String(process.pid));
+    const lock = resumeLockPath(dir, "s2");
+    mkdirSync(join(dir, "sessions", "s2"), { recursive: true });
+    expect(() => acquireResumeLock(lock, () => true)).not.toThrow();
+    expect(readFileSync(lock, "utf8")).toBe(String(process.pid));
   });
 
   it("7. lock: dead one removed, live foreign one waits and refuses", async () => {

@@ -160,6 +160,14 @@ describe("XLSX chars limit and whitespace", () => {
     expect(extractDocument(bytes, { ...DOC_LIMITS, chars: len - 1 })).toEqual({ ok: false, code: "chars" });
   });
 
+  it("a cell of only spaces is not empty: it keeps its column and counts toward the cell limit", () => {
+    const spec: XlsxSpec = { sheets: [{ name: "S", rows: [[{ inline: " " }, "x"]] }] };
+    expect(text(spec)).toBe("# S\n \tx");
+    const bytes = makeXlsx(spec);
+    expect(extractDocument(bytes, { ...DOC_LIMITS, cells: 2 })).toMatchObject({ ok: true });
+    expect(extractDocument(bytes, { ...DOC_LIMITS, cells: 1 })).toEqual({ ok: false, code: "cells" });
+  });
+
   it("a book whose only cell is whitespace is no_text, like DOCX", () => {
     expect(run({ sheets: [{ name: "S", rows: [[{ inline: " " }]] }] })).toEqual({ ok: false, code: "no_text" });
     expect(run({ sheets: [{ name: "S", rows: [[{ inline: "\t\n" }]] }] })).toEqual({ ok: false, code: "no_text" });
