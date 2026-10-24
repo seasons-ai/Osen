@@ -563,7 +563,8 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
     } else if (cmd === "cli") {
       const [sub = "", ...args] = rest;
       const usages: Record<string, string> = { install: "<agent> [--version <X>] [--candidate]", use: "<agent> <version>", rollback: "<agent>", accept: "<agent> <version> [--candidate] [--model <id>] [--max-calls <N>] [--save-fixture <folder>]" };
-      const need = { install: 1, list: 0, use: 2, rollback: 1, candidates: 0, accept: 2 }[sub];
+      const needs: Record<string, number> = { install: 1, list: 0, use: 2, rollback: 1, candidates: 0, accept: 2 };
+      const need = Object.hasOwn(needs, sub) ? needs[sub] : undefined; // own keys only: "constructor" is an unknown subcommand
       if (!rest.length) return usageFail(t.cliUsage);
       if (need === undefined) return usageFail(t.cliUnknownSub(sub));
       const rejected = values.version !== undefined && sub !== "install" ? "--version"
