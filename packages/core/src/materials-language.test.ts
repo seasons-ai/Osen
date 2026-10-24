@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setProcessLanguage } from "./i18n/process-language.ts";
 import type { Language } from "./i18n/language.ts";
+import { materialsMessages } from "./messages/materials.ts";
 import { MaterialsError, collectMaterials, selectMaterials, verifyMaterials } from "./materials.ts";
 import { PDF_LIMITS, pdfReason } from "./pdf/extract.ts";
 import type { PdfFailure } from "./pdf/extract.ts";
@@ -27,12 +28,14 @@ describe("Core messages in the selected language: materials, PDF, links", () => 
       "ocr_pages", "ocr_missing", "ocr_start", "ocr_page_timeout", "ocr_timeout", "ocr_memory", "ocr_failed"];
     for (const code of codes) {
       setProcessLanguage("en");
-      const en = pdfReason({ code, detail: "exit 3" });
+      const detail = code === "failed" ? "exit:3" : code === "ocr_failed" ? materialsMessages().docBadReply : undefined;
+      const en = pdfReason({ code, ...(detail === undefined ? {} : { detail }) });
       setProcessLanguage("ru");
-      const ru = pdfReason({ code, detail: "exit 3" });
+      const ru = pdfReason({ code, ...(detail === undefined ? {} : { detail: code === "ocr_failed" ? materialsMessages().docBadReply : detail }) });
       expect(en, code).not.toMatch(CYR);
       expect(ru, code).toMatch(CYR);
       expect(nums(en), code).toEqual(nums(ru));
+      expect(ru, code).not.toMatch(/exit \d|exit:/);
     }
     setProcessLanguage("en");
     expect(pdfReason({ code: "pages" })).toBe(`PDF has more than ${PDF_LIMITS.pages} pages`);

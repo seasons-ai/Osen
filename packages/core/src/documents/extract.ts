@@ -23,7 +23,7 @@ export function extractDocumentText(bytes: Uint8Array, limits: DocLimits = DOC_L
   const { ms, rssBytes, chars, parts, unpackedBytes, ratio, cells } = limits;
   // ponytail: a synchronous call holds the event loop for up to ms + 2 s per file; an asynchronous collection is separate work, if documents become heavy.
   const r = spawnSync(runtime.command, [runtime.script, JSON.stringify({ ms, rssBytes, chars, parts, unpackedBytes, ratio, cells, ...(runtime.tools ? { tools: runtime.tools } : {}) })], {
-    input: bytes, env: runtime.env, timeout: ms + 2000, killSignal: "SIGKILL",
+    input: bytes, env: runtime.env, cwd: "/", timeout: ms + 2000, killSignal: "SIGKILL",
     maxBuffer: chars * 4 + 2 ** 20, stdio: ["pipe", "pipe", "ignore"],
   });
   const code = (r.error as NodeJS.ErrnoException | undefined)?.code;

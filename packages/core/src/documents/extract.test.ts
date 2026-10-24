@@ -180,6 +180,28 @@ describe("Parent safeguard", () => {
 });
 
 describe("Isolation", () => {
+  it("document extraction isolation: the extraction process runs in /, not in the parent's working directory", () => {
+    const before = process.cwd();
+    process.chdir(tmp());
+    try {
+      setDocumentExtractorRuntime({ script: pdfData("child-cwd.ts") });
+      expect(extractDocumentText(makeDocx({ body: p("а") }))).toMatchObject({ ok: true, text: "/" });
+    } finally {
+      process.chdir(before);
+    }
+  }, SLOW);
+
+  it("RTF and DOC text: a short file with the CFB signature is a damaged document, without the signature it is not", () => {
+    const short = Buffer.concat([Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]), Buffer.alloc(100)]);
+    const r = extractDocumentText(short);
+    expect(r).toEqual({ ok: false, code: "damaged" });
+    expect(documentReason(r as { code: "damaged" })).toBe("документ повреждён");
+    setProcessLanguage("en");
+    expect(documentReason(r as { code: "damaged" })).toBe("document is damaged");
+    setProcessLanguage("ru");
+    expect(extractDocumentText(Buffer.alloc(108))).toEqual({ ok: false, code: "unsupported" });
+  }, SLOW);
+
   it("child process does not get the parent's environment", () => {
     process.env.OPENAI_API_KEY = "stand-secret";
     try {
