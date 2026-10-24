@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { setProcessLanguage, createLogger, FOLDER_LIMITS, listSessions, loadTemplates, readSession, readEvents, requestStop } from "@model-council/core";
 import type { CliLocation } from "@model-council/core";
+import { engineMessages } from "@model-council/core";
+import { mcpMessages } from "./messages.ts";
 import { configPath, initialRegistry, lineupsPath, saveLineup } from "@model-council/core";
 import { main } from "../../core/src/cli.ts";
 import { writeExecutable } from "../../core/src/executable.testutil.ts";
@@ -770,5 +772,32 @@ describe("server closed during the launch wait", () => {
     cleanupActiveLaunches();
     expect(readdirSync(launch)).toEqual([]);
     await pending;
+  });
+});
+
+describe("Start input check", () => {
+  it("Start input check: empty topic together with attachments", async () => {
+    const ctx = ctxOf();
+    const e = await start(ctx, { topic: "  ", participants: two, attachments: [join(tmp(), "no-such-file.txt")] }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ToolError);
+    expect((e as Error).message).toBe(engineMessages().topicRequired);
+    expect(listSessions(ctx.dataDir)).toEqual([]);
+    const dir = join(ctx.dataDir, "launch");
+    expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);
+  });
+});
+
+describe("Session start: launch deadline", () => {
+  it("Session start: the executor of a new session refused by deadline before the server answered", async () => {
+    const ctx = ctxOf({
+      startTimeoutMs: 2000, startPollMs: 20,
+      spawnExecutor: async (_file, errPath) => { writeFileSync(errPath, `${JSON.stringify({ code: "launch_expired", message: "Launch file is stale" })}\n`); return 2; },
+    });
+    const e = await start(ctx, { topic: "t", participants: two }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ToolError);
+    expect((e as Error).message).toBe(mcpMessages().startExecutorTimeout(2));
+    expect(listSessions(ctx.dataDir)).toEqual([]);
+    const dir = join(ctx.dataDir, "launch");
+    expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);
   });
 });
