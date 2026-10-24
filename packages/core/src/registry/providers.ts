@@ -121,6 +121,10 @@ function trimTrailingSlashes(url: string): string {
 
 async function inspectHttp(provider: HttpProvider, { env, withModels = true, deps, keyFile = registryMessages().keyFileDefault }: Options): Promise<ProviderInspection> {
   const d = { ...realDeps, ...deps };
+  const parsed = URL.parse(provider.baseUrl);
+  if (parsed && (parsed.username || parsed.password)) { // the address is never echoed: it holds a password
+    return { status: { id: provider.id, kind: "openai-http", label: provider.label, available: false, reason: registryMessages().baseUrlUserinfo(provider.id), models: provider.models, modelsConfirmed: false } };
+  }
   const baseUrl = trimTrailingSlashes(provider.baseUrl);
   const apiKeyEnv = provider.apiKeyEnv || undefined;
   const apiKey = apiKeyEnv ? env[apiKeyEnv] || undefined : undefined;
