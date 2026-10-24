@@ -37,17 +37,17 @@ describe("language state: sources", () => {
   it("no file and no variable: en, default", () => {
     setProcessLanguage("ru");
     const { state } = make();
-    expect(state.view()).toEqual({ language: "en", source: "default", locked: false });
+    expect(state.view()).toEqual({ language: "en", source: "default", locked: false, damaged: false });
     expect(getProcessLanguage()).toBe("en");
   });
   it("file: ru, file", () => {
     const { state } = make({}, '{"language":"ru"}');
-    expect(state.view()).toEqual({ language: "ru", source: "file", locked: false });
+    expect(state.view()).toEqual({ language: "ru", source: "file", locked: false, damaged: false });
     expect(getProcessLanguage()).toBe("ru");
   });
   it("the variable wins over the file and locks the choice", () => {
     const { state } = make({ COUNCIL_LANG: "en" }, '{"language":"ru"}');
-    expect(state.view()).toEqual({ language: "en", source: "env", locked: true });
+    expect(state.view()).toEqual({ language: "en", source: "env", locked: true, damaged: false });
   });
 });
 
@@ -55,7 +55,7 @@ describe("language state: set", () => {
   it("writes the file, sends one event, changes the process language", () => {
     const { state, send, prefs, logger } = make();
     const v = state.set("ru");
-    expect(v).toEqual({ language: "ru", source: "file", locked: false });
+    expect(v).toEqual({ language: "ru", source: "file", locked: false, damaged: false });
     expect(JSON.parse(readFileSync(prefs, "utf8"))).toEqual({ language: "ru" });
     expect(send).toHaveBeenCalledTimes(1);
     expect(send).toHaveBeenCalledWith({ type: "language", view: v });
@@ -96,7 +96,7 @@ describe("language state: set", () => {
     expect(readFileSync(prefs).equals(before)).toBe(true);
     expect(send).not.toHaveBeenCalled();
     expect(getProcessLanguage()).toBe("en");
-    expect(state.view()).toEqual({ language: "ru", source: "file", locked: false });
+    expect(state.view()).toEqual({ language: "ru", source: "file", locked: false, damaged: false });
   });
 
   it("write error message in English at en and in Russian at ru", () => {
@@ -124,6 +124,31 @@ describe("language state: set", () => {
     expect(state.invalidNotice()).toBeNull();
   });
 
+  it("corrupted file and the current language chosen: damaged, then the file is fixed and the notice is gone", () => {
+    const { state, prefs, send } = make({}, "{ не json");
+    expect(state.view()).toEqual({ language: "en", source: "default", locked: false, damaged: true });
+    expect(state.invalidNotice()).not.toBeNull();
+    const v = state.set("en");
+    expect(JSON.parse(readFileSync(prefs, "utf8"))).toEqual({ language: "en" });
+    expect(v).toEqual({ language: "en", source: "file", locked: false, damaged: false });
+    expect(state.view().damaged).toBe(false);
+    expect(state.invalidNotice()).toBeNull();
+    expect(send).toHaveBeenCalledWith({ type: "language", view: v });
+  });
+
+  it("no file and the current language chosen: the file is not created, no events", () => {
+    const { state, prefs, send } = make();
+    expect(state.set("en")).toEqual({ language: "en", source: "default", locked: false, damaged: false });
+    expect(existsSync(prefs)).toBe(false);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("damaged is false for a missing file and for a language from the variable", () => {
+    expect(make().state.view().damaged).toBe(false);
+    expect(make({ COUNCIL_LANG: "en" }, "[").state.view().damaged).toBe(false);
+    expect(make({ COUNCIL_LANG: "en" }).state.view().damaged).toBe(false);
+  });
+
   it("notice in the current language and by reasons", () => {
     const cases: [string | undefined, string][] = [
       ['{"language":"de"}', "unknown language"],
@@ -135,7 +160,7 @@ describe("language state: set", () => {
 
   it("language from the variable with a corrupted file: no notice, the file has no effect", () => {
     const { state } = make({ COUNCIL_LANG: "ru" }, "[");
-    expect(state.view()).toEqual({ language: "ru", source: "env", locked: true });
+    expect(state.view()).toEqual({ language: "ru", source: "env", locked: true, damaged: false });
     expect(state.invalidNotice()).toBeNull();
   });
 

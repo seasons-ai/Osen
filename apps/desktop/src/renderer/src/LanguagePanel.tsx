@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { LANGUAGES, LANGUAGE_NAMES } from "@model-council/core/i18n";
 import type { Language } from "@model-council/core/i18n";
+import { languageChoiceIgnored } from "../../shared/settings.ts";
 import { shell } from "../../shared/messages/shell.ts";
 import { Icon } from "./icons.tsx";
 import { useLanguageView, useMessages } from "./language.tsx";
@@ -28,7 +29,7 @@ export function LanguagePanel(): ReactNode {
   if (view === null) return null;
 
   const choose = (language: Language) => {
-    if (busy || view.locked || language === view.language) return;
+    if (languageChoiceIgnored(view, language, busy)) return;
     setBusy(true);
     window.council.setLanguage(language).then(
       () => setError(null),

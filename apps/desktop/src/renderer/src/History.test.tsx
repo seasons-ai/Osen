@@ -485,7 +485,7 @@ describe("History: language en", () => {
   it("switching language with history open keeps the query and status", () => {
     const f = q("Тема", "consensus");
     const view = (language: "en" | "ru") => renderToStaticMarkup(
-      <LanguageProvider initial={{ language, source: "file", locked: false }}>
+      <LanguageProvider initial={{ language, source: "file", locked: false, damaged: false }}>
         <HistoryView language={language} sessions={[item()]} filter={f} busy={new Set()} onFilter={() => {}} onOpen={() => {}} onPin={() => {}} onNew={() => {}} />
       </LanguageProvider>);
     for (const l of ["en", "ru"] as const) {
