@@ -289,6 +289,24 @@ describe("Bounded fenced response extraction", () => {
     expect(result.samples).toHaveLength(3);
     expect(result.median).toBeLessThanOrEqual(1_000);
   }, 15_000);
+
+  it("Много непарных фигурных скобок: '{'.repeat(100,000) finds no object within 1,000 ms", () => {
+    const started = performance.now();
+    expect(extractJsonObject("{".repeat(100_000))).toBeUndefined();
+    expect(performance.now() - started).toBeLessThanOrEqual(1_000);
+  });
+
+  it("Много непарных фигурных скобок: child probe on '{'.repeat(1,048,576) has median <= 1,000 ms before the 5,000 ms watchdog", async () => {
+    const probe = fileURLToPath(new URL("../../scenarios/security-turn-response/probe.ts", import.meta.url));
+    const parse = fileURLToPath(new URL("./parse.ts", import.meta.url));
+    const pending = promisify(execFile)(process.execPath, [probe, parse, String(1 << 20), "", "brace"], { timeout: 5_000, maxBuffer: 4 * 1024 * 1024 });
+    pending.child.stdin?.end();
+    const result = JSON.parse((await pending).stdout) as { n: number; family: string; samples: number[]; median: number };
+    expect(result.family).toBe("brace");
+    expect(result.n).toBe(1_048_576);
+    expect(result.samples).toHaveLength(3);
+    expect(result.median).toBeLessThanOrEqual(1_000);
+  }, 15_000);
 });
 
 // Independent reference: the extractor with the previous fence expression, used only on bounded inputs.
