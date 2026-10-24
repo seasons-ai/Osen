@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canLaunch, refetchOnReturn, reloadRegistryOnReturn, templatesKey } from "./NewFlow.tsx";
+import { canLaunch, refetchOnReturn, loadLast, reloadRegistryOnReturn, setupReady, templatesKey } from "./NewFlow.tsx";
 import { checkSetup, initialForm, reduceSetup } from "./setup.ts";
 import type { ProviderOption, RegistryView } from "../../shared/setup.ts";
 
@@ -108,5 +108,25 @@ describe("Session setup survives a visit to «Settings»: Registry after «Setti
     const gone = { ...reg(true, 3), providers: [prov("local", true), prov("other", false)] };
     expect(checkSetup(form, gone, null, "en").participantErrors).toEqual([null, expect.stringContaining("connection refused")]);
     expect(JSON.stringify(form)).toBe(typed);
+  });
+});
+
+describe("Remembering the participant lineup: Lineup answers after the registry", () => {
+  const registry = {} as RegistryView;
+
+  it("setup opens only when both the registry and the lineup request have settled", () => {
+    expect(setupReady(registry, false)).toBe(false);
+    expect(setupReady(registry, true)).toBe(true);
+    expect(setupReady(null, true)).toBe(false);
+    expect(setupReady(null, false)).toBe(false);
+  });
+});
+
+describe("Remembering the participant lineup: Lineup not received", () => {
+  it("a failed lineup request settles with null (registry defaults), an answer is passed through", async () => {
+    const roster = [{ providerId: "claude", model: "m" }];
+    await expect(loadLast({ lastParticipants: () => Promise.reject(new Error("boom")) })).resolves.toBeNull();
+    await expect(loadLast({ lastParticipants: () => Promise.resolve(roster) })).resolves.toEqual(roster);
+    await expect(loadLast({ lastParticipants: () => Promise.resolve(null) })).resolves.toBeNull();
   });
 });
