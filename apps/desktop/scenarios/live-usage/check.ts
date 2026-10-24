@@ -70,7 +70,16 @@ const ui = (await import(pathToFileURL(join(bundleDir, "bundle.mjs")).href)) as 
 type Lang = "ru" | "en";
 function render(state: SessionState, running: boolean, lang: Lang): { panel: string; counter: string } {
   ui.setProcessLanguage(lang);
-  const text = (el: unknown) => renderToStaticMarkup(el as never).replace(/<[^>]*>/g, "");
+  // visible text of the markup: characters outside tags (a scan, not a tag-stripping regex)
+  const text = (el: unknown) => {
+    let out = "", inTag = false;
+    for (const ch of renderToStaticMarkup(el as never)) {
+      if (ch === "<") inTag = true;
+      else if (ch === ">") inTag = false;
+      else if (!inTag) out += ch;
+    }
+    return out;
+  };
   return { panel: text(createElement(ui.ParticipantsPanel, { state, running })), counter: text(createElement(ui.RoundCounter, { state, running })) };
 }
 
