@@ -31,7 +31,7 @@ export function ProviderCard({ provider: p, envPath, busy, deleting, canTest, mo
     ? { tone: "ok", icon: "i-check", text: t.available } as const
     : keyMissing
       ? { tone: "warn", icon: "i-alert", text: t.keyNotSet } as const
-      : { tone: "danger", icon: "i-x", text: t.unavailable } as const;
+      : { tone: "danger", icon: "i-x", text: cli ? t.unavailable : t.notResponding } as const;
   const paid = !cli && p.billing === "paid";
   const spends = (text: string) => <span className="chip">{text}</span>;
   return (

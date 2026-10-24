@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setProcessLanguage } from "@model-council/core/i18n";
+import { RegistrySchema } from "@model-council/core";
 import { MAX_TURN_TIMEOUT_SEC } from "@model-council/core/templates";
 import { settings } from "./messages/settings.ts";
 import { DEFAULTS_BOUNDS, checkDefaults, checkProviderInput, hasErrors } from "./settings.ts";
@@ -118,6 +119,26 @@ describe("validation texts in English", () => {
     expect(a).toBe("Enter a name");
     expect(input({ label: "" }).label).toBe("Введите название");
   });
+});
+
+// Requirement: "Значения по умолчанию", scenario "Значение реестра вне границ формы" — the form bounds are narrower than the registry
+describe("checkDefaults: registry values outside the form bounds", () => {
+  afterEach(() => setProcessLanguage("ru"));
+  const cases = [["maxRounds", 30, 1, 20], ["turnTimeoutSec", 5, 10, 3600], ["contextChars", 500, 1000, 1000000], ["maxParticipants", 9, 2, 8]] as const;
+  for (const lang of ["ru", "en"] as const) {
+    it(`${lang}: valid for the registry, refused by the form with the form bounds`, () => {
+      setProcessLanguage(lang);
+      const m = settings(lang);
+      for (const [key, value, min, max] of cases) {
+        const registry = { providers: [], defaults: { maxRounds: 5, turnTimeoutSec: 300, contextChars: 24000, maxParticipants: 8, participants: [], [key]: value } };
+        expect(RegistrySchema.safeParse(registry).success).toBe(true);
+        const errors = defaults({ [key]: value });
+        expect(errors[key]).toBe(m.intRange(min, max));
+        expect(hasErrors(errors)).toBe(true);
+      }
+      expect(defaults({ maxRounds: 30 }).maxRounds).toBe(lang === "ru" ? "Целое число от 1 до 20" : "An integer from 1 to 20");
+    });
+  }
 });
 
 it("the turn timeout field bound is not above the core bound", () => {
