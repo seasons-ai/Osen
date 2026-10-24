@@ -8,7 +8,7 @@ import type { TestState } from "./ProviderTest.tsx";
 const prov = (o: Partial<SettingsProvider> = {}): SettingsProvider => ({
   id: "p", kind: "cli", label: "P", available: true, reason: null, warning: null, version: null, path: null,
   baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: ["m1", "m2"], defaultModel: "dflt",
-  modelsSource: "provider", modelsReason: null, modelsAt: null, cli: null, ...o,
+  ownerModels: [], modelsSource: "provider", modelsReason: null, modelsAt: null, cli: null, ...o,
 });
 const cliOnlyDefault = prov({ models: [] });
 const httpNoModels = prov({ kind: "openai-http", models: [], defaultModel: null, billing: "paid" });

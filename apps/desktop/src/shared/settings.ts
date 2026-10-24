@@ -6,7 +6,7 @@ import type { Language } from "@model-council/core/i18n";
 
 // "Settings" screen data: the contract between main and renderer. Key values are not included — only the variable name and a flag.
 
-export type ModelsSource = "provider" | "owner" | "unconfirmed" | "unavailable";
+export type ModelsSource = "provider" | "unconfirmed" | "unavailable";
 
 export interface SettingsProvider {
   id: string;
@@ -21,9 +21,10 @@ export interface SettingsProvider {
   keyEnv: string | null;        // openai-http: key variable name; null — no key required
   keySet: boolean;              // meaningful when keyEnv !== null
   billing: Billing;
-  models: string[];             // the shown list, without defaultModel
+  models: string[];             // the shown list (received plus added), without defaultModel
+  ownerModels: string[];        // models added by the owner (`models` of config.json), without defaultModel
   defaultModel: string | null;  // the "default model" value; null — no such option
-  modelsSource: ModelsSource;   // provider — received from the provider, owner — set by the owner in config.json
+  modelsSource: ModelsSource;   // provider — list received from the provider
   modelsReason: string | null;  // explanation for unconfirmed and unavailable
   modelsAt: string | null;      // ISO time the list was received; only when modelsSource === "provider"
   cli: CliTransition | null;    // cli only: source, verified level and transition state; null for openai-http

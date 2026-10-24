@@ -7,15 +7,15 @@ import { useMessages } from "./language.tsx";
 
 const dayKey = (d: Date) => d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate();
 
-/** The list after a manual addition: the whole shown list plus the new model. null — nothing to add. */
+/** The owner's models after a manual addition (what is stored in config.json). null — nothing to add. */
 export function modelsAfterAdd(provider: SettingsProvider, draft: string): string[] | null {
   const name = draft.trim();
   if (name === "" || name === provider.defaultModel || provider.models.includes(name)) return null;
-  return [...provider.models, name];
+  return [...provider.ownerModels, name];
 }
 
 export function modelsAfterRemove(provider: SettingsProvider, model: string): string[] {
-  return provider.models.filter((m) => m !== model);
+  return provider.ownerModels.filter((m) => m !== model);
 }
 
 export function modelsSourceText(provider: SettingsProvider, now: Date): string {
@@ -29,7 +29,6 @@ export function modelsSourceText(provider: SettingsProvider, now: Date): string 
         ? m.modelsReceivedToday(time)
         : m.modelsReceivedOn(formatDate(d, { day: "numeric", month: "long" }), time);
     }
-    case "owner": return m.modelsOwner;
     case "unconfirmed": return m.modelsUnconfirmed(provider.modelsReason);
     case "unavailable": return provider.modelsReason ?? m.modelsUnavailable;
   }
@@ -47,7 +46,6 @@ export function ProviderModels({ provider, now, draft, busy, onDraft, onAdd, onR
   onReset(): void;
 }): ReactNode {
   const t = useMessages(settings);
-  const owner = provider.modelsSource === "owner";
   return (
     <>
       {provider.models.length > 0 && (
@@ -55,7 +53,7 @@ export function ProviderModels({ provider, now, draft, busy, onDraft, onAdd, onR
           {provider.models.map((m) => (
             <span key={m} className="tag">
               {m}
-              {owner && (
+              {provider.ownerModels.includes(m) && (
                 <button type="button" className="settings-chip__x" aria-label={t.removeModel(m)} onClick={() => onRemove(m)}>
                   <Icon name="i-x" size="sm" />
                 </button>
@@ -66,9 +64,12 @@ export function ProviderModels({ provider, now, draft, busy, onDraft, onAdd, onR
       )}
       <div className="settings-models">
         <span className="settings-models__source">{modelsSourceText(provider, now)}</span>
-        <button type="button" className="btn btn--ghost btn--sm" disabled={busy} onClick={owner ? onReset : onRefresh}>
-          <Icon name="i-refresh" size="sm" /> {busy ? t.refreshing : owner ? t.resetModels : t.refreshModels}
+        <button type="button" className="btn btn--ghost btn--sm" disabled={busy} onClick={onRefresh}>
+          <Icon name="i-refresh" size="sm" /> {busy ? t.refreshing : t.refreshModels}
         </button>
+        {provider.ownerModels.length > 0 && (
+          <button type="button" className="btn btn--ghost btn--sm" disabled={busy} onClick={onReset}>{t.resetModels}</button>
+        )}
       </div>
       <div className="settings-add">
         <input className="input" aria-label={t.manualModelLabel} placeholder={t.modelNamePlaceholder} value={draft} onChange={(e) => onDraft(e.target.value)} />
