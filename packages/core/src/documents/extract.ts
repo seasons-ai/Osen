@@ -23,7 +23,7 @@ export function extractDocumentText(bytes: Uint8Array, limits: DocLimits = DOC_L
   const { ms, rssBytes, chars, parts, unpackedBytes, ratio, cells } = limits;
   // ponytail: a synchronous call holds the event loop for up to ms + 2 s per file; an asynchronous collection is separate work, if documents become heavy.
   const r = spawnSync(runtime.command, [runtime.script, JSON.stringify({ ms, rssBytes, chars, parts, unpackedBytes, ratio, cells, ...(runtime.tools ? { tools: runtime.tools } : {}) })], {
-    input: bytes, env: runtime.env, timeout: ms + 2000, killSignal: "SIGKILL",
+    input: bytes, env: runtime.env, cwd: "/", timeout: ms + 2000, killSignal: "SIGKILL",
     maxBuffer: chars * 4 + 2 ** 20, stdio: ["pipe", "pipe", "ignore"],
   });
   const code = (r.error as NodeJS.ErrnoException | undefined)?.code;
@@ -31,7 +31,7 @@ export function extractDocumentText(bytes: Uint8Array, limits: DocLimits = DOC_L
   if (code === "ENOBUFS") return { ok: false, code: "chars" };
   // EPIPE: the extractor answered (a limit) and exited before reading all input; its reply on stdout still counts
   if (r.error && code !== "EPIPE") return { ok: false, code: "failed", detail: code ?? materialsMessages().docStartError };
-  if (r.status !== 0) return { ok: false, code: "failed", detail: r.signal ?? `exit ${r.status}` };
+  if (r.status !== 0) return { ok: false, code: "failed", detail: r.signal ?? `exit:${r.status}` };
   try {
     const result = JSON.parse(r.stdout.toString("utf8")) as DocumentResult;
     if (typeof result === "object" && result !== null && typeof result.ok === "boolean") return result;
@@ -39,7 +39,7 @@ export function extractDocumentText(bytes: Uint8Array, limits: DocLimits = DOC_L
   return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
 }
 
-const NOT_CACHED: readonly DocFailure[] = ["timeout", "memory", "failed", "textutil_unavailable"];
+export const DOC_NOT_CACHED: readonly DocFailure[] = ["timeout", "memory", "failed", "textutil_unavailable"];
 const CACHE_CHARS = 20_000_000;
 const cache = new Map<string, DocumentResult>();
 let cacheChars = 0;
@@ -51,12 +51,21 @@ export function readDocumentText(fd: number, limits: DocLimits = DOC_LIMITS): Do
   const hit = cache.get(key);
   if (hit) return hit;
   const result = extractDocumentText(readFileSync(fd), limits);
-  if (result.ok || !NOT_CACHED.includes(result.code)) {
+  if (result.ok || !DOC_NOT_CACHED.includes(result.code)) {
     cache.set(key, result);
     if (result.ok) cacheChars += result.text.length;
     if (cacheChars > CACHE_CHARS) { cache.clear(); cacheChars = 0; }
   }
   return result;
+}
+
+// the extractor reports language-free codes; the parent builds the words
+function failedDetail(detail: string | undefined): string | undefined {
+  const m = materialsMessages();
+  if (detail === "parser_error") return m.docParserError;
+  if (detail === "parser_exit") return m.docParserExit;
+  const exit = /^exit:(\d+)$/.exec(detail ?? "");
+  return exit ? m.docExitCode(Number(exit[1])) : detail;
 }
 
 export function documentReason(failure: { code: DocFailure; detail?: string }, limits: DocLimits = DOC_LIMITS): string {
@@ -75,7 +84,7 @@ export function documentReason(failure: { code: DocFailure; detail?: string }, l
     case "no_text": return m.docNoText;
     case "unsupported": return m.docUnsupported;
     case "textutil_unavailable": return m.docTextutilUnavailable;
-    case "failed": return m.docFailed(failure.detail ?? m.docStartError);
+    case "failed": return m.docFailed(failedDetail(failure.detail) ?? m.docStartError);
     case "odf_kind": return m.docOdfKind(failure.detail ?? "");
     case "drm": return m.docDrm;
     case "kind": return m.kindReason((failure.detail ?? "unknown") as FileKindId);

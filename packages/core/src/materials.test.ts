@@ -4,12 +4,15 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { attachedFolderPrefixes, collectMaterials, collectSessionMaterials, MaterialsError, selectMaterials, verifyMaterials } from "./materials.ts";
+import { attachedFolderPrefixes, collectMaterials, collectSessionMaterials, isEnvName, MaterialsError, selectMaterials, verifyMaterials } from "./materials.ts";
+import { setProcessLanguage } from "./i18n/process-language.ts";
+import { materialsMessages } from "./messages/materials.ts";
 import type { CollectOptions } from "./materials.ts";
 import { folderMap, folderStats } from "./protocol/folder.ts";
 import { loadPreparedMaterials, savePreparedMaterials } from "./store/prepared-materials.ts";
 import { PDF_LIMITS } from "./pdf/extract.ts";
 import { makeOdf, odsTable, odtP } from "./documents/odf-fixture.ts";
+import { makeDocx, makePptx, p, para, sp } from "./documents/fixture.ts";
 import { makeEpub, xhtml } from "./documents/epub-fixture.ts";
 import { makeEncryptedPdf, makeImageOnlyPdf, makeMalformedPdf, makePdf } from "./pdf/fixture.ts";
 
@@ -87,6 +90,39 @@ describe("collectMaterials", () => {
       { name: "d/a/b/vendor", reason: "в списке игнорирования" },
       { name: "d/node_modules", reason: "в списке игнорирования" },
     ]);
+  });
+
+  it("folder named twice (also another spelling of the same path) is collected once, skips appear once", () => {
+    put("proj/a.txt", "aaa");
+    put("proj/.hid", "x");
+    put("proj/node_modules/x.js", "x");
+    const dir = join(root, "proj");
+    for (const again of [dir, join(root, "other", "..", "proj", ".")]) {
+      const set = collectMaterials([dir, again], opts);
+      expect(set.materials.map((m) => m.name)).toEqual(["proj/a.txt"]);
+      expect(set.skipped).toEqual([
+        { name: "proj/.hid", reason: "скрытое имя" },
+        { name: "proj/node_modules", reason: "в списке игнорирования" },
+      ]);
+    }
+  });
+
+  it("same-named explicit files from different places stay separate materials", () => {
+    const a = put("a/x.txt", "one");
+    const b = put("b/x.txt", "two");
+    const set = collectMaterials([a, b], opts);
+    expect(set.materials.map((m) => [m.id, m.name, m.text])).toEqual([
+      ["m1", "x.txt", "one"],
+      ["m2", "x.txt", "two"],
+    ]);
+  });
+
+  it("ignore name with brackets matches the literal name", () => {
+    put("app/[id]/p.txt", "p");
+    put("app/i/q.txt", "q");
+    const set = collectMaterials([join(root, "app")], { ...opts, materialsIgnore: ["[id]"] });
+    expect(set.materials.map((m) => m.name)).toEqual(["app/i/q.txt"]);
+    expect(set.skipped).toEqual([{ name: "app/[id]", reason: "в списке игнорирования" }]);
   });
 
   it("gitignore rule: file excluded by one entry, .gitignore itself is a hidden name", () => {
@@ -384,6 +420,15 @@ describe("collectSessionMaterials", () => {
     const { taken, left } = selectMaterials(src, [join(root, "d")], 25);
     expect(taken.map((x) => x.name)).toEqual(["d/a.pptx", "d/b.pptm"]);
     expect(left).toEqual([{ name: "d/c.xlsx", reason: "не описание — из папки больше лимита берутся только описания" }]);
+  });
+
+  it("template and slideshow packages are descriptions in a folder over the limit, next to source code", () => {
+    put("d/tpl.dotx", makeDocx({ body: p("template text"), mainType: "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml" }));
+    put("d/show.ppsx", makePptx({ slides: [{ shapes: sp([para("show text")]) }], mainType: "application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml" }));
+    put("d/code.ts", x(500));
+    const r = collectSessionMaterials([join(root, "d")], lim(400));
+    expect(r.materials.map((m) => m.name).sort()).toEqual(["d/show.ppsx", "d/tpl.dotx"]);
+    expect(r.left.map((l) => l.name)).toEqual(["d/code.ts"]);
   });
 
   it("folder over the limit without descriptions: files closer to the root are taken while they fit", () => {
@@ -1110,5 +1155,51 @@ describe("Folder snapshot: explicit file before the folder", () => {
     const r = collectSessionMaterials([note, dir], o());
     expect(r.materials.map((m) => m.name)).toEqual(["note.md", "proj/README.md", "proj/src/a.ts"]);
     expect(r.materials.map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
+  });
+});
+
+describe("Environment files in materials: environment file in another case", () => {
+  afterEach(() => setProcessLanguage("ru"));
+
+  for (const lang of ["ru", "en"] as const) {
+    it(`explicit .ENV and .Env.local are refused like .env, unopened (${lang})`, () => {
+      setProcessLanguage(lang);
+      const m = materialsMessages();
+      const a = put(".ENV", "SECRET_TOKEN=abc123");
+      const b = put(".Env.local", "SECRET_TOKEN=def456");
+      const opened: string[] = [];
+      hook.beforeOpen = (p) => opened.push(p);
+      const err = refusal(() => collectMaterials([a, b], opts));
+      expect(err.reasons).toEqual([m.pathNamed(a, m.envRefused), m.pathNamed(b, m.envRefused)]);
+      expect(opened).toEqual([]);
+      expect(JSON.stringify([err.message, err.reasons])).not.toMatch(/abc123|def456/);
+    });
+
+    it(`.ENV and .Env.local in a folder are skipped unopened (${lang})`, () => {
+      setProcessLanguage(lang);
+      const m = materialsMessages();
+      put("d/.ENV", "SECRET_TOKEN=abc123");
+      put("d/.Env.local", "SECRET_TOKEN=def456");
+      put("d/a.txt", "a");
+      const opened: string[] = [];
+      hook.beforeOpen = (p) => opened.push(p);
+      const set = collectSessionMaterials([join(root, "d")], opts);
+      expect(set.materials.map((x) => x.name)).toEqual(["d/a.txt"]);
+      expect(set.skipped).toEqual([{ name: "d/.ENV", reason: m.envSkipped }, { name: "d/.Env.local", reason: m.envSkipped }]);
+      expect(opened).toEqual([join(root, "d/a.txt")]);
+      expect(JSON.stringify(set)).not.toMatch(/abc123|def456/);
+    });
+  }
+
+  it("property: any letter case of .env and .env.<suffix> is an environment file, look-alikes are not", () => {
+    const flip = (s: string, rnd: () => number) => [...s].map((c) => (rnd() < 0.5 ? c.toUpperCase() : c.toLowerCase())).join("");
+    const alnum = "abcxyzLOCALprod019-_.";
+    for (let seed = 1; seed <= 300; seed++) {
+      const rnd = mulberry32(seed);
+      const suffix = Array.from({ length: 1 + Math.floor(rnd() * 8) }, () => alnum[Math.floor(rnd() * alnum.length)]).join("");
+      for (const name of [flip(".env", rnd), `${flip(".env", rnd)}.${suffix}`]) expect(isEnvName(name), `seed ${seed}: ${name}`).toBe(true);
+      for (const name of [flip(".environment", rnd), flip(".envx", rnd), flip("env", rnd), flip("env.local", rnd), `x${flip(".env", rnd)}`])
+        expect(isEnvName(name), `seed ${seed}: ${name}`).toBe(false);
+    }
   });
 });

@@ -1,4 +1,4 @@
-// Live check of the agent connection module @model-council/connect (change 140, steps 0-5 of the Live Scenario).
+// Live check of the agent connection module @model-council/connect (change 140, steps 0-5 of the Live Scenario; change 241 cases in steps 1 and 4; change 257 cases in step 6).
 // The module is called directly with ConnectDeps over a fake HOME; the installer is the real `node skill/install.ts` with a fake
 // HOME and fake `claude` and `codex` first in PATH: they edit $HOME/.claude.json and $HOME/.codex/fake-state.json and write
 // calls to a log. The owner's global agent settings are not changed. Model calls 0.
@@ -53,7 +53,7 @@ if (verb === "get") {
   if (!e) { console.error("Error: No MCP server named '" + name + "' found."); process.exit(1); }
   console.log(JSON.stringify({ name, transport: { type: "stdio", command: e.command, args: e.args } }));
 } else if (verb === "add") {
-  if (process.env.FAKE_FAIL_ADD === "1") { console.error("boom"); process.exit(1); }
+  if (process.env.FAKE_FAIL_ADD === "1" || (process.env.FAKE_FAIL_ADD_CMD && args[sep + 1] === process.env.FAKE_FAIL_ADD_CMD)) { console.error("boom"); process.exit(1); }
   if (agent === "claude" && d[key][name]) { console.error("MCP server " + name + " already exists"); process.exit(1); }
   d[key][name] = { ...(agent === "claude" ? { type: "stdio" } : {}), command: args[sep + 1], args: args.slice(sep + 2), ...(agent === "claude" ? { env: {} } : {}) };
   save();
@@ -70,7 +70,8 @@ for (const agent of ["claude", "codex"]) {
 // ---- helpers ----
 const pathEnv = `${bin}:${process.env.PATH ?? ""}`;
 let failAdd = false;
-const envFor = (home: string): Record<string, string> => ({ PATH: pathEnv, HOME: home, ...(failAdd ? { FAKE_FAIL_ADD: "1" } : {}) });
+let failAddCmd = "";
+const envFor = (home: string): Record<string, string> => ({ PATH: pathEnv, HOME: home, ...(failAdd ? { FAKE_FAIL_ADD: "1" } : {}), ...(failAddCmd ? { FAKE_FAIL_ADD_CMD: failAddCmd } : {}) });
 const apps = join(work, "Applications", "Claude.app");
 mkdirSync(apps, { recursive: true });
 const depsFor = (home: string): ConnectDeps => ({
@@ -117,8 +118,8 @@ const serversOf = (c: ClientId, home: string) => { const d = readJson(settings(c
     const home = join(work, `home-need-${c}`);
     put(settings(c, home), json(seeds[c]));
     const cmd = c === "claude-desktop" ? { command: process.execPath, args: [mainTs] } : { command: "node", args: [mainTs] };
-    const r1 = connect(c, cmd, depsFor(home));
-    const r2 = connect(c, cmd, depsFor(home));
+    const r1 = await connect(c, cmd, depsFor(home));
+    const r2 = await connect(c, cmd, depsFor(home));
     n[c] = r1.ok && r2.ok ? `${r1.need}/${r2.need}/${r2.changed}` : `refused ${json(r1)}`;
   }
   check(0, "need: restart_client for claude-desktop and codex, unverified for claude-code; a repeated connect gives none, changed false",
@@ -126,7 +127,7 @@ const serversOf = (c: ClientId, home: string) => { const d = readJson(settings(c
 
   const home = join(work, "home-fail");
   failAdd = true;
-  const r = connect("claude-code", { command: "node", args: [mainTs] }, depsFor(home));
+  const r = await connect("claude-code", { command: "node", args: [mainTs] }, depsFor(home));
   failAdd = false;
   check(0, "FAKE_FAIL_ADD=1: claude-code connect returns ok false, refusal failed, reason cli with boom",
     !r.ok && r.refusal === "failed" && r.reason?.code === "cli" && r.reason.detail.includes("boom"), json(r));
@@ -139,8 +140,8 @@ const serversOf = (c: ClientId, home: string) => { const d = readJson(settings(c
   let s, r2;
   try {
     const cmd = { command: process.execPath, args: [mainTs] };
-    s = status("claude-desktop", cmd, depsFor(dh));
-    r2 = connect("claude-desktop", cmd, depsFor(dh));
+    s = await status("claude-desktop", cmd, depsFor(dh));
+    r2 = await connect("claude-desktop", cmd, depsFor(dh));
   } finally { chmodSync(f, 0o644); }
   check(0, "desktop config with chmod 000: status corrupt/unreadable, connect refuses, file unchanged",
     s?.state === "corrupt" && s.reason?.code === "unreadable" && !!r2 && !r2.ok && r2.refusal === "corrupt" && readFileSync(f).equals(before), json([s, r2]));
@@ -155,12 +156,12 @@ for (const c of ["claude-code", "codex", "claude-desktop"] as ClientId[]) {
   if (c !== "claude-desktop") put(desktopFile(home), json(foreignDesktop));
   const orig = readJson(settings(c, home));
   resetLog();
-  const s0 = status(c, cmdA, d);
+  const s0 = await status(c, cmdA, d);
   check(1, `${ctx}: status not_connected`, s0.state === "not_connected", json(s0));
   const before = tree(home);
-  const dry = connect(c, cmdA, d, { dryRun: true });
+  const dry = await connect(c, cmdA, d, { dryRun: true });
   check(1, `${ctx}: dry-run connect: planned, home sha256 unchanged, no add/remove calls`, dry.ok && dry.changed && tree(home) === before && mutating().length === 0, json(dry));
-  const r1 = connect(c, cmdA, d);
+  const r1 = await connect(c, cmdA, d);
   const entry = serversOf(c, home).osen;
   const others = { ...serversOf(c, home) }; delete others.osen;
   const origServers = c === "codex" ? orig.servers : orig.mcpServers;
@@ -170,19 +171,29 @@ for (const c of ["claude-code", "codex", "claude-desktop"] as ClientId[]) {
   check(1, `${ctx}: connect → connected, entry is the wrapper, foreign servers and keys equal by value`,
     r1.ok && r1.state === "connected" && entry?.command === cmdA.command && isDeepStrictEqual(others, origServers) && isDeepStrictEqual(rest, origRest), json([r1, entry]));
   const bytes = readFileSync(settings(c, home)), nCalls = calls().length;
-  const r2 = connect(c, cmdA, d);
+  const r2 = await connect(c, cmdA, d);
   check(1, `${ctx}: repeated connect: changed false, file bytes identical, no new add calls`, r2.ok && !r2.changed && readFileSync(settings(c, home)).equals(bytes) && calls().filter((x) => / mcp add /.test(x)).length === calls().slice(0, nCalls).filter((x) => / mcp add /.test(x)).length, json(r2));
   renameSync(A, B);
-  const s1 = status(c, cmdB, d);
+  const s1 = await status(c, cmdB, d);
   check(1, `${ctx}: after moving the app folder status is stale_path`, s1.state === "stale_path", json(s1));
-  const u = update(c, cmdB, d);
-  const s2 = status(c, cmdB, d);
+  const u = await update(c, cmdB, d);
+  const s2 = await status(c, cmdB, d);
   check(1, `${ctx}: update → connected, entry command is the new path`, u.ok && s2.state === "connected" && s2.entry?.command === cmdB.command, json([u, s2]));
-  const x = disconnect(c, cmdB, d);
+  const x = await disconnect(c, cmdB, d);
   const after = readJson(settings(c, home));
   const gone = !(c === "codex" ? after.servers : after.mcpServers)?.osen;
   check(1, `${ctx}: disconnect → settings equal to the original by value, no osen`, x.ok && gone && isDeepStrictEqual(after, orig), json([x, after]));
   renameSync(B, A);
+}
+// claude-desktop: an empty mcpServers and an absent one are equal by value (change 241)
+for (const orig of [{ x: 1, mcpServers: {} }, { x: 1 }]) {
+  const home = join(work, `home-empty-${Object.keys(orig).length}`);
+  const d = depsFor(home);
+  put(desktopFile(home), json(orig));
+  const r1 = await connect("claude-desktop", cmdA, d), r2 = await disconnect("claude-desktop", cmdA, d);
+  const { mcpServers = {}, ...rest } = readJson(desktopFile(home));
+  check(1, `claude-desktop ${json(orig)}: connect, disconnect → x is 1, mcpServers empty or absent, no osen`,
+    r1.ok && r2.ok && isDeepStrictEqual(rest, { x: 1 }) && isDeepStrictEqual(mcpServers, {}), json([r1, r2, readJson(desktopFile(home))]));
 }
 
 // ---- step 2: refusals; module status and the real installer in en and ru ----
@@ -206,7 +217,7 @@ for (const c of ["claude-code", "codex", "claude-desktop"] as ClientId[]) {
     wrongSkill(home);
     const d = depsFor(home);
     const cmd = { command: process.execPath, args: [mainTs] };
-    const sts = (["claude-code", "codex", "claude-desktop"] as ClientId[]).map((c) => status(c, c === "claude-desktop" ? cmd : { command: "node", args: [mainTs] }, d).state);
+    const sts = await Promise.all((["claude-code", "codex", "claude-desktop"] as ClientId[]).map(async (c) => (await status(c, c === "claude-desktop" ? cmd : { command: "node", args: [mainTs] }, d)).state));
     const want = k.kind ? [k.expect, k.expect, k.expect] : [k.expect, k.expect, k.expect].map((e, i) => (i === 2 ? e : "foreign"));
     check(2, `${k.name}: module status ${want.join("/")}`, json(sts) === json(want), json(sts));
     const before = tree(home);
@@ -256,8 +267,8 @@ for (const c of ["claude-code", "codex", "claude-desktop"] as ClientId[]) {
   const realBefore = snap();
   put(desktopFile(home), json(foreignDesktop));
   const d = depsFor(home);
-  connect("claude-desktop", { command: process.execPath, args: [mainTs] }, d);
-  const entry = status("claude-desktop", { command: process.execPath, args: [mainTs] }, d).entry;
+  await connect("claude-desktop", { command: process.execPath, args: [mainTs] }, d);
+  const entry = (await status("claude-desktop", { command: process.execPath, args: [mainTs] }, d)).entry;
   const r = await checkConnection(entry, { extraEnv: { COUNCIL_DEV: "1", HOME: home } });
   check(4, "checkConnection on the repo command: ok, 7 tools council_*", r.ok && r.tools.length === 7 && r.tools.every((t) => t.startsWith("council_")), json(r));
   const sup = join(home, "Library/Application Support");
@@ -280,6 +291,21 @@ setInterval(() => {}, 1000);
     const x = await checkConnection(e, { extraEnv: { HOME: home }, ...(timeoutMs ? { timeoutMs } : {}) });
     check(4, `${what}: ${reason} in ≤ 25 s`, !x.ok && x.reason === reason && Date.now() - t <= 25000, json(x));
   }
+  // change 241: answers both requests, then prints text without a newline and exits
+  const tail = join(work, "tail.mjs");
+  writeFileSync(tail, `import { createInterface } from "node:readline";
+const tools = ${json(["council_continue", "council_options", "council_resume", "council_say", "council_start", "council_status", "council_stop"])}.map((name) => ({ name }));
+const out = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");
+createInterface({ input: process.stdin }).on("line", (l) => {
+  const m = JSON.parse(l);
+  if (m.method === "initialize") out({ id: m.id, result: { protocolVersion: "2025-06-18", capabilities: {}, serverInfo: { name: "tail", version: "0" } } });
+  if (m.method === "tools/list") { out({ id: m.id, result: { tools } }); process.stdout.write("garbage", () => process.exit(0)); }
+});
+`);
+  const t = Date.now();
+  const x = await checkConnection({ command: process.execPath, args: [tail] }, { extraEnv: { HOME: home } });
+  check(4, "7 tools, then stdout text without a newline and exit: stray_stdout, detail starts with garbage, in ≤ 25 s",
+    !x.ok && x.reason === "stray_stdout" && x.detail.startsWith("garbage") && Date.now() - t <= 25000, json(x));
 }
 
 // ---- step 5: the app command ----
@@ -287,11 +313,68 @@ setInterval(() => {}, 1000);
   const home = join(work, "home-app");
   put(desktopFile(home), json(foreignDesktop));
   const d = depsFor(home);
-  const r = connect("claude-desktop", cmdA, d);
+  const r = await connect("claude-desktop", cmdA, d);
   const entry = readJson(desktopFile(home)).mcpServers?.osen;
   check(5, "connect claude-desktop with the app wrapper: the entry is exactly {command: wrapper, args: []}", r.ok && isDeepStrictEqual(entry, { command: cmdA.command, args: [] }), json([r, entry]));
-  const x = await checkConnection(status("claude-desktop", cmdA, d).entry, { extraEnv: { COUNCIL_DEV: "1", HOME: home } });
+  const x = await checkConnection((await status("claude-desktop", cmdA, d)).entry, { extraEnv: { COUNCIL_DEV: "1", HOME: home } });
   check(5, "checkConnection through the wrapper: ok", x.ok, json(x));
+}
+
+// ---- step 6: change 257 (A1 another launcher, A2 update restores the entry, IL5 language from the data folder .env) ----
+{
+  // A1: the osen entry runs this copy's main.ts with another existing program
+  const progDir = join(work, "other-node");
+  const otherNode = join(progDir, "node");
+  mkdirSync(progDir, { recursive: true });
+  writeFileSync(otherNode, readFileSync(process.execPath));
+  chmodSync(otherNode, 0o755);
+  const home = join(work, "home-257-a1");
+  put(desktopFile(home), json({ mcpServers: { osen: { command: otherNode, args: [mainTs] } } }));
+  const before = tree(home);
+  for (const [lang, head, bad] of [["en", "the entry runs the same server with another program", "missing file"], ["ru", "запись запускает тот же сервер другой программой", "несуществующий файл"]] as const) {
+    const r = install(home, lang, "--dry-run");
+    const line = r.out.split("\n").find((l) => /^Claude Desktop · (server|сервер) /.test(l)) ?? "";
+    check(6, `A1 ${lang}: another launcher: code 1, line names recorded ${otherNode} and expected ${process.execPath}, no "${bad}", file byte-identical`,
+      r.code === 1 && line.includes(head) && line.includes(otherNode) && line.includes(process.execPath) && !r.out.includes(bad) && tree(home) === before, `${r.code}\n${r.out}`);
+  }
+
+  // A2: a failed add during update keeps the previous entry (claude) / one add and no remove (codex)
+  const oldCmd = wrapperIn(B);
+  const home2 = join(work, "home-257-a2");
+  put(join(home2, ".claude.json"), json({ mcpServers: { osen: { type: "stdio", command: oldCmd, args: [], env: {} } } }));
+  put(join(home2, ".codex/fake-state.json"), json({ servers: { osen: { command: oldCmd, args: [] } } }));
+  const d2 = depsFor(home2);
+  const s0 = await status("claude-code", cmdA, d2);
+  failAddCmd = cmdA.command;
+  resetLog();
+  const u = await update("claude-code", cmdA, d2);
+  failAddCmd = "";
+  const kept = readJson(join(home2, ".claude.json")).mcpServers?.osen;
+  check(6, "A2 claude-code: precondition stale_path; update with a failing add → refusal failed, state stale_path, osen entry unchanged",
+    s0.state === "stale_path" && !u.ok && u.refusal === "failed" && u.state === "stale_path" && kept?.command === oldCmd, json([s0, u, kept]));
+  resetLog();
+  const sc = await status("codex", cmdA, d2);
+  const uc = await update("codex", cmdA, d2);
+  const entryC = readJson(join(home2, ".codex/fake-state.json")).servers?.osen;
+  check(6, "A2 codex: stale_path; update → connected, one `mcp add`, zero `mcp remove` in the call log",
+    sc.state === "stale_path" && uc.ok && entryC?.command === cmdA.command && calls().filter((c) => / mcp add /.test(c)).length === 1 && calls().filter((c) => / mcp remove /.test(c)).length === 0, `${json([sc, uc])}\n${calls().join("\n")}`);
+
+  // IL5: COUNCIL_LANG only in the data folder .env; the process env wins; no files are created
+  const home3 = join(work, "home-257-il5"), data3 = join(work, "data-il5");
+  put(desktopFile(home3), json(foreignDesktop));
+  put(join(data3, ".env"), "COUNCIL_LANG=ru\n");
+  const run = (extra: Record<string, string>) => {
+    const env = { PATH: pathEnv, HOME: home3, COUNCIL_HOME: data3, ...extra };
+    try { return { code: 0, out: execFileSync(process.execPath, [installTs, "--dry-run"], { env, cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }) }; }
+    catch (e) { const x = e as { status: number; stdout: string; stderr: string }; return { code: x.status, out: `${x.stdout}${x.stderr}` }; }
+  };
+  const files = (dir: string) => json(readdirSync(dir, { recursive: true, encoding: "utf8" }).sort());
+  const dataBefore = files(data3), homeBefore = tree(home3);
+  const ru = run({});
+  check(6, "IL5 .env ru, no COUNCIL_LANG in the process env: Russian dry-run output, data folder and HOME file lists unchanged",
+    ru.code === 0 && ru.out.startsWith("Предпросмотр: изменений не будет") && files(data3) === dataBefore && tree(home3) === homeBefore, `${ru.code}\n${ru.out}`);
+  const en = run({ COUNCIL_LANG: "en" });
+  check(6, "IL5 process env COUNCIL_LANG=en wins over .env ru: English output", en.code === 0 && en.out.startsWith("Preview: nothing will be changed") && files(data3) === dataBefore, `${en.code}\n${en.out}`);
 }
 
 const secs = ((Date.now() - t0) / 1000).toFixed(1);

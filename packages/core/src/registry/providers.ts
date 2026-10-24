@@ -1,16 +1,16 @@
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { promisify } from "node:util";
 import { HELP_ARGS, planLaunch } from "../cli-agents/args.ts";
 import { locateCli, pinnedEnv } from "../cli-agents/discovery.ts";
 import { declaredFlags, parseCodexFeatures } from "../cli-agents/flags.ts";
 import { listModels } from "../cli-agents/models.ts";
+import { readOutput } from "../cli-agents/process.ts";
 import { CLI_AGENTS, DEFAULT_MODEL } from "../cli-agents/types.ts";
 import type { CliRuntime } from "../cli-agents/types.ts";
 import { listHttpModels } from "../http/models.ts";
 import type { HttpRuntime } from "../http/types.ts";
 import { registryMessages } from "../messages/registry.ts";
 import { getProcessLanguage } from "../i18n/process-language.ts";
+import { cliEnv } from "../store/env.ts";
 import { configPath, createRegistry } from "./config.ts";
 import type { CliProvider, HttpProvider, Provider, Registry } from "./config.ts";
 
@@ -46,10 +46,9 @@ export interface InspectDeps {
   listHttpModels: typeof listHttpModels;
 }
 
-const run = promisify(execFile);
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const exec = async (path: string, args: readonly string[], env: Env) =>
-  (await run(path, [...args], { env, timeout: 10_000, maxBuffer: 4 * 1024 * 1024 })).stdout;
+// Own process group: the 10 s limit or more than 4 MiB of output ends the whole group (SIGTERM, then SIGKILL).
+const exec = (path: string, args: readonly string[], env: Env) => readOutput(path, args, env);
 
 const realDeps: InspectDeps = {
   locate: locateCli,
@@ -59,9 +58,13 @@ const realDeps: InspectDeps = {
   listHttpModels,
 };
 
+// provider.models holds only the models the owner added; the requested list comes first.
+const withOwnerModels = (found: string[], owner: string[]): string[] => [...found, ...owner.filter((m) => !found.includes(m))];
+
 interface Options { env: Env; withModels?: boolean; deps?: Partial<InspectDeps>; keyFile?: string; dataDir?: string }
 
-async function inspectCli(provider: CliProvider, { env, withModels = true, deps, dataDir }: Options): Promise<ProviderInspection> {
+async function inspectCli(provider: CliProvider, { env: rawEnv, withModels = true, deps, dataDir }: Options): Promise<ProviderInspection> {
+  const env = cliEnv(rawEnv, { dataDir });
   const d = { ...realDeps, ...deps };
   const { agent } = provider;
   const status: ProviderStatus = { id: provider.id, kind: "cli", label: provider.label, available: false, models: provider.models, modelsConfirmed: false };
@@ -99,14 +102,10 @@ async function inspectCli(provider: CliProvider, { env, withModels = true, deps,
   } else status.reason = plan.reason;
 
   if (withModels) {
-    if (provider.models.length) {
-      status.modelsReason = registryMessages().modelsByOwner;
-    } else {
-      const found = await d.listModels(agent, { path, env: childEnv, help });
-      status.models = found.models;
-      status.modelsConfirmed = found.confirmed;
-      if (found.reason) status.modelsReason = found.reason;
-    }
+    const found = await d.listModels(agent, { path, env: childEnv, help });
+    status.models = withOwnerModels(found.models, provider.models);
+    status.modelsConfirmed = found.confirmed;
+    if (found.reason) status.modelsReason = found.reason;
   }
   return runtime ? { status, runtime } : { status };
 }
@@ -120,6 +119,10 @@ function trimTrailingSlashes(url: string): string {
 
 async function inspectHttp(provider: HttpProvider, { env, withModels = true, deps, keyFile = registryMessages().keyFileDefault }: Options): Promise<ProviderInspection> {
   const d = { ...realDeps, ...deps };
+  const parsed = URL.parse(provider.baseUrl);
+  if (parsed && (parsed.username || parsed.password)) { // the address is never echoed: it holds a password
+    return { status: { id: provider.id, kind: "openai-http", label: provider.label, available: false, reason: registryMessages().baseUrlUserinfo(provider.id), models: provider.models, modelsConfirmed: false } };
+  }
   const baseUrl = trimTrailingSlashes(provider.baseUrl);
   const apiKeyEnv = provider.apiKeyEnv || undefined;
   const apiKey = apiKeyEnv ? env[apiKeyEnv] || undefined : undefined;
@@ -129,15 +132,12 @@ async function inspectHttp(provider: HttpProvider, { env, withModels = true, dep
   const http: HttpRuntime = { baseUrl, keyFile, ...(apiKeyEnv ? { apiKeyEnv, apiKey } : {}) };
   status.available = true;
   if (withModels) {
-    if (provider.models.length) {
-      status.modelsReason = registryMessages().modelsByOwner;
-    } else {
-      const found = await d.listHttpModels(http);
-      if (found.unavailable) return { status: { ...status, available: false, ...(found.reason ? { reason: found.reason } : {}) } };
-      status.models = found.models;
-      status.modelsConfirmed = found.confirmed;
-      if (found.reason) status.modelsReason = found.reason;
-    }
+    const found = await d.listHttpModels(http);
+    if (found.unavailable && provider.models.length === 0) return { status: { ...status, available: false, ...(found.reason ? { reason: found.reason } : {}) } };
+    // With the owner's models the provider stays usable even if the endpoint has no list.
+    if (!found.unavailable) status.models = withOwnerModels(found.models, provider.models);
+    status.modelsConfirmed = !found.unavailable && found.confirmed;
+    if (found.reason) status.modelsReason = found.reason;
   }
   return { status, http };
 }

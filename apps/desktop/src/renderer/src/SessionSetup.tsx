@@ -2,6 +2,7 @@ import type { ReactNode, Ref } from "react";
 import { ROUNDS_BOUNDS, rosterNames } from "../../shared/setup.ts";
 import type { LineupView, MaterialsKind, MaterialsPreviewView, MaterialsView, RegistryView, TemplateCard } from "../../shared/setup.ts";
 import { sessionSetup } from "../../shared/messages/session-setup.ts";
+import { newDiscussion } from "../../shared/messages/new-discussion.ts";
 import { Icon } from "./icons.tsx";
 import { useLanguage, useMessages } from "./language.tsx";
 import { chars, splitName } from "./session-ui.tsx";
@@ -46,9 +47,10 @@ function estimateParts(cost: { calls: number; callsText: string }): ReactNode {
   return <>{cost.callsText.slice(0, at)}<span className="setup__cost">{n}</span>{cost.callsText.slice(at + n.length)}</>;
 }
 
-export function SessionSetup({ form, registry, template, starting, error, lineups, dispatch, onStart, onBack, onSaveAs, saveAsBusy, saveAsError, materials = null, materialsBusy = false, dragOver = false, onPick = () => {}, urlText = "", urlPending = null, onUrlText = () => {}, onAddUrl = () => {}, onDropFiles = () => {}, onDragOver = () => {}, onRemoveMaterial = () => {}, onReturnIgnored = () => {}, onExcludeIgnored = () => {}, rerun = null, preview = null, previewOpen = false, previewBusy = false, previewError = null, accepted = null, onPreview = () => {}, onAcceptPreview = () => {}, onClosePreview = () => {} }: {
+export function SessionSetup({ form, registry, registryError = null, template, starting, error, lineups, dispatch, onStart, onBack, onSaveAs, saveAsBusy, saveAsError, materials = null, materialsBusy = false, dragOver = false, onPick = () => {}, urlText = "", urlPending = null, onUrlText = () => {}, onAddUrl = () => {}, onDropFiles = () => {}, onDragOver = () => {}, onRemoveMaterial = () => {}, onReturnIgnored = () => {}, onExcludeIgnored = () => {}, rerun = null, preview = null, previewOpen = false, previewBusy = false, previewError = null, accepted = null, onPreview = () => {}, onAcceptPreview = () => {}, onClosePreview = () => {} }: {
   form: SetupForm;
   registry: RegistryView;
+  registryError?: string | null;
   template: TemplateCard | null;
   starting: boolean;
   error: string | null;
@@ -83,6 +85,7 @@ export function SessionSetup({ form, registry, template, starting, error, lineup
   onClosePreview?(): void;
 }): ReactNode {
   const t = useMessages(sessionSetup);
+  const nd = useMessages(newDiscussion);
   const language = useLanguage();
   const status = previewStatus(materials, accepted);
   const current = previewIsCurrent(materials, preview);
@@ -126,6 +129,15 @@ export function SessionSetup({ form, registry, template, starting, error, lineup
       <main className="content">
         <div className="setup">
           <div className="setup__main">
+            {registryError && (
+              <div className="alert" data-tone="danger" role="alert" data-registry-error="">
+                <Icon name="i-alert" />
+                <div>
+                  <div className="alert__title">{nd.registryFailed}</div>
+                  <div className="alert__text">{registryError}</div>
+                </div>
+              </div>
+            )}
             {error && (
               <div className="alert" data-tone="danger" role="alert">
                 <Icon name="i-alert" />

@@ -249,6 +249,23 @@ describe("historyRead: unreadable journal", () => {
   });
 });
 
+describe("historyRead: garbage journal", () => {
+  it("onUnreadable receives the id once, it is not in items, five polls log one line", () => {
+    write(mkSession("good"), 1, [...turn(1, 2), finished(4)]);
+    createSessionJournal(dir, "junk");
+    writeFileSync(eventsPath(dir, "junk"), "garbage\n");
+    const lines: string[] = [];
+    const onUnreadable = unreadableJournalLog({ info: () => {}, error: (m) => lines.push(m) });
+    const seen: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      const r = historyRead(dir, new Map(), new Set(), (id, e) => { if (i === 0) seen.push(id); onUnreadable(id, e); });
+      expect(r.items.map((x) => x.id)).toEqual(["good"]);
+    }
+    expect(seen).toEqual(["junk"]);
+    expect(lines).toEqual(["Session journal junk not read"]);
+  });
+});
+
 describe("unreadableJournalLog: polling \"History\" every 2 s does not multiply log lines", () => {
   it("one line per session and reason; a new reason or another session is a new line", () => {
     const lines: string[] = [];

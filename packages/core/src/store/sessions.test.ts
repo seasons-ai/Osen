@@ -99,6 +99,38 @@ describe("sessions", () => {
       expect(listSessions(dir).map((x) => x.id)).not.toContain("g");
     });
   });
+  describe("list: journal without a session creation event", () => {
+    const unknownEvent = (seq: number): SessionEvent => ({ seq, ts: ts(), type: "turn_started", turn: 1, round: 1, participantId: "p1" });
+    const setup = () => {
+      const s = mkSession("ok");
+      write("ok", [created(s, 1)]);
+      const seen: [string, unknown][] = [];
+      return { seen, run: () => listSessions(dir, alive, (id, e) => seen.push([id, e])).map((x) => x.id) };
+    };
+    it("Session list: journal without a session creation event: garbage line", () => {
+      const { seen, run } = setup();
+      createSessionJournal(dir, "bad");
+      writeFileSync(eventsPath(dir, "bad"), "garbage\n");
+      expect(run()).toEqual(["ok"]);
+      expect(seen.map(([id]) => id)).toEqual(["bad"]);
+      expect(seen[0]![1]).toBeInstanceOf(Error);
+    });
+    it("Session list: journal without a session creation event: valid event that is not the creation", () => {
+      const { seen, run } = setup();
+      write("bad", [unknownEvent(1)]);
+      expect(run()).toEqual(["ok"]);
+      expect(seen.map(([id]) => id)).toEqual(["bad"]);
+      expect(seen[0]![1]).toBeInstanceOf(Error);
+    });
+    it("Session list: session being created: no events.jsonl or an empty one is skipped silently", () => {
+      const { seen, run } = setup();
+      mkdirSync(sessionDir(dir, "nofile"), { recursive: true });
+      createSessionJournal(dir, "empty");
+      expect(run()).toEqual(["ok"]);
+      expect(seen).toEqual([]);
+    });
+  });
+
   it("list: three sources, from newest to oldest", () => {
     (["cli", "mcp", "desktop"] as const).forEach((origin, i) => {
       const s = mkSession(`s-${origin}`, { origin, createdAt: ts(i) });

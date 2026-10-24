@@ -129,3 +129,22 @@ describe("ZIP ratio property", () => {
     }
   });
 });
+
+describe("openZip entry names", () => {
+  const cp866Name = Uint8Array.from([0x8e, 0xe2, 0xe7, 0xf1, 0xe2, 0x2e, 0x74, 0x78, 0x74]); // Отчёт.txt in CP866
+  it("Архив ZIP как папка: имя без флага UTF-8 в CP866 читается как CP866", () => {
+    const zip = openZip(makeZip([{ name: cp866Name, data: "x" }]));
+    expect([...zip.entries.keys()]).toEqual(["Отчёт.txt"]);
+  });
+  it("Архив ZIP как папка: имя без флага в корректном UTF-8 остаётся UTF-8", () => {
+    const zip = openZip(makeZip([{ name: Buffer.from("Отчёт.txt"), data: "x" }]));
+    expect([...zip.entries.keys()]).toEqual(["Отчёт.txt"]);
+  });
+  it("Архив ZIP как папка: имя с флагом UTF-8 и некорректными байтами — архив повреждён", () => {
+    expect(code(() => openZip(makeZip([{ name: cp866Name, utf8Flag: true, data: "x" }])))).toBe("unsupported");
+  });
+  it("Архив ZIP как папка: имя с флагом UTF-8 читается как UTF-8", () => {
+    const zip = openZip(makeZip([{ name: "Отчёт.txt", utf8Flag: true, data: "x" }]));
+    expect([...zip.entries.keys()]).toEqual(["Отчёт.txt"]);
+  });
+});

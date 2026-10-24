@@ -2,6 +2,8 @@ import { sessionLanguage, turnResponseSchema } from "./schema.ts";
 import type { Stance } from "./schema.ts";
 import { promptMessages } from "../messages/prompt.ts";
 import type { Language } from "../i18n/language.ts";
+import { describeIssue } from "../messages/zod.ts";
+import type { z } from "zod";
 import { OWNER_ID, activeParticipantIds, currentVersion, openQuestionsFor } from "./state.ts";
 import type { SessionState } from "./state.ts";
 
@@ -27,20 +29,41 @@ function tryObject(text: string): Record<string, unknown> | undefined {
   }
 }
 
-// End of the object starting at position start, taking nesting and strings into account; -1 if there is no pair.
-function matchingBrace(text: string, start: number): number {
-  let depth = 0;
-  let inString = false;
-  for (let i = start; i < text.length; i++) {
+// Ends of the objects starting at every "{" (-1 if there is no pair), exactly as a separate scan from each "{" with its own
+// string state would find them, in one linear pass. Each such scan is outside a string, inside one or right after a backslash
+// in it; scans in the same state at the same position read the rest alike, so they share a lane. A lane is a stack of levels,
+// a level is a linked list of the starts that close when it is popped. Lanes that meet are merged aligned by the top, the
+// shorter into the longer: a merge removes as many levels as it costs, so the whole pass is O(n).
+function balancedEnds(text: string): Int32Array {
+  const end = new Int32Array(text.length).fill(-1);
+  const next = new Int32Array(text.length).fill(-1);
+  type Level = { head: number; tail: number };
+  const merge = (a: Level[] | null, b: Level[] | null): Level[] | null => {
+    if (!a || !b) return a ?? b;
+    if (a.length < b.length) [a, b] = [b, a];
+    for (let k = 1; k <= b.length; k++) {
+      const into = a[a.length - k]!, from = b[b.length - k]!;
+      next[into.tail] = from.head;
+      into.tail = from.tail;
+    }
+    return a;
+  };
+  let out: Level[] | null = null, str: Level[] | null = null, esc: Level[] | null = null;
+  for (let i = 0; i < text.length; i++) {
     const c = text[i];
-    if (inString) {
-      if (c === "\\") i++;
-      else if (c === "\"") inString = false;
-    } else if (c === "\"") inString = true;
-    else if (c === "{") depth++;
-    else if (c === "}" && --depth === 0) return i;
+    if (c === "\"") [out, str, esc] = [str, merge(out, esc), null];
+    else if (c === "\\") [str, esc] = [esc, str];
+    else {
+      str = merge(str, esc);
+      esc = null;
+      if (c === "{") (out ??= []).push({ head: i, tail: i });
+      else if (c === "}") {
+        const level = out?.pop();
+        for (let j = level ? level.head : -1; j !== -1; j = next[j]!) end[j] = i;
+      }
+    }
   }
-  return -1;
+  return end;
 }
 
 // Bodies of fenced blocks in source order: "```", an info string up to a newline or backtick, the body up to the next "```"
@@ -63,8 +86,9 @@ export function extractJsonObject(raw: string): Record<string, unknown> | undefi
     const obj = tryObject(body.trim());
     if (obj) return obj;
   }
+  const ends = balancedEnds(raw);
   for (let i = raw.indexOf("{"); i !== -1; i = raw.indexOf("{", i + 1)) {
-    const end = matchingBrace(raw, i);
+    const end = ends[i]!;
     if (end === -1) continue;
     const obj = tryObject(raw.slice(i, end + 1));
     if (obj) return obj;
@@ -80,6 +104,14 @@ export function parseFileRequest(raw: string): string[] | null {
   return names.length > 0 ? names : null;
 }
 
+// Built-in zod texts go through describeIssue in the session language; custom texts (refine) are already in it.
+function issueTexts(issues: z.core.$ZodIssue[], language: Language): string[] {
+  return issues.map((i) => {
+    const text = describeIssue(i, language);
+    return i.path.length ? `${i.path.join(".")}: ${text}` : text;
+  });
+}
+
 // Error descriptions are in the session language: they go into the fix request and into the record of the turn failure.
 export function parseTurnResponse(raw: string, state: SessionState, participantId: string): ParseResult {
   const language = state.session ? sessionLanguage(state.session) : "ru";
@@ -91,7 +123,7 @@ export function parseTurnResponse(raw: string, state: SessionState, participantI
   if (!parsed.success) {
     return {
       ok: false,
-      errors: parsed.error.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ${i.message}` : i.message)),
+      errors: issueTexts(parsed.error.issues, language),
     };
   }
   const r = parsed.data;
@@ -145,7 +177,7 @@ export function parseDraftResponse(raw: string, language: Language): DraftParseR
   if (!parsed.success) {
     return {
       ok: false,
-      errors: parsed.error.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ${i.message}` : i.message)),
+      errors: issueTexts(parsed.error.issues, language),
     };
   }
   const r = parsed.data;

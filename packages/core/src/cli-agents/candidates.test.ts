@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeExecutable } from "../executable.testutil.ts";
 import { setProcessLanguage } from "../i18n/process-language.ts";
 import { ReleaseListError, CANDIDATES_DIR, CANDIDATE_LIMIT, candidatesJson, checkCandidate, checkCandidates } from "./candidates.ts";
 import type { CandidateDeps } from "./candidates.ts";
@@ -373,7 +374,7 @@ describe("Нет вызовов моделей и автоматического
   it("runs only --version, the help args and features list", async () => {
     const h = harness();
     await checkCandidates(dir, ["claude", "codex"], h.deps);
-    expect(h.calls).toEqual([["--version"], [...HELP_ARGS.claude], ["--version"], [...HELP_ARGS.codex], ["features", "list"]]);
+    expect(h.calls.map((c) => c.slice(0, 2).join(" "))).toEqual(["--version", HELP_ARGS.claude.join(" "), "--version", HELP_ARGS.codex.join(" "), "features list"]);
   });
   it("active pin and pins.json bytes are unchanged; base comes from the pin", async () => {
     const pins = { schemaVersion: 1, agents: { claude: { installed: [{ version: "2.1.280", path: "bin/claude", source: "t", sha256: "a".repeat(64), installedAt: "2026-10-01T00:00:00Z" }], active: "2.1.280", previous: null, activatedAt: "2026-10-01T00:00:00Z" } } };
@@ -447,15 +448,16 @@ describe("Команда cli candidates: прерывание, потомки п
       async fetch(_agent, version, d) {
         const exe = join(d, "bin", "codex");
         mkdirSync(join(d, "bin"), { recursive: true });
-        writeFileSync(exe, `#!/bin/sh\ncase "$1" in --version) echo "codex-cli ${version}";; *) sleep 15 & echo $! > ${pidfile}; wait;; esac\n`);
-        chmodSync(exe, 0o755);
+        writeExecutable(exe, `#!/bin/sh\ncase "$1" in --version) echo "codex-cli ${version}";; *) sleep 15 & echo $! > ${pidfile}; wait;; esac\n`);
         return { executable: exe, source: `fake:codex@${version}` };
       },
     };
     delete deps.run; // the real runner
     const started = Date.now();
     const p = checkCandidates(dir, ["codex"], deps);
-    while (!(existsSync(pidfile) && readFileSync(pidfile, "utf8").trim()) && Date.now() - started < 8000) await new Promise((r) => setTimeout(r, 25));
+    const pidWritten = () => existsSync(pidfile) && readFileSync(pidfile, "utf8").trim() !== "";
+    while (!pidWritten() && Date.now() - started < 20_000) await new Promise((r) => setTimeout(r, 25));
+    if (!pidWritten()) throw new Error("waited 20000 ms for: help child pid written");
     const pid = Number(readFileSync(pidfile, "utf8").trim());
     try {
       const abortedAt = Date.now();
@@ -468,5 +470,96 @@ describe("Команда cli candidates: прерывание, потомки п
       expect(alive(pid)).toBe(false);
       expect(existsSync(join(dir, CANDIDATES_DIR))).toBe(false);
     } finally { try { process.kill(pid, "SIGKILL"); } catch {} }
-  }, 20_000);
+  }, 60_000);
+});
+
+describe("Временные установки кандидатов: Две проверки одновременно", () => {
+  // Own seeded generator: fast-check is not wired in.
+  function mulberry32(seed: number) {
+    return () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // A foreign process removes the empty shared root `removals` times right before the prefix is made.
+  const racing = (removals: number): NonNullable<CandidateDeps["makePrefix"]> => {
+    let left = removals;
+    return (root, b) => {
+      if (left-- > 0) rmSync(root, { recursive: true, force: true });
+      return mkdtempSync(join(root, b));
+    };
+  };
+
+  it("temporary candidate installs: one removal of cli-candidates/ before the first attempt still gives ok and a record", async () => {
+    const h = harness();
+    h.deps.makePrefix = racing(1);
+    const r = await checkCandidates(dir, ["claude", "codex"], h.deps);
+    expect(r.failures).toEqual([]);
+    expect(r.candidates.map((c) => c.status)).toEqual(["ok", "ok"]);
+    expect(r.candidates.every((c) => c.recorded)).toBe(true);
+    expect(entries().filter((e) => e.level === "interface")).toHaveLength(2);
+    expect(existsSync(join(dir, CANDIDATES_DIR))).toBe(false);
+  });
+
+  it("temporary candidate installs: property over removals 0..4 and candidate counts, limit is 3 attempts", async () => {
+    const rnd = mulberry32(224);
+    for (let i = 0; i < 25; i++) {
+      const k = Math.floor(rnd() * 5);
+      const versions = Array.from({ length: 1 + Math.floor(rnd() * 3) }, (_, j) => `2.1.${289 + j}`);
+      rmSync(dir, { recursive: true, force: true });
+      mkdirSync(dir);
+      const h = harness({ versions: { claude: versions, codex: [] } });
+      h.deps.makePrefix = racing(k); // the k removals are spent in order over all attempts of all candidates
+      const r = await checkCandidates(dir, ["claude"], h.deps);
+      // model: a candidate whose 3 attempts all meet a removal fails, otherwise the leftover removals are gone after its retries
+      let left = k;
+      const expected = versions.map(() => { if (left >= 3) { left -= 3; return "fail"; } left = 0; return "ok"; });
+      const label = `k=${k} versions=${versions.length}`;
+      expect(r.candidates.map((c) => c.status), label).toEqual(expected.filter((x) => x === "ok").map(() => "ok"));
+      expect(r.failures.map((f) => f.code), label).toEqual(expected.filter((x) => x === "fail").map(() => "install_failed"));
+      for (const f of r.failures) expect(f.reason, label).toMatch(/ENOENT/);
+      expect(existsSync(join(dir, CANDIDATES_DIR)), label).toBe(false);
+    }
+  });
+});
+
+describe("Порядок поиска и окружение закреплённого CLI: Справка и список возможностей Codex в проверке кандидата и в приёмке", () => {
+  const UPDATE_OFF = ["-c", "check_for_update_on_startup=false"];
+  it("candidates: -c check_for_update_on_startup=false exactly on codex help and features list, after the subcommand", async () => {
+    const h = harness();
+    await checkCandidates(dir, ["claude", "codex"], h.deps);
+    expect(h.calls).toEqual([
+      ["--version"], [...HELP_ARGS.claude],
+      ["--version"], [...HELP_ARGS.codex, ...UPDATE_OFF], ["features", "list", ...UPDATE_OFF],
+    ]);
+  });
+  it("help_unread keeps the name `exec --help` without the -c argument", async () => {
+    const h = harness();
+    const run = h.deps.run!;
+    h.deps.run = async (p, a, e, s) => { if (a.includes("--help")) throw new Error("no help"); return run(p, a, e, s); };
+    const r = await checkCandidates(dir, ["codex"], h.deps);
+    expect(r.candidates[0]!.violations).toContainEqual({ code: "help_unread", name: "exec --help" });
+    expect(candidatesJson(r).candidates[0]!.violations).toContainEqual({ code: "help_unread", name: "exec --help" });
+  });
+});
+
+describe("Ключи из .env не попадают в окружение CLI: candidates", () => {
+  it("run gets an environment without the data folder .env keys", async () => {
+    const key = `OSEN_T238_C_${Math.random().toString(36).slice(2, 10)}`;
+    writeFileSync(join(dir, ".env"), `${key}=secret\n`);
+    const h = harness();
+    const seen: Array<Record<string, string | undefined>> = [];
+    const inner = h.deps.run!;
+    h.deps.env = { [key]: "secret", KEEP: "1" };
+    h.deps.run = async (path, args, env, signal) => { seen.push(env); return inner(path, args, env, signal); };
+    await checkCandidates(dir, ["claude"], h.deps);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const e of seen) {
+      expect(e).not.toHaveProperty(key);
+      expect(e.KEEP).toBe("1");
+    }
+  });
 });

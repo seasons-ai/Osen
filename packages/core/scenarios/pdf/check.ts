@@ -11,6 +11,8 @@ import { chmodSync, closeSync, copyFileSync, existsSync, ftruncateSync, mkdirSyn
 import net from "node:net";
 import { join, resolve } from "node:path";
 import { PDF_LIMITS, extractPdfText, sha256Of } from "../../src/index.ts";
+import { setPdfExtractorRuntime } from "../../src/pdf/extract.ts";
+import { findOldReason } from "./old-reason.ts";
 import { makeEncryptedPdf, makeImageOnlyPdf, makeMalformedPdf, makePdf, makeScanPdf } from "../../src/pdf/fixture.ts";
 
 const repo = resolve(import.meta.dirname, "../../../..");
@@ -91,7 +93,7 @@ function proc(command: string, args: string[], env: Record<string, string>): Pro
 const cliEnv = { ...baseEnv, COUNCIL_HOME: cliHome };
 const cli = (args: string[], extra: Record<string, string> = {}) => proc(process.execPath, [entry, ...args], { ...cliEnv, ...extra });
 const dump = (p: Proc) => `\n--- stdout ---\n${p.out}\n--- stderr ---\n${p.err}`;
-async function run(args: string[], extra: Record<string, string> = {}) { const p = cli(args, extra); const code = await p.exited; return { code, p }; }
+async function run(args: string[], extra: Record<string, string> = {}, script = entry) { const p = proc(process.execPath, [script, ...args], { ...cliEnv, ...extra }); const code = await p.exited; return { code, p }; }
 async function until(what: string, fn: () => unknown, p: Proc, ms = 15000) {
   for (const t0 = Date.now(); Date.now() - t0 < ms; await sleep(50)) if (fn()) return;
   throw new Error(`timed out waiting for: ${what}${dump(p)}`);
@@ -324,6 +326,36 @@ async function main() {
   await refuse("locked.pdf", REASON.locked, withHelper(launched));
   ok(`terminal, locked.pdf with the ${MARKER} stub: «${REASON.locked}», the helper is not reached`);
 
+  // ---- change 251: the PDF extraction process exits with code 3; the reason names the code in the session language ----
+  const standEntry = join(repo, "packages/core/scenarios/pdf/council-test.ts");
+  const noEnv = await run(["--preview-materials", "--attach", join(fx, "text.pdf")], { PDF_STAND_EXTRACTOR: "" }, standEntry);
+  assert.equal(noEnv.code, 2, dump(noEnv.p));
+  assert.ok(noEnv.p.err.includes("PDF_STAND_EXTRACTOR variable is not set"), dump(noEnv.p));
+  for (const [lang, words] of [["ru", "не удалось извлечь текст PDF — код выхода 3"], ["en", "could not extract PDF text — exit code 3"]] as const) {
+    const r = await run(["--preview-materials", "--attach", join(fx, "text.pdf")], { COUNCIL_LANG: lang, PDF_STAND_EXTRACTOR: join(repo, "packages/core/src/pdf/testdata/child-exit3.ts") }, standEntry);
+    assert.equal(r.code, 2, `${lang}: code ${r.code}${dump(r.p)}`);
+    assert.ok(r.p.err.includes(words), `${lang}: expected «${words}»${dump(r.p)}`);
+    assert.ok(!/exit \d|exit:/.test(r.p.err + r.p.out), `${lang}: a raw exit label leaked${dump(r.p)}`);
+  }
+  ok("terminal, PDF extraction process exits with code 3 (stand entry council-test.ts): code 2 with «не удалось извлечь текст PDF — код выхода 3» on ru and «could not extract PDF text — exit code 3» on en, no raw «exit 3»/«exit:3»; the entry refuses with code 2 without PDF_STAND_EXTRACTOR");
+
+  // ---- change 251: the PDF extraction process runs in /, not in the owner's project folder ----
+  const cwdLog = join(work, "pdf-cwds.log"), wrapCwd = join(fx, "wrap-cwd.ts");
+  writeFileSync(wrapCwd, `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(cwdLog)}, process.cwd() + "\\n");\nawait import(${JSON.stringify(join(repo, "packages/core/src/pdf/pdf-extract.ts"))});\n`);
+  const prevCwd = process.cwd();
+  try {
+    process.chdir(repo);
+    setPdfExtractorRuntime({ script: wrapCwd });
+    const pdfRes = extractPdfText(readFileSync(join(fx, "text.pdf")));
+    assert.equal(pdfRes.ok, true, JSON.stringify(pdfRes));
+    const cwds = readFileSync(cwdLog, "utf8").split("\n").filter(Boolean);
+    assert.deepEqual(cwds, ["/"], `the PDF extraction process ran in: ${cwds}`);
+    ok(`in-process, parent in ${repo}: the PDF extraction process ran in "/"`);
+  } finally {
+    process.chdir(prevCwd);
+    setPdfExtractorRuntime();
+  }
+
   // ---- 7. Link and script ----
   let connections = 0;
   const server = net.createServer((s) => { connections++; s.destroy(); });
@@ -386,16 +418,7 @@ async function main() {
   const textOf = (r: ReturnType<typeof spawnSync>) => { const j = JSON.parse(r.stdout.toString().trim()); return j.ok ? j.text : `REJECTED ${JSON.stringify(j)}`; };
   // The old refusal reason must be gone from the sources, docs and mockups (the literal is split so this file does not match itself).
   const OLD = ["в PDF нет", " текстового слоя", " — распознавание не выполняется"].join("");
-  const hits: string[] = [];
-  const walk = (d: string) => {
-    for (const e of readdirSync(d, { withFileTypes: true })) {
-      if (e.name === "node_modules" || e.name === "out" || e.name === "bin" || e.name === "release" || e.name === "dist" || e.name.startsWith(".")) continue;
-      const f = join(d, e.name);
-      if (e.isDirectory()) walk(f);
-      else if (e.isFile() && statSync(f).size < 4 * 2 ** 20 && readFileSync(f, "utf8").includes(OLD)) hits.push(f);
-    }
-  };
-  for (const d of ["packages", "docs", "design"]) if (existsSync(join(repo, d))) walk(join(repo, d));
+  const hits = findOldReason(repo, OLD);
   assert.deepEqual(hits, [], "the old «no text layer» reason is still present");
   ok("the old no-text-layer refusal reason is absent from packages/, docs/, design/");
   const sourceScan = spawnSync(process.execPath, [join(repo, "packages/core/src/pdf/pdf-extract.ts"), arg], { input: ocrBytes, env: {}, timeout: 30000, maxBuffer: 2 ** 26 });

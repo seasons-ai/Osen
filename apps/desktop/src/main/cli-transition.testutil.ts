@@ -1,6 +1,7 @@
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger, ProviderStatus } from "@model-council/core";
+import { linkExecutable } from "../../../../packages/core/src/executable.testutil.ts";
 import { installPin, pinsPath, usePin } from "../../../../packages/core/src/cli-agents/pins.ts";
 import type { PackageSource } from "../../../../packages/core/src/cli-agents/pins.ts";
 import { addLocalEntry, loadVerifiedRecord } from "../../../../packages/core/src/cli-agents/verified-record.ts";
@@ -22,8 +23,8 @@ export const fakeVersionSource: PackageSource = {
   async fetch(agent, version, dir) {
     const exe = join(dir, "node_modules", "pkg", "bin", agent);
     mkdirSync(join(dir, "node_modules", "pkg", "bin"), { recursive: true });
-    writeFileSync(exe, `#!/bin/sh\necho "${version} (fake)"\n`);
-    chmodSync(exe, 0o755);
+    linkExecutable(exe, '#!/bin/sh\n/bin/cat "$0.version"\n');
+    writeFileSync(`${exe}.version`, `${version} (fake)\n`);
     return { executable: exe, source: `fake:${agent}@${version}` };
   },
 };
@@ -35,9 +36,9 @@ export function record(dataDir: string, agent: "claude" | "codex", version: stri
 }
 
 /** Installs versions through 176; the first `real` one becomes active at `now`. */
-export async function installVersions(dataDir: string, agent: "claude" | "codex", versions: { version: string; candidate?: boolean }[], now: () => Date): Promise<void> {
+export async function installVersions(dataDir: string, agent: "claude" | "codex", versions: { version: string; candidate?: boolean }[], now: () => Date, source: PackageSource = fakeVersionSource): Promise<void> {
   for (const v of versions) {
-    const r = await installPin(dataDir, agent, { version: v.version, ...(v.candidate ? { candidate: true } : {}) }, { source: fakeVersionSource, record: loadVerifiedRecord(dataDir), now });
+    const r = await installPin(dataDir, agent, { version: v.version, ...(v.candidate ? { candidate: true } : {}) }, { source, record: loadVerifiedRecord(dataDir), now });
     if (!r.ok) throw new Error(r.text);
   }
 }

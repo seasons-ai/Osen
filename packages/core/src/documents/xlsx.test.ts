@@ -91,12 +91,23 @@ describe("XLSX text", () => {
     expect(extractDocument(missingPart, DOC_LIMITS)).toEqual({ ok: false, code: "damaged" });
   });
 
-  it("a macro-free template or binary workbook type stays unsupported", () => {
+  it("XLTX and XLTM give the same text as XLSX; a template sheet keeps its heading", () => {
+    const sheets = [{ name: "План", rows: [["a", 1]] }];
+    const xlsx = text({ sheets });
+    expect(xlsx.startsWith("# План")).toBe(true);
+    for (const mainType of ["application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml", "application/vnd.ms-excel.template.macroEnabled.main+xml"]) {
+      expect(text({ sheets, mainType })).toBe(xlsx);
+      expect(run({ sheets, mainType, macro: true })).toMatchObject({ ok: true, format: "xlsx", text: xlsx });
+    }
+  });
+
+  it("a binary workbook (XLSB) is refused with the xlsb kind, not as unsupported", () => {
     const zip = makeZip([
-      { name: "[Content_Types].xml", data: '<Types><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml"/></Types>' },
-      { name: "_rels/.rels", data: '<Relationships><Relationship Id="1" Type="x/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+      { name: "[Content_Types].xml", data: '<Types><Override PartName="/xl/workbook.bin" ContentType="application/vnd.ms-excel.sheet.binary.macroEnabled.main"/></Types>' },
+      { name: "_rels/.rels", data: '<Relationships><Relationship Id="1" Type="x/officeDocument" Target="xl/workbook.bin"/></Relationships>' },
+      { name: "xl/workbook.bin", data: "x" },
     ]);
-    expect(extractDocument(zip, DOC_LIMITS)).toEqual({ ok: false, code: "unsupported" });
+    expect(extractDocument(zip, DOC_LIMITS)).toEqual({ ok: false, code: "kind", detail: "xlsb" });
   });
 });
 
@@ -137,9 +148,11 @@ describe("XLSX chars limit and whitespace", () => {
   });
 
   it("a few XML bytes that fan out to gigabytes stop at chars before the text is built", () => {
-    const t = Date.now();
+    // CPU time of this fork, not wall clock: under a loaded machine the wait for a core lands in wall clock
+    const t = process.cpuUsage();
     expect(extractDocument(xfd(100_000), DOC_LIMITS)).toEqual({ ok: false, code: "chars" });
-    expect(Date.now() - t).toBeLessThan(5000);
+    const { user, system } = process.cpuUsage(t);
+    expect((user + system) / 1000).toBeLessThan(5000);
   }, 30_000);
 
   it("the limit is exact on the output length", () => {
@@ -147,6 +160,14 @@ describe("XLSX chars limit and whitespace", () => {
     const len = "# S\nab\tc".length;
     expect(extractDocument(bytes, { ...DOC_LIMITS, chars: len })).toMatchObject({ ok: true });
     expect(extractDocument(bytes, { ...DOC_LIMITS, chars: len - 1 })).toEqual({ ok: false, code: "chars" });
+  });
+
+  it("a cell of only spaces is not empty: it keeps its column and counts toward the cell limit", () => {
+    const spec: XlsxSpec = { sheets: [{ name: "S", rows: [[{ inline: " " }, "x"]] }] };
+    expect(text(spec)).toBe("# S\n \tx");
+    const bytes = makeXlsx(spec);
+    expect(extractDocument(bytes, { ...DOC_LIMITS, cells: 2 })).toMatchObject({ ok: true });
+    expect(extractDocument(bytes, { ...DOC_LIMITS, cells: 1 })).toEqual({ ok: false, code: "cells" });
   });
 
   it("a book whose only cell is whitespace is no_text, like DOCX", () => {

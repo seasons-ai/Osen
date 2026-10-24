@@ -1,11 +1,11 @@
 import { materialsMessages } from "../messages/materials.ts";
 
 // Kind of a file that did not become text, by its first bytes (and the last 512 for DMG). Used only after text and the supported extractions failed,
-// so a signature never narrows what was accepted. xls, ppt and iwork are not in the table: the document extractor names them from the container.
+// so a signature never narrows what was accepted. xls, ppt, xlsb and iwork are not in the table: the document extractor names them from the container.
 export type FileKindId =
   | "mp3" | "aac" | "m4a" | "wav" | "aiff" | "flac" | "ogg" | "video"
   | "rar" | "7z" | "tar" | "gzip" | "bzip2" | "xz" | "zstd" | "dmg"
-  | "program" | "sqlite" | "font" | "xls" | "ppt" | "iwork" | "unknown";
+  | "program" | "sqlite" | "font" | "xls" | "ppt" | "xlsb" | "iwork" | "unknown";
 
 export const TAIL_BYTES = 512;
 

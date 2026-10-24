@@ -262,6 +262,34 @@ try {
   assert.equal(claudePins(A).active, "1.1.0");
   ok("4g the restored file passes: rollback to 1.1.0 succeeds");
 
+  // ---- 4h: install file without the execute bit ----
+  const noExec = async (v: string, args: string[], active: string, previous: string | null) => {
+    const { file } = fileOf(v);
+    const mode = statSync(file).mode & 0o777;
+    const pinsBytes = readFileSync(pinsFile(A));
+    chmodSync(file, mode & ~0o111);
+    try {
+      for (const [lang, word] of [["en", "not executable"], ["ru", "не исполняемый"]] as const) {
+        const r = await run(A, ["cli", ...args], { lang });
+        assert.equal(r.code, 2, `${lang} ${args.join(" ")}: ${r.out}${r.err}`);
+        for (const part of [v, file, word]) assert.ok(r.err.includes(part), `${lang}: stderr must contain ${part}: ${r.err}`);
+        assert.deepEqual(readFileSync(pinsFile(A)), pinsBytes);
+      }
+      assert.deepEqual([claudePins(A).active, claudePins(A).previous], [active, previous]);
+      const pr = await run(A, ["providers", "--json"]);
+      assert.equal(pr.code, 0, pr.err);
+      assert.equal(claudeStatus(pr).available, v !== active, `providers: claude availability with ${v} without the execute bit`);
+    } finally { chmodSync(file, mode); }
+  };
+  await noExec("1.0.0", ["use", "claude", "1.0.0"], "1.1.0", null);
+  ok("4h use claude 1.0.0 with a file without the execute bit (sha256 same): exit 2 on en and ru, reason names version, path, not executable, pins.json byte-identical, claude stays available from the previous pin");
+  assert.equal((await run(A, ["cli", "use", "claude", "1.0.0"])).code, 0);
+  await noExec("1.1.0", ["rollback", "claude"], "1.0.0", "1.1.0");
+  ok("4i rollback claude with a previous file without the execute bit: exit 2 on en and ru, pins.json byte-identical, previous not reset");
+  assert.equal((await run(A, ["cli", "rollback", "claude"])).code, 0);
+  assert.equal(claudePins(A).active, "1.1.0");
+  ok("4j the restored bit passes: rollback to 1.1.0 succeeds");
+
   // ---- 5 ----
   const pinPath = join(A, "cli", "claude", "1.1.0", claudePins(A).installed.find((i: { version: string }) => i.version === "1.1.0").path as string);
   const r5a = await run(A, ["providers", "--json"]);

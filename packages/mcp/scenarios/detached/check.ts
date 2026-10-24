@@ -1,16 +1,16 @@
-// Live check of changes 138, 184 and 199: council_start and council_resume run the session in a detached executor that outlives the MCP server.
+// Live check of changes 138, 184, 199 and 249: council_start and council_resume run the session in a detached executor that outlives the MCP server.
 // The server is a real child process over stdio; control goes through the `council` CLI. Scripted participants only, 0 model calls.
 //   COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the project> node packages/mcp/scenarios/detached/check.ts
 // Writes only to COUNCIL_HOME and does not delete it (this is the evidence of the check).
 import "../../../core/scenarios/language-ru.ts";
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, readdirSync, openSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createLogger, eventsPath, launchDir, listSessions, readEvents, readSession, requestStop, resumeLockPath, writeLaunchFile } from "@model-council/core";
+import { createLogger, engineMessages, eventsPath, launchDir, listSessions, readEvents, readSession, requestStop, resumeLockPath, setProcessLanguage, writeLaunchFile } from "@model-council/core";
 import { createServer } from "../../src/server.ts";
 import { mcpMessages } from "../../src/messages.ts";
 import { writeStub } from "../../../core/scenarios/launch-guard/stub.ts";
@@ -319,6 +319,28 @@ async function main() {
   await sr4.client.close();
   await serverGone(sr4, "R4");
 
+  // Change 235: the journal changes after the server check, before the executor's lock; the server speaks en, the executor ru.
+  // A wrapper around `council` appends a valid event to the journal and only then starts the executor.
+  const R5 = noConsensus("r5", 0);
+  const inject = join(home, "scen", "inject-event.mjs");
+  writeFileSync(inject, [
+    'import { appendFileSync, readFileSync } from "node:fs";',
+    'import { spawnSync } from "node:child_process";',
+    'const [journal, council, ...rest] = process.argv.slice(2);',
+    'const last = JSON.parse(readFileSync(journal, "utf8").trimEnd().split("\\n").at(-1));',
+    'appendFileSync(journal, JSON.stringify({ ...last, seq: last.seq + 1 }) + "\\n");',
+    'const r = spawnSync(process.execPath, [council, ...rest], { stdio: "inherit" });',
+    'process.exit(r.status ?? 1);',
+  ].join("\n"));
+  setProcessLanguage("en");
+  const en = await inProc({ command: process.execPath, args: [inject, eventsPath(home, R5), councilTs], env: { COUNCIL_LANG: "ru" } });
+  let r5: Res;
+  try { r5 = await planAndExec({ client: en.client } as unknown as Srv, R5); } finally { await en.close(); setProcessLanguage("ru"); }
+  check(r5.isError === true && body(r5).startsWith("stale_plan:"), "R5: journal changed before the executor's lock (server en, executor ru) -> stale_plan", body(r5).slice(0, 140));
+  check(evCount(R5, "session_resumed") === 0, "R5: no session_resumed after stale_plan");
+  check(!existsSync(resumeLockPath(home, R5)), "R5: no resume.lock after stale_plan");
+  check(launchLeft().length === 0, "R5: no files left in launch/", launchLeft().join(","));
+
   const R6 = noConsensus("r6", 0);
   const before6 = bytes(R6);
   const bogus = await inProc({ command: process.execPath, args: ["/nonexistent/council.ts"], env: {} });
@@ -420,12 +442,13 @@ exec "${stubDir}/claude-real" "$@"
     if (!id) throw new Error(`${tag}: no session id in the start output: ${r.out.slice(0, 200)}`);
     return id;
   };
-  const resumeWithReplacement = async (s: { client: Client }, id: string) => {
-    const args = { sessionId: id, rounds: 2, replacements: [{ participantId: "p2", providerId: "claude", model: "default" }] };
-    const pl = await call(s.client, "council_resume", args);
+  const replaceArgs = (id: string) => ({ sessionId: id, rounds: 2, replacements: [{ participantId: "p2", providerId: "claude", model: "default" }] });
+  const planToken = async (s: { client: Client }, id: string) => {
+    const pl = await call(s.client, "council_resume", replaceArgs(id));
     if (pl.isError) throw new Error(`${id} plan: ${body(pl)}`);
-    return call(s.client, "council_resume", { ...args, execute: true, planToken: JSON.parse(body(pl)).planToken });
+    return JSON.parse(body(pl)).planToken as string;
   };
+  const executeWith = (s: { client: Client }, id: string, token: string) => call(s.client, "council_resume", { ...replaceArgs(id), execute: true, planToken: token });
 
   console.log("-- 199.2: resume: the replacement check under the lock overruns the deadline");
   // Timing: the executor needs ~0.3-0.6 s to start; its first (pre-lock) check takes the stub sleep S, the re-check under the lock another S.
@@ -433,10 +456,12 @@ exec "${stubDir}/claude-real" "$@"
   helpSleep(1.2);
   const R8 = failedWithP2("r8");
   check(stat(R8) === "failed", "199.2: the seed session is failed", `status ${stat(R8)}`);
-  const s2a = await inProc(realLaunch, { env: stubEnv, startTimeoutMs: 2000 });
-  const r2a = await resumeWithReplacement(s2a, R8);
+  // the poll step (2 s) is longer than the gap between the deadline and the executor's refusal, so the executor exits before the server answers
+  const s2a = await inProc(realLaunch, { env: stubEnv, startTimeoutMs: 2000, startPollMs: 2000 });
+  const token2 = await planToken(s2a, R8);
+  const r2a = await executeWith(s2a, R8, token2);
   await s2a.close();
-  check(r2a.isError === true && body(r2a).length > 0, "199.2: council_resume execute -> isError (server timeout or executor refusal)", stubFirst(r2a));
+  check(r2a.isError === true && body(r2a) === mcpMessages().startExecutorTimeout(2) && !body(r2a).startsWith("stale_plan:"), "199.2: council_resume execute -> \"did not respond in 2 s\", not stale_plan", stubFirst(r2a));
   await sleep(12000);
   check(evCount(R8, "session_resumed") === 0, "199.2: no session_resumed in the journal 12 s later", `count ${evCount(R8, "session_resumed")}`);
   check(launchLeft().length === 0, "199.2: launch/ empty", launchLeft().join(","));
@@ -445,7 +470,7 @@ exec "${stubDir}/claude-real" "$@"
   console.log("-- 199.3: resume accepted well inside the deadline (fast stub)");
   helpSleep(null);
   const s3a = await inProc(realLaunch, { env: stubEnv, startTimeoutMs: 2000 });
-  const r3a = await resumeWithReplacement(s3a, R8);
+  const r3a = await executeWith(s3a, R8, token2); // the plan of 199.2 is still valid
   await s3a.close();
   check(accepted(r3a), "199.3: council_resume execute -> accepted: true", stubFirst(r3a));
   check(launchLeft().length === 0, "199.3: launch/ empty", launchLeft().join(","));
@@ -494,6 +519,53 @@ exec "${stubDir}/claude-real" "$@"
   await s5.client.close();
   await serverGone(s5, "199.5");
   check(launchLeft().length === 0, "199.5: launch/ empty after the cleanup", launchLeft().join(","));
+
+  // ---- 249.1 / 249.2: edges of the new-session start (ru and en) ----
+  for (const lang of ["ru", "en"] as const) {
+    setProcessLanguage(lang);
+    try {
+      console.log(`-- 249.1 [${lang}]: empty topic with a missing attachment is refused by the topic check, not by the materials`);
+      const known249 = new Set(listSessions(home).map((x) => x.id));
+      const dirs249 = sessionDirs();
+      const missing = join(home, "no-such-dir-249", "missing.txt");
+      const s249 = await connect({ ...baseEnv, COUNCIL_LANG: lang });
+      const r249 = await call(s249.client, "council_start", { ...startArgs("consensus/p1.json", "consensus/p2.json"), topic: "  ", attachments: [missing] });
+      check(r249.isError === true && body(r249) === engineMessages().topicRequired, `249.1 [${lang}]: council_start -> isError topicRequired`, body(r249).slice(0, 140));
+      check(!body(r249).includes("missing.txt"), `249.1 [${lang}]: no materials reason in the answer`, body(r249).slice(0, 140));
+      check(listSessions(home).every((x) => known249.has(x.id)) && JSON.stringify(sessionDirs()) === JSON.stringify(dirs249), `249.1 [${lang}]: no new session`);
+      check(launchLeft().length === 0, `249.1 [${lang}]: launch/ empty`, launchLeft().join(","));
+      await s249.client.close();
+
+      console.log(`-- 249.2 [${lang}]: the real executor of a new session sees an expired deadline and exits before the server answers`);
+      let firstLine = "";
+      const late = await inProc(realLaunch, {
+        env: { ...baseEnv, COUNCIL_LANG: lang }, startTimeoutMs: 2000, startPollMs: 2000,
+        // the executor starts after the deadline (2 s) and exits at once; the server notices it at the extra poll step
+        spawnExecutor: async (file, errPath) => {
+          await sleep(2300);
+          const errFd = openSync(errPath, "w", 0o600);
+          try {
+            const code = await new Promise<number>((res, rej) => {
+              const c = spawn(process.execPath, [councilTs, "run-prepared", file], { stdio: ["ignore", "ignore", errFd], env: { ...baseEnv, COUNCIL_LANG: lang } });
+              c.on("error", rej);
+              c.on("exit", (n) => res(n ?? 1));
+            });
+            firstLine = readFileSync(errPath, "utf8").split("\n")[0] ?? "";
+            return code;
+          } finally { closeSync(errFd); }
+        },
+      });
+      const r2 = await call(late.client, "council_start", claudeStart);
+      await late.close();
+      check(r2.isError === true && body(r2) === mcpMessages().startExecutorTimeout(2), `249.2 [${lang}]: council_start -> isError "did not respond in 2 s"`, body(r2).slice(0, 140));
+      let code = "";
+      try { code = (JSON.parse(firstLine) as { code?: string }).code ?? ""; } catch { /* not JSON */ }
+      check(code === "launch_expired", `249.2 [${lang}]: first stderr line of the executor is {"code":"launch_expired",...}`, firstLine.slice(0, 140));
+      check(listSessions(home).every((x) => known249.has(x.id)) && JSON.stringify(sessionDirs()) === JSON.stringify(dirs249), `249.2 [${lang}]: no new session`);
+      check(launchLeft().length === 0, `249.2 [${lang}]: launch/ empty`, launchLeft().join(","));
+      check(executorsLeft().length === 0, `249.2 [${lang}]: no executor process left`);
+    } finally { setProcessLanguage("ru"); }
+  }
 
   // ---- step 6 (stand numbering: orphans) ----
   console.log("-- orphans");

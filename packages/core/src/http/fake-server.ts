@@ -17,7 +17,7 @@ export interface FakeServer {
 }
 
 export const FAKE_MODELS: readonly string[] = [
-  "fake-amend", "fake-agree", "fake-plain", "fake-cost", "fake-auth", "fake-rate", "fake-error", "fake-hang", "fake-slow", "fake-midstream-error",
+  "fake-amend", "fake-agree", "fake-plain", "fake-cost", "fake-auth", "fake-rate", "fake-error", "fake-hang", "fake-slow", "fake-midstream-error", "fake-midstream-rate",
 ];
 export const FAKE_USAGE = { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 } as const;
 export const FAKE_AMEND = JSON.stringify({ stance: "amend", reasoning: "I propose the first version of the solution: the name should be short and suit a ginger cat.", solution: "Name the cat Ginger.", answers: [], questions: [] });
@@ -40,7 +40,7 @@ export async function startFakeServer(options: FakeServerOptions = {}): Promise<
   const requests: FakeRequest[] = [];
   const state = { closedEarly: 0 };
 
-  const stream = async (res: ServerResponse, model: string, text: string, usage: object, mode: "full" | "slow" | "error") => {
+  const stream = async (res: ServerResponse, model: string, text: string, usage: object, mode: "full" | "slow" | "error" | "rate") => {
     let alive = true;
     let wake: (() => void) | undefined;
     res.on("close", () => { alive = false; clearTimeout(timer); wake?.(); });
@@ -62,6 +62,8 @@ export async function startFakeServer(options: FakeServerOptions = {}): Promise<
     if (!alive || mode === "slow") return; // slow: wait for the client to drop or the server to close
     if (mode === "error") {
       res.write(`data: ${JSON.stringify({ error: { message: "Provider returned error", code: 502 } })}\n\n`);
+    } else if (mode === "rate") {
+      res.write(`data: ${JSON.stringify({ error: { message: "Rate limit exceeded", type: "rate_limit_error", code: "rate_limit_exceeded" } })}\n\n`);
     } else {
       send([{ index: 0, delta: {}, finish_reason: "stop" }]);
       send([], { usage });
@@ -94,6 +96,7 @@ export async function startFakeServer(options: FakeServerOptions = {}): Promise<
       case "fake-cost": return stream(res, model, FAKE_AGREE, { ...FAKE_USAGE, cost: 0.00012 }, "full");
       case "fake-slow": return stream(res, model, FAKE_AMEND, FAKE_USAGE, "slow");
       case "fake-midstream-error": return stream(res, model, FAKE_AMEND, FAKE_USAGE, "error");
+      case "fake-midstream-rate": return stream(res, model, FAKE_AMEND, FAKE_USAGE, "rate");
       case "fake-plain":
         return json(res, 200, { id: "chatcmpl-fake", object: "chat.completion", created: 0, model, choices: [{ index: 0, message: { role: "assistant", content: FAKE_AMEND }, finish_reason: "stop" }], usage: FAKE_USAGE });
       case "fake-auth": return authError();

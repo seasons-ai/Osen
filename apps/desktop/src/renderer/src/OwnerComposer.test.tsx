@@ -142,7 +142,7 @@ describe("OwnerComposerView: en", () => {
   });
   it("language from the context when the process language is ru", () => {
     const ctx = (language: Language) => renderToStaticMarkup(
-      <LanguageProvider initial={{ language, source: "file", locked: false }}>
+      <LanguageProvider initial={{ language, source: "file", locked: false, damaged: false }}>
         <OwnerComposerView session={session} questions={[q()]} text="Уточняю" answerTo={null} error={null} sending={false}
           onText={() => {}} onAnswer={() => {}} onCancelAnswer={() => {}} onSubmit={() => {}} />
       </LanguageProvider>);
@@ -266,7 +266,7 @@ describe("finished-session draft field: continue with this message (173)", () =>
     expect(h).toMatch(/>Скопировать текст<\/button><button[^>]*>Продолжить с этой репликой<\/button>/);
   });
   it("en label; blank text disables the button", () => {
-    const h = renderToStaticMarkup(<LanguageProvider initial={{ language: "en", source: "file", locked: false }}><FinishedDraftView {...base} onResume={() => {}} /></LanguageProvider>);
+    const h = renderToStaticMarkup(<LanguageProvider initial={{ language: "en", source: "file", locked: false, damaged: false }}><FinishedDraftView {...base} onResume={() => {}} /></LanguageProvider>);
     expect(h).toContain(">Continue with this message<");
     expect(renderToStaticMarkup(<FinishedDraftView {...base} text=" " onResume={() => {}} />)).toMatch(/<button[^>]*disabled=""[^>]*>Продолжить с этой репликой/);
   });

@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliLocation } from "../cli-agents/discovery.ts";
 import { FAKE_MODELS, startFakeServer } from "../http/fake-server.ts";
 import type { FakeServer } from "../http/fake-server.ts";
-import { configPath } from "./config.ts";
+import { linkExecutable, writeExecutable } from "../executable.testutil.ts";
+import { configPath, initialRegistry, readRegistry } from "./config.ts";
+import { setProcessLanguage } from "../i18n/index.ts";
 import type { CliProvider, HttpProvider, Provider, Registry } from "./config.ts";
 import { ensureRegistry, inspectProvider, inspectProviders } from "./providers.ts";
 
@@ -23,13 +25,15 @@ afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
 
 function stub(name: string, body: string): string {
   const p = join(dir, name);
-  writeFileSync(p, `#!/bin/sh\n${body}\n`);
-  chmodSync(p, 0o755);
-  return p;
+  return linkExecutable(p, `#!/bin/sh\n${body}\n`);
 }
+// The script is constant (one shared inode); per-test values live in plain data files next to it.
 function fakeClaude(o: { version?: string; helpFile?: string; helpFails?: boolean } = {}) {
-  const help = o.helpFails ? "exit 1" : `/bin/cat '${o.helpFile ?? fixture("claude-2.1.288-help.txt")}'`;
-  stub("claude", `case "$1" in --version) echo '${o.version ?? "2.1.288 (Claude Code)"}';; --help) ${help};; esac`);
+  const p = stub("claude", `case "$1" in --version) /bin/cat "$0.version";; --help) if [ -e "$0.helpfail" ]; then exit 1; fi; /bin/cat "$(/bin/cat "$0.help")";; esac`);
+  writeFileSync(`${p}.version`, `${o.version ?? "2.1.288 (Claude Code)"}\n`);
+  writeFileSync(`${p}.help`, o.helpFile ?? fixture("claude-2.1.288-help.txt"));
+  rmSync(`${p}.helpfail`, { force: true });
+  if (o.helpFails) writeFileSync(`${p}.helpfail`, "");
 }
 function fakeCodex() {
   stub("codex", `case "$1" in --version) echo 'codex-cli 0.159.2';; exec) /bin/cat '${fixture("codex-0.159.2-exec-help.txt")}';; features) /bin/cat '${fixture("codex-0.159.2-features.txt")}';; esac`);
@@ -184,14 +188,48 @@ describe("models", () => {
     expect(r.status).toMatchObject({ models: [], modelsConfirmed: false, modelsReason: "нет данных" });
 
     list.mockClear();
-    r = await inspectProvider({ ...claude, models: ["my-model"] }, { env: env(), deps: { listModels: list } });
-    expect(r.status).toMatchObject({ models: ["my-model"], modelsConfirmed: false });
-    expect(r.status.modelsReason).toContain("владельцем");
-
-    list.mockClear();
     r = await inspectProvider(claude, { env: env(), withModels: false, deps: { listModels: list } });
     expect(list).not.toHaveBeenCalled();
     expect(r.status.modelsReason).toBeUndefined();
+  });
+});
+
+describe("Ручная модель не отключает обновление", () => {
+  const cliDeps = (listModels: NonNullable<Parameters<typeof inspectProvider>[1]["deps"]>["listModels"]) => ({ listModels });
+  const httpP = (models: string[]): HttpProvider => ({ id: "gw", kind: "openai-http", label: "GW", models, baseUrl: "http://127.0.0.1:1/v1" });
+
+  it("CLI: list is requested with owner models, merged without duplicates", async () => {
+    fakeClaude();
+    const list = vi.fn(async () => ({ models: ["a", "b"], confirmed: true }));
+    const r = await inspectProvider({ ...claude, models: ["b", "mine"] }, { env: env(), deps: cliDeps(list) });
+    expect(list).toHaveBeenCalledOnce();
+    expect(r.status).toMatchObject({ models: ["a", "b", "mine"], modelsConfirmed: true });
+  });
+
+  it("CLI: unconfirmed list keeps its reason and owner models", async () => {
+    fakeClaude();
+    const r = await inspectProvider({ ...claude, models: ["mine"] }, { env: env(), deps: cliDeps(async () => ({ models: [], confirmed: false, reason: "нет данных" })) });
+    expect(r.status).toMatchObject({ models: ["mine"], modelsConfirmed: false, modelsReason: "нет данных" });
+  });
+
+  it("HTTP: list is requested with owner models, merged without duplicates", async () => {
+    const listHttpModels = vi.fn(async () => ({ models: ["a", "b"], confirmed: true }));
+    const r = await inspectProvider(httpP(["b", "mine"]), { env: {}, deps: { listHttpModels } });
+    expect(listHttpModels).toHaveBeenCalledOnce();
+    expect(r.status).toMatchObject({ available: true, models: ["a", "b", "mine"], modelsConfirmed: true });
+    expect(r.http).toBeDefined();
+  });
+
+  it("HTTP: no list from the endpoint — stays available with owner models and the reason", async () => {
+    const r = await inspectProvider(httpP(["mine"]), { env: {}, deps: { listHttpModels: async () => ({ models: [], confirmed: false, unavailable: true, reason: "нет списка" }) } });
+    expect(r.status).toMatchObject({ available: true, models: ["mine"], modelsConfirmed: false, modelsReason: "нет списка" });
+    expect(r.http).toBeDefined();
+  });
+
+  it("HTTP: no list and no owner models — unavailable as before", async () => {
+    const r = await inspectProvider(httpP([]), { env: {}, deps: { listHttpModels: async () => ({ models: [], confirmed: false, unavailable: true, reason: "нет списка" }) } });
+    expect(r.status).toMatchObject({ available: false, reason: "нет списка" });
+    expect(r.http).toBeUndefined();
   });
 });
 
@@ -251,12 +289,12 @@ describe("inspectProvider openai-http", () => {
     expect(s.requests).toHaveLength(0);
   });
 
-  it("owner's list remains, no request", async () => {
+  it("Ручная модель не отключает обновление: HTTP merges the endpoint list with the owner's models", async () => {
     const s = await serve();
-    const r = await inspectProvider(prov(s, { models: ["mine"] }), { env: {} });
-    expect(r.status).toMatchObject({ available: true, models: ["mine"], modelsConfirmed: false });
-    expect(r.status.modelsReason).toContain("владельцем");
-    expect(s.requests).toHaveLength(0);
+    const r = await inspectProvider(prov(s, { models: [FAKE_MODELS[0]!, "mine"] }), { env: {} });
+    expect(s.requests.length).toBeGreaterThan(0);
+    expect(r.status).toMatchObject({ available: true, models: [...FAKE_MODELS, "mine"], modelsConfirmed: true });
+    expect(r.status.modelsReason).toBeUndefined();
   });
 
   it("server closed", async () => {
@@ -286,6 +324,45 @@ describe("inspectProvider openai-http", () => {
   it("listHttpModels throws", async () => {
     const r = await inspectProvider(prov({ url: "http://x" }), { env: {}, deps: { listHttpModels: async () => { throw new Error("boom"); } } });
     expect(r.status).toMatchObject({ available: false, reason: "Осмотр gw завершился ошибкой: boom" });
+  });
+});
+
+describe("Сведения о доступности провайдера: Логин и пароль в адресе", () => {
+  afterEach(() => setProcessLanguage("ru"));
+  const http = (id: string, baseUrl: string): HttpProvider => ({ id, kind: "openai-http", label: id, models: ["m"], baseUrl });
+  const counted = () => { const calls: unknown[] = []; return { calls, deps: { listHttpModels: async (h: unknown) => { calls.push(h); return { models: ["m"], confirmed: true }; } } }; };
+
+  for (const [lang, word] of [["ru", "логин или пароль"], ["en", "login or password"]] as const) {
+    for (const [what, url] of [["login and password", "http://user:SECRETPASS@127.0.0.1:9/v1"], ["login only", "http://user@127.0.0.1:9/v1"]] as const) {
+      it(`${lang}: ${what} in baseUrl is unavailable, the address is not echoed, no request`, async () => {
+        setProcessLanguage(lang);
+        const { calls, deps } = counted();
+        const r = await inspectProvider(http("gw", url), { env: {}, deps });
+        expect(r.status.available).toBe(false);
+        expect(r.status.reason).toContain("gw");
+        expect(r.status.reason).toContain("baseUrl");
+        expect(r.status.reason).toContain(word);
+        expect(r.status).not.toHaveProperty("baseUrl");
+        const text = JSON.stringify(r);
+        for (const leak of ["SECRETPASS", "user", "127.0.0.1"]) expect(text).not.toContain(leak);
+        expect(r.http).toBeUndefined();
+        expect(calls).toHaveLength(0);
+      });
+    }
+  }
+
+  it("a neighbour without userinfo (with a query) stays available; readRegistry keeps both", async () => {
+    const bad = http("bad", "http://user:SECRETPASS@127.0.0.1:9/v1");
+    const good = http("good", "http://127.0.0.1:9/v1?api-version=1");
+    writeFileSync(configPath(dir), JSON.stringify({ ...initialRegistry([]), providers: [bad, good] }));
+    const reg = readRegistry(dir);
+    expect(reg.providers.map((p) => p.id)).toEqual(["bad", "good"]);
+    const { calls, deps } = counted();
+    const [b, g] = await inspectProviders(reg, { env: {}, deps });
+    expect(b?.status.available).toBe(false);
+    expect(g?.status).toMatchObject({ available: true, baseUrl: "http://127.0.0.1:9/v1?api-version=1" });
+    expect(g?.http).toBeDefined();
+    expect(calls).toHaveLength(1);
   });
 });
 
@@ -383,4 +460,62 @@ describe("Bounded provider base URL normalization", () => {
     expect(result.samples).toHaveLength(3);
     expect(result.median).toBeLessThanOrEqual(1_000);
   }, 15_000);
+});
+
+describe("CLI participants: keys from .env files stay out of the CLI environment", () => {
+  const rand = () => Math.random().toString(36).slice(2, 10).toUpperCase();
+  const keyA = `OSEN_T238_A_${rand()}`;
+  const keyB = `OSEN_T238_B_${rand()}`;
+  const fromShell = `OSEN_T238_SHELL_${rand()}`;
+  type E = Record<string, string | undefined>;
+
+  it("help, features, locate, models, runtime.env and the turn environment lack the file keys; HTTP still sees its key", async () => {
+    const dataDir = join(dir, "data");
+    mkdirSync(dataDir);
+    writeFileSync(join(dataDir, ".env"), `${keyA}=secret-a\n${keyB}=secret-b\n`);
+    const merged = { ...env(), [keyA]: "secret-a", [keyB]: "secret-b", [fromShell]: "1" };
+    const seen: Record<string, E> = {};
+    const exe = stub("claude-env", '/usr/bin/env');
+    const deps = {
+      locate: async (_a: string, o: { env: E }): Promise<CliLocation> => { seen.locate = o.env; return { agent: "codex", found: true, path: exe, searchPath: dir, version: "0.159.2" }; },
+      readHelp: async (_p: string, _a: readonly string[], e: E) => { seen.help = e; return readFileSync(fixture("codex-0.159.2-exec-help.txt"), "utf8"); },
+      readFeatures: async (_p: string, _a: readonly string[], e: E) => { seen.features = e; return readFileSync(fixture("codex-0.159.2-features.txt"), "utf8"); },
+      listModels: async (_a: string, o: { env: E }) => { seen.models = o.env; return { models: [], confirmed: false }; },
+    };
+    const r = await inspectProvider(codex, { env: merged, dataDir, deps });
+    for (const e of [seen.locate, seen.help, seen.features, seen.models, r.runtime?.env]) {
+      expect(e).toBeDefined();
+      expect(e).not.toHaveProperty(keyA);
+      expect(e).not.toHaveProperty(keyB);
+      expect(e?.[fromShell]).toBe("1");
+      expect(e?.PATH).toBeDefined();
+    }
+    // the turn environment as the CLI driver builds it
+    const { stdout } = await promisify(execFile)(exe, [], { env: { ...r.runtime!.env, COUNCIL_PARTICIPANT: "1" } as NodeJS.ProcessEnv });
+    expect(stdout).not.toContain(keyA);
+    expect(stdout).not.toContain("secret-a");
+    expect(stdout).toContain("COUNCIL_PARTICIPANT=1");
+    expect(stdout).toContain(`${fromShell}=1`);
+
+    const http = await inspectProvider({ id: "h", kind: "openai-http", label: "H", baseUrl: "http://127.0.0.1:1/v1", apiKeyEnv: keyA, models: ["m"] }, { env: merged, dataDir, withModels: false });
+    expect(http.http?.apiKey).toBe("secret-a");
+  });
+});
+
+describe("Таймаут и прерывание: Чтение справки вне хода с потомком, игнорирующим SIGTERM", () => {
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  it("a hung help read times out, the reason is named and the SIGTERM-ignoring descendant is gone after the stop grace", async () => {
+    // the descendant holds no pipes: the old execFile read returned on the leader's exit and left it alive
+    const pidfile = join(dir, "descendant.pid");
+    writeExecutable(join(dir, "claude"), `#!/bin/sh\ncase "$1" in --version) echo '2.1.288 (Claude Code)';; --help) /bin/sh -c 'trap "" TERM; echo $$ > "$1"; exec /bin/sleep 30' sh '${pidfile}' >/dev/null 2>&1 </dev/null & while [ ! -s '${pidfile}' ]; do /bin/sleep 0.05; done; exec /bin/sleep 30;; esac\n`);
+    const r = await inspectProvider(claude, { env: env(), deps: noModels });
+    const pid = Number(readFileSync(pidfile, "utf8").trim());
+    try {
+      expect(alive(pid)).toBe(true);
+      expect(r.status.available).toBe(false);
+      expect(r.status.reason).toMatch(/^(Could not read the help of claude|Не удалось прочитать справку claude): .*no answer within 10000 ms/);
+      await new Promise((res) => setTimeout(res, 3000));
+      expect(alive(pid)).toBe(false);
+    } finally { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+  }, 60_000);
 });

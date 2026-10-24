@@ -1,12 +1,15 @@
-// Check of "Bounded fenced response extraction" (CodeQL js/polynomial-redos in extractJsonObject), 0 model calls:
+// Check of "Bounded fenced response extraction" (CodeQL js/polynomial-redos in extractJsonObject, quadratic per-brace scan), 0 model calls:
 //   COUNCIL_DEV=1 node packages/core/scenarios/security-turn-response/check.ts [--mutant]
-// 1. Direct probe: probe.ts times extractJsonObject on '```' + '_'.repeat(1,048,576) in a child with a 5,000 ms watchdog;
-//    the median of three samples must be <= 1,000 ms. Sizes 1,024, 4,096 and 16,384 are printed as diagnostics.
+// 1. Direct probes: probe.ts times extractJsonObject on '```' + '_'.repeat(1,048,576) (fence family) and on '{'.repeat(1,048,576)
+//    (brace family), each in a child with a 5,000 ms watchdog; the median of three samples must be <= 1,000 ms.
+//    Sizes 1,024, 4,096 and 16,384 are printed as diagnostics.
 // 2. Real `council` CLI (COUNCIL_LANG=en, 30 s watchdog per child) against a local HTTP stand with scripted raw answers:
 //    A) a 262,144-underscore malformed fence -> correction request -> valid fenced amendment -> consensus, bounded raw in the journal;
 //    B) plain JSON, fenced JSON after an explanation and a file request reach consensus, the file is served;
-//    C) independent drafts (scripted participants) with fenced JSON drafts reach parseDraftResponse.
-// --mutant: the probe runs on a copy of packages/core/src with the reported expression restored; the stand must exit nonzero.
+//    C) independent drafts (scripted participants) with fenced JSON drafts reach parseDraftResponse;
+//    D) an unpaired "{ " before the JSON turn is accepted without a correction request and reaches consensus.
+// --mutant: the probes run on a copy of packages/core/src with the reported expression and the former per-brace scan restored;
+//    the stand must exit nonzero, naming each family.
 // The stand creates .council-data/security-2-* itself and deletes it on success.
 import { execFile } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -58,17 +61,40 @@ if (mutant) {
     "for (const body of fencedBodies(raw)) {\n    const obj = tryObject(body.trim());",
     "for (const m of raw.matchAll(/```[^\\n`]*\\n?([\\s\\S]*?)```/g)) {\n    const obj = tryObject((m[1] ?? \"\").trim());");
   check("mutation copy restores the reported expression", restored !== source && restored.includes("matchAll(/```[^\\n`]*\\n?([\\s\\S]*?)```/g)"));
-  writeFileSync(parseTs, restored);
+  // The former per-brace scan: every "{" scans to the end of the text when it has no pair.
+  const former = restored
+    .replace("export function extractJsonObject", `function matchingBrace(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (c === "\\\\") i++;
+      else if (c === "\\"") inString = false;
+    } else if (c === "\\"") inString = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+export function extractJsonObject`)
+    .replace("  const ends = balancedEnds(raw);\n", "")
+    .replace("const end = ends[i]!;", "const end = matchingBrace(raw, i);");
+  check("mutation copy restores the former per-brace scan", former !== restored && former.includes("matchingBrace(raw, i)") && !former.includes("balancedEnds(raw)"));
+  writeFileSync(parseTs, former);
 }
 const N = 1_048_576;
-const probe = await supervised(process.execPath, [join(import.meta.dirname, "probe.ts"), parseTs, String(N), "1024,4096,16384"], 5_000);
-if (probe.ok) {
-  const r = JSON.parse(probe.stdout) as { n: number; samples: number[]; median: number; diagnostics: Array<{ n: number; ms: number }>; node: string; platform: string; arch: string; cpu: string };
-  console.log(`       n=${r.n} samples=${r.samples.map((s) => s.toFixed(2)).join(",")} ms median=${r.median.toFixed(2)} ms child=${probe.ms.toFixed(0)} ms`);
-  console.log(`       diagnostics ${r.diagnostics.map((d) => `n=${d.n}:${d.ms.toFixed(3)}ms`).join(" ")}; node ${r.node} ${r.platform}/${r.arch} ${r.cpu}`);
-  check(`probe median <= 1,000 ms at n=${N}`, r.n === N && r.samples.length === 3 && r.median <= 1_000, `median ${r.median} ms`);
-} else {
-  check(`probe child finishes before the 5,000 ms watchdog at n=${N}`, false, `${probe.why}; supervisor stayed responsive, child settled after ${probe.ms.toFixed(0)} ms`);
+for (const [family, label] of [["fence", "'```' + '_'"], ["brace", "'{'"]] as const) {
+  const probe = await supervised(process.execPath, [join(import.meta.dirname, "probe.ts"), parseTs, String(N), "1024,4096,16384", family], 5_000);
+  if (probe.ok) {
+    const r = JSON.parse(probe.stdout) as { family: string; n: number; samples: number[]; median: number; diagnostics: Array<{ n: number; ms: number }>; node: string; platform: string; arch: string; cpu: string };
+    console.log(`       ${family}: n=${r.n} samples=${r.samples.map((s) => s.toFixed(2)).join(",")} ms median=${r.median.toFixed(2)} ms child=${probe.ms.toFixed(0)} ms`);
+    console.log(`       diagnostics ${r.diagnostics.map((d) => `n=${d.n}:${d.ms.toFixed(3)}ms`).join(" ")}; node ${r.node} ${r.platform}/${r.arch} ${r.cpu}`);
+    check(`${label} family: probe median <= 1,000 ms at n=${N}`, r.family === family && r.n === N && r.samples.length === 3 && r.median <= 1_000, `median ${r.median} ms`);
+  } else {
+    check(`${label} family: probe child finishes before the 5,000 ms watchdog at n=${N}`, false, `${probe.why}; supervisor stayed responsive, child settled after ${probe.ms.toFixed(0)} ms`);
+  }
 }
 
 // ---------- 2. real council against a local HTTP stand ----------
@@ -85,6 +111,8 @@ if (!mutant) {
     "adv-2": [agree],
     "mix-1": [turn("object", null, { files: ["notes.md"] }), "Here is my proposal.\n```json\n" + amend("Keep notes.md as is.") + "\n```", agree],
     "mix-2": [agree],
+    "brace-1": ["{ " + amend("Name the cat Ginger."), agree],
+    "brace-2": [agree],
   };
   const calls: Record<string, number> = {};
   const prompts: Record<string, string[]> = {};
@@ -168,6 +196,15 @@ if (!mutant) {
   const ec = journal(c.stdout);
   check("C: exit 0 within the watchdog", c.ok, `${(c as { why?: string }).why}\n${c.stdout.slice(-500)}\n${c.stderr.slice(-500)}`);
   check("C: both fenced drafts accepted, none failed", ofType(ec, "draft_completed").length === 2 && ofType(ec, "draft_attempt_failed").length === 0, JSON.stringify(ec.map((e) => e.type)));
+
+  // Case D
+  const d = await council(["--topic", "Name the cat", "--participant", "stand:brace-1", "--participant", "stand:brace-2", "--max-rounds", "3"]);
+  console.log(`       case D: ${d.ms.toFixed(0)} ms, exit ${d.code}${d.ok ? "" : `, ${d.why}`}`);
+  const ed = journal(d.stdout);
+  check("D: exit 0 within the watchdog", d.ok, `${(d as { why?: string }).why}\n${d.stdout.slice(-500)}\n${d.stderr.slice(-500)}`);
+  check("D: unpaired '{ ' before the turn is accepted without a correction request", ofType(ed, "turn_failed").length === 0 && (calls["brace-1"] ?? 0) >= 1 && ofType(ed, "turn_completed").some((e) => e.participantId === "p1" && e.stance === "amend"),
+    JSON.stringify(ed.map((e) => e.type)));
+  check("D: session reaches consensus", ofType(ed, "session_finished")[0]?.status === "consensus", JSON.stringify(ofType(ed, "session_finished")));
   await new Promise<void>((r) => { server.close(() => r()); server.closeAllConnections(); });
 }
 

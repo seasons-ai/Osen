@@ -7,11 +7,13 @@ import type { Language } from "../i18n/language.ts";
 import { getProcessLanguage } from "../i18n/process-language.ts";
 import { acceptanceMessages } from "../messages/acceptance.ts";
 import { providerMessages } from "../messages/providers.ts";
+import { cliEnv } from "../store/env.ts";
 import { createLogger } from "../store/log.ts";
 import type { Usage } from "../protocol/schema.ts";
-import { HELP_ARGS, planLaunch } from "./args.ts";
+import { CODEX_UPDATE_OFF, HELP_ARGS, planLaunch } from "./args.ts";
 import { TURN_RESPONSE_JSON_SCHEMA } from "./driver.ts";
 import { pinnedEnv } from "./discovery.ts";
+import { checkPinFile } from "./launch-guard.ts";
 import { classifyFailure } from "./errors.ts";
 import { declaredFlags, parseCodexFeatures } from "./flags.ts";
 import { installedPath, pinConfigDir, readPins } from "./pins.ts";
@@ -316,15 +318,16 @@ export const runProbe: ProbeRunner = async (probe, ctx) => {
 };
 
 export interface ProbeOutcome { probe: ProbeId; ok: boolean; reason?: string }
-export interface AcceptanceOutcome { code: 0 | 1 | 5; outcomes: ProbeOutcome[]; calls: number; recorded: boolean; interrupted: boolean; fixture?: string; fixtureError?: string; text: string }
+export interface AcceptanceOutcome { code: 0 | 1 | 2 | 5; outcomes: ProbeOutcome[]; calls: number; recorded: boolean; interrupted: boolean; fixture?: string; fixtureError?: string; text: string }
 
 type InspectLimits = { timeoutMs?: number; maxBytes?: number };
 
 async function inspectPinned(plan: AcceptancePlan, env: Record<string, string | undefined>, signal?: AbortSignal, limits: InspectLimits = {}): Promise<{ flags: ReadonlySet<string>; features?: ReadonlySet<string> }> {
   const childEnv = { ...env, ...pinnedEnv(plan.agent, plan.configDir) };
-  const flags = declaredFlags(await readOutput(plan.path, HELP_ARGS[plan.agent], childEnv, signal, limits.timeoutMs, limits.maxBytes));
+  const updateOff = plan.agent === "codex" ? CODEX_UPDATE_OFF : [];
+  const flags = declaredFlags(await readOutput(plan.path, [...HELP_ARGS[plan.agent], ...updateOff], childEnv, signal, limits.timeoutMs, limits.maxBytes));
   if (plan.agent === "claude") return { flags };
-  return { flags, features: parseCodexFeatures(await readOutput(plan.path, ["features", "list"], childEnv, signal, limits.timeoutMs, limits.maxBytes)) };
+  return { flags, features: parseCodexFeatures(await readOutput(plan.path, ["features", "list", ...updateOff], childEnv, signal, limits.timeoutMs, limits.maxBytes)) };
 }
 
 export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts: {
@@ -337,6 +340,7 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
 } = {}): Promise<AcceptanceOutcome> {
   const m = acceptanceMessages(opts.language);
   const { signal } = opts;
+  const env = cliEnv(opts.env, { dataDir });
   const log = createLogger(dataDir, "cli-accept");
   const outcomes: ProbeOutcome[] = [];
   let calls = 0;
@@ -354,12 +358,21 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
     opts.onProbe?.(o);
   };
 
+  // the file may be swapped after the plan: re-check its sha256 before the help read, each probe and the real record
+  const changed = async (): Promise<AcceptanceOutcome | undefined> => {
+    const f = await checkPinFile(plan.path, plan.sha256);
+    if (f.ok) return undefined;
+    return done({ code: 2, recorded: false, interrupted: false, text: m.fileChanged(plan.agent, plan.version, plan.sha256, f.code === "missing" ? m.fileGone : f.actual, calls) });
+  };
+
   if (signal?.aborted) return interrupted();
+  const before = await changed();
+  if (before) return before;
   let failure: { probe: ProbeId; reason: string } | undefined;
   let flags: ReadonlySet<string> = new Set();
   let features: ReadonlySet<string> | undefined;
   try {
-    const ins = await (deps.inspect ?? inspectPinned)(plan, opts.env, signal, opts.inspectLimits);
+    const ins = await (deps.inspect ?? inspectPinned)(plan, env, signal, opts.inspectLimits);
     flags = ins.flags;
     features = ins.features;
   } catch (e) {
@@ -368,7 +381,7 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
     record({ probe: "valid_turn", ok: false, reason: failure.reason });
   }
 
-  const ctx: ProbeContext = { plan, env: opts.env, language: opts.language, ...(signal ? { signal } : {}), flags, ...(features ? { features } : {}) };
+  const ctx: ProbeContext = { plan, env, language: opts.language, ...(signal ? { signal } : {}), flags, ...(features ? { features } : {}) };
   for (const probe of PROBES) {
     if (failure) break;
     if (signal?.aborted) return interrupted();
@@ -376,6 +389,8 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
     if (calls + 1 > plan.bound) {
       r = { ok: false, reason: m.callLimit(plan.bound), calls: 0 };
     } else {
+      const swapped = await changed();
+      if (swapped) return swapped;
       try {
         r = await (deps.runProbe ?? runProbe)(probe, ctx);
       } catch (e) {
@@ -399,6 +414,8 @@ export async function runAcceptance(dataDir: string, plan: AcceptancePlan, opts:
   if (failure) {
     return done({ code: 5, recorded: false, interrupted: false, text: m.failed(m.probeName(failure.probe), failure.reason) });
   }
+  const last = await changed();
+  if (last) return last;
   const added = addLocalEntry(dataDir, {
     agent: plan.agent,
     version: plan.version,

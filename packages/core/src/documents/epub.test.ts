@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { setProcessLanguage } from "../i18n/process-language.ts";
 import { htmlToText } from "../url/html-text.ts";
@@ -99,4 +101,45 @@ describe("EPUB text", () => {
       else expect(r, `iteration ${it}`).toEqual({ ok: true, text: expected, format: "epub" });
     }
   });
+
+  it("Текст EPUB: Самозакрытый служебный тег в главе", () => {
+    const first = '<html xmlns="http://www.w3.org/1999/xhtml"><head><title/></head><body><p>Hello chapter</p></body></html>';
+    const second = '<html xmlns="http://www.w3.org/1999/xhtml"><head><script/><style/></head><body><textarea/><p>Second chapter</p><TITLE  lang="en" /><p>Tail</p></body></html>';
+    expect(run(makeEpub({ chapters: [{ path: "OEBPS/ch1.xhtml", html: first }, { path: "OEBPS/ch2.xhtml", html: second }] })))
+      .toEqual({ ok: true, text: "Hello chapter\n\nSecond chapter\n\nTail", format: "epub" });
+    expect(run(makeEpub({ chapters: [{ path: "OEBPS/ch1.xhtml", html: first }] }))).toEqual({ ok: true, text: "Hello chapter", format: "epub" });
+  });
+
+  // The attack runs only in a child with a finite watchdog: a vitest timeout cannot interrupt synchronous regex work.
+  it("Текст EPUB: линейное раскрытие на длинном входе", async () => {
+    const probe = `
+      const { epubText } = await import(${JSON.stringify(new URL("./epub.ts", import.meta.url).href)});
+      const enc = new TextEncoder();
+      const forms = [
+        (n) => "<title" + " ".repeat(n),
+        (n) => "<script ".repeat(n / 8),
+        (n) => "<title" + "/".repeat(n),
+        (n) => "<title/>".repeat(n / 8) + "<p>B</p>",
+      ];
+      const parts = (html) => new Map([
+        ["META-INF/container.xml", '<container><rootfiles><rootfile full-path="c.opf" media-type="application/oebps-package+xml"/></rootfiles></container>'],
+        ["c.opf", '<package><manifest><item id="a" href="a.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="a"/></spine></package>'],
+        ["a.xhtml", "<html><body><p>A</p>" + html + "</body></html>"],
+      ].map(([k, v]) => [k, enc.encode(v)]));
+      const brief = (s) => s.length > 200 ? "length " + s.length : s;
+      const text = (n, f) => { const m = parts(forms[f](n)); try { return brief(epubText({ entries: m, read: (k) => m.get(k) }, 1e9)); } catch (e) { return "error " + e.code; } };
+      const small = forms.map((_, f) => text(1024, f));
+      const N = ${1 << 20};
+      const samples = [];
+      let big;
+      for (let i = 0; i < 3; i++) { const t = performance.now(); big = forms.map((_, f) => text(N, f)); samples.push(performance.now() - t); }
+      console.log(JSON.stringify({ samples, median: [...samples].sort((a, b) => a - b)[1], small, big }));`;
+    const pending = promisify(execFile)(process.execPath, ["--input-type=module", "-e", probe], { timeout: 5_000, maxBuffer: 4 * 1024 * 1024 });
+    pending.child.stdin?.end();
+    const r = JSON.parse((await pending).stdout) as { samples: number[]; median: number; small: string[]; big: string[] };
+    expect(r.samples).toHaveLength(3);
+    expect(r.median).toBeLessThanOrEqual(1_000);
+    expect(r.big).toEqual(r.small);
+    expect(r.big[3]).toBe("A\n\nB");
+  }, 10_000);
 });

@@ -57,7 +57,7 @@ function setup(over: Partial<BridgeDeps> = {}) {
     copyText: vi.fn(),
     exportSession: vi.fn(async () => ({ path: "/x.md" })),
     setPinned: vi.fn(),
-    language: { view: vi.fn(() => ({ language: "ru" as const, source: "default" as const, locked: false })), set: vi.fn((l: unknown) => ({ language: l as "en", source: "file" as const, locked: false })), invalidNotice: vi.fn(() => null) },
+    language: { view: vi.fn(() => ({ language: "ru" as const, source: "default" as const, locked: false, damaged: false })), set: vi.fn((l: unknown) => ({ language: l as "en", source: "file" as const, locked: false, damaged: false })), invalidNotice: vi.fn(() => null) },
     appearance: { view: vi.fn(() => ({ mode: "dark" as const, lightTheme: "tuman" as const, theme: "osen" as const })), set: vi.fn((i: unknown) => ({ mode: "light" as const, lightTheme: (i as { lightTheme: "len" }).lightTheme, theme: (i as { lightTheme: "len" }).lightTheme })), systemChanged: vi.fn(), background: vi.fn(() => "#17130F") },
     settings: {
       view: vi.fn(async () => "view" as never),
@@ -595,6 +595,26 @@ describe("bridge", () => {
       expect(await bridge.call("clearMaterials", [])).toMatchObject({ ok: true, value: { items: [], chars: 0 } });
     });
 
+    it("Excluded by rules and return in session setup: Reset of a return — \"Back to templates\" (clearMaterials) and the same folder again", async () => {
+      const proj = join(root, "proj");
+      mkdirSync(join(proj, "src"), { recursive: true });
+      mkdirSync(join(proj, "out"), { recursive: true });
+      writeFileSync(join(proj, ".gitignore"), "out/\n");
+      writeFileSync(join(proj, "src", "a.txt"), "исходник");
+      writeFileSync(join(proj, "out", "main.js"), "собранный");
+      const { bridge } = setup();
+      const names = (r: unknown) => (r as { value: { items: { name: string }[] } }).value.items.map((i) => i.name);
+      const first = await bridge.call("attachMaterials", [[proj]]);
+      expect(first).toMatchObject({ ok: true, value: { ignored: [{ id: "x1", name: "proj/out/", returned: false }] } });
+      const back = await bridge.call("returnIgnored", ["x1"]);
+      expect(back).toMatchObject({ ok: true, value: { ignored: [{ name: "proj/out/", returned: true }] } });
+      expect(names(back)).toContain("proj/out/main.js");
+      await bridge.call("clearMaterials", []);
+      const again = await bridge.call("attachMaterials", [[proj]]);
+      expect(again).toMatchObject({ ok: true, value: { ignored: [{ id: "x1", name: "proj/out/", returned: false }] } });
+      expect(names(again).filter((n) => n.startsWith("proj/out/"))).toEqual([]);
+    });
+
     it("previewMaterials: a non-boolean argument is an error, a boolean is passed, PreviewError is a reply with a message", async () => {
       const { bridge, deps } = setup();
       for (const bad of [[], ["да"], [1], [null]]) expect(await bridge.call("previewMaterials", bad)).toMatchObject({ ok: false });
@@ -772,8 +792,8 @@ describe("bridge: language and refusal texts", () => {
 
   it("language and setLanguage go through the dependency", async () => {
     const { deps, bridge } = setup();
-    expect(await bridge.call("language", [])).toEqual({ ok: true, value: { language: "ru", source: "default", locked: false } });
-    expect(await bridge.call("setLanguage", ["en"])).toEqual({ ok: true, value: { language: "en", source: "file", locked: false } });
+    expect(await bridge.call("language", [])).toEqual({ ok: true, value: { language: "ru", source: "default", locked: false, damaged: false } });
+    expect(await bridge.call("setLanguage", ["en"])).toEqual({ ok: true, value: { language: "en", source: "file", locked: false, damaged: false } });
     expect(deps.language.set).toHaveBeenCalledWith("en");
   });
 

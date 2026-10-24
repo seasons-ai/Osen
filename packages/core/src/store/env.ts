@@ -29,3 +29,10 @@ export function loadEnv(env: Env, cwd: string): Env {
   }
   return { ...env, ...local, ...data, ...own };
 }
+
+/** Environment for CLI processes: `env` without variables that come from the .env of `cwd` or of `dataDir` and are absent or empty in `shell` (the process's own environment). The input object does not change. */
+export function cliEnv(env: Env, options: { dataDir?: string; cwd?: string; shell?: Env } = {}): Env {
+  const { dataDir, cwd = process.cwd(), shell = process.env } = options;
+  const fromFiles = new Set(Object.keys({ ...read(join(cwd, ".env")), ...(dataDir === undefined ? {} : read(envFilePath(dataDir))) }));
+  return Object.fromEntries(Object.entries(env).filter(([k]) => !fromFiles.has(k) || shell[k]));
+}

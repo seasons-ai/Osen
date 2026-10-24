@@ -1,6 +1,7 @@
 import type { z } from "zod";
 import { defineMessages } from "../i18n/catalog.ts";
 import { plural } from "../i18n/format.ts";
+import type { Language } from "../i18n/language.ts";
 
 // Common zod parse reasons: used by the registry, lineups and templates. No Node imports: the module gets into the renderer.
 export const zodMessages = defineMessages({
@@ -22,7 +23,7 @@ export const zodMessages = defineMessages({
     number: "число", int: "целое число", string: "строка", array: "массив", object: "объект", boolean: "логическое значение",
     expected: (type: string) => `ожидается ${type}`,
     nonEmptyString: "ожидается непустая строка",
-    minItems: (n: unknown) => `ожидается не меньше ${n} элементов`,
+    minItems: (n: unknown) => `ожидается не меньше ${n} ${plural(Number(n), { one: "элемента", other: "элементов" }, "ru")}`,
     minNumber: (n: unknown) => `ожидается число не меньше ${n}`,
     maxNumber: (n: unknown) => `ожидается число не больше ${n}`,
     pattern: (p: unknown) => `значение не подходит под шаблон ${p}`,
@@ -32,9 +33,9 @@ export const zodMessages = defineMessages({
   },
 });
 
-/** Reason for one zod problem in the process language (without invalid_union: it depends on the schema). */
-export function describeIssue(i: z.core.$ZodIssue): string {
-  const m = zodMessages();
+/** Reason for one zod problem in the given language, by default the process one (without invalid_union: it depends on the schema). */
+export function describeIssue(i: z.core.$ZodIssue, language?: Language): string {
+  const m = zodMessages(language);
   switch (i.code) {
     case "invalid_type": {
       const names: Record<string, string> = { number: m.number, int: m.int, string: m.string, array: m.array, object: m.object, boolean: m.boolean };

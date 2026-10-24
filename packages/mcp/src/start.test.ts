@@ -1,11 +1,14 @@
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { setProcessLanguage, createLogger, FOLDER_LIMITS, listSessions, loadTemplates, readSession, readEvents, requestStop } from "@model-council/core";
 import type { CliLocation } from "@model-council/core";
+import { engineMessages } from "@model-council/core";
+import { mcpMessages } from "./messages.ts";
 import { configPath, initialRegistry, lineupsPath, saveLineup } from "@model-council/core";
 import { main } from "../../core/src/cli.ts";
+import { writeExecutable } from "../../core/src/executable.testutil.ts";
 import { cleanupActiveLaunches, councilStart } from "./start.ts";
 import { makeImageOnlyPdf, makePdf } from "../../core/src/pdf/fixture.ts";
 import { councilStatus } from "./status.ts";
@@ -50,15 +53,16 @@ const start = (ctx: ToolContext, input: Parameters<typeof councilStart.run>[1]) 
 const sc = (n: string) => ({ providerId: "scripted", model: n });
 const two = [sc("consensus/p1.json"), sc("consensus/p2.json")];
 
-async function until<T>(f: () => T | null | undefined | false): Promise<T> {
-  for (let i = 0; i < 400; i++) {
+async function until<T>(what: string, f: () => T | null | undefined | false): Promise<T> {
+  const deadline = Date.now() + 20_000;
+  for (;;) {
     const v = f();
     if (v) return v;
+    if (Date.now() > deadline) throw new Error(`waited 20000 ms for: ${what}`);
     await new Promise((r) => setTimeout(r, 25));
   }
-  throw new Error("не дождались");
 }
-const finished = (ctx: ToolContext, id: string) => until(() => { const s = readSession(ctx.dataDir, id); return s && s.state.finish !== null ? s : null; });
+const finished = (ctx: ToolContext, id: string) => until("session finished", () => { const s = readSession(ctx.dataDir, id); return s && s.state.finish !== null ? s : null; });
 
 async function rejectsTool(ctx: ToolContext, input: Parameters<typeof councilStart.run>[1], re: RegExp) {
   const e = await start(ctx, input).catch((x: unknown) => x);
@@ -76,7 +80,7 @@ function cliStub(agent: "claude" | "codex") {
     : [{ type: "item.completed", item: { id: "i", type: "agent_message", text: c } }, { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 1 } }].map((e) => JSON.stringify(e)).join("\n");
   writeFileSync(join(root, "out"), out);
   const path = join(root, agent);
-  writeFileSync(path, `#!/bin/sh
+  writeExecutable(path, `#!/bin/sh
 D="$(dirname "$0")"
 case "$1" in
   --version) echo '${agent === "claude" ? "2.1.288 (Claude Code)" : "codex-cli 0.159.2"}'; exit 0;;
@@ -87,7 +91,6 @@ if [ "$1" = exec ] && [ "$2" = --help ]; then /bin/cat '${help}'; exit 0; fi
 cat > /dev/null
 cat "$D/out"
 `);
-  chmodSync(path, 0o755);
   return async (a: "claude" | "codex"): Promise<CliLocation> =>
     a === agent ? { agent, found: true, path, version: agent === "claude" ? "2.1.288" : "0.159.2", searchPath: process.env.PATH ?? "" } : notFound(a);
 }
@@ -109,7 +112,8 @@ describe("council_start", () => {
   it("2. topic only: participants and limit from the registry, neutral frame", async () => {
     const dataDir = tmp();
     const inspectDeps = { locate: cliStub("claude"), listModels: async () => ({ models: [], confirmed: true }) };
-    const both = async (a: "claude" | "codex") => (a === "claude" ? inspectDeps.locate(a) : cliStub("codex")(a));
+    const codex = cliStub("codex");
+    const both = async (a: "claude" | "codex") => (a === "claude" ? inspectDeps.locate(a) : codex(a));
     const deps = { ...inspectDeps, locate: both };
     // the CLI stubs cannot be handed to a separate process: the executor runs in this one
     const ctx = ctxOf({ dataDir, inspectDeps: deps, spawnExecutor: async (file, errPath) => main(["run-prepared", file], { stdout: () => {}, stderr: (t) => appendFileSync(errPath, t), env: { COUNCIL_HOME: dataDir }, inspectDeps: deps }) });
@@ -717,8 +721,21 @@ describe("council_start: detached executor", () => {
     expect(s.status).toBe("running");
     noLaunchFiles(ctx, v.sessionId);
     requestStop(ctx.dataDir, v.sessionId);
-    await until(() => !alive(pid));
+    await until("executor process exit", () => !alive(pid));
     expect(readSession(ctx.dataDir, v.sessionId)!.status).toBe("stopped");
+  });
+
+  it("e. the executor environment lacks keys that come only from the data folder .env", async () => {
+    const key = `OSEN_T238_S_${Math.random().toString(36).slice(2, 10)}`;
+    const dataDir = tmp();
+    writeFileSync(join(dataDir, ".env"), `${key}=secret\n`);
+    const out = join(tmp(), "env.json");
+    const ctx = withScript(`import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(out)}, JSON.stringify(Object.keys(process.env))); process.exit(3);`, { dataDir, env: { COUNCIL_DEV: "1", [key]: "secret", KEEP_T238: "1" } });
+    await rejectsTool(ctx, { topic: "т", participants: two }, /exit code 3/);
+    const keys = JSON.parse(readFileSync(out, "utf8")) as string[];
+    expect(keys).not.toContain(key);
+    expect(keys).toContain("KEEP_T238");
+    expect(keys).toContain("COUNCIL_HOME");
   });
 
   it("b. the executor cannot be started: the reason, no session, no launch files", async () => {
@@ -748,12 +765,39 @@ describe("server closed during the launch wait", () => {
     const ctx = ctxOf({ startTimeoutMs: 600, startPollMs: 20, spawnExecutor: () => new Promise<number>(() => {}) });
     const pending = start(ctx, { topic: "t", participants: two }).catch((e: unknown) => e);
     const launch = join(ctx.dataDir, "launch");
-    const files = await until(() => { const f = existsSync(launch) ? readdirSync(launch).filter((n) => n.endsWith(".json")) : []; return f.length ? f : null; });
+    const files = await until("launch files appear", () => { const f = existsSync(launch) ? readdirSync(launch).filter((n) => n.endsWith(".json")) : []; return f.length ? f : null; });
     const base = join(launch, files[0]!.replace(/\.json$/, ""));
     writeFileSync(`${base}.err`, "boom");
     writeFileSync(`${base}.accepted.json`, "{}");
     cleanupActiveLaunches();
     expect(readdirSync(launch)).toEqual([]);
     await pending;
+  });
+});
+
+describe("Start input check", () => {
+  it("Start input check: empty topic together with attachments", async () => {
+    const ctx = ctxOf();
+    const e = await start(ctx, { topic: "  ", participants: two, attachments: [join(tmp(), "no-such-file.txt")] }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ToolError);
+    expect((e as Error).message).toBe(engineMessages().topicRequired);
+    expect(listSessions(ctx.dataDir)).toEqual([]);
+    const dir = join(ctx.dataDir, "launch");
+    expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);
+  });
+});
+
+describe("Session start: launch deadline", () => {
+  it("Session start: the executor of a new session refused by deadline before the server answered", async () => {
+    const ctx = ctxOf({
+      startTimeoutMs: 2000, startPollMs: 20,
+      spawnExecutor: async (_file, errPath) => { writeFileSync(errPath, `${JSON.stringify({ code: "launch_expired", message: "Launch file is stale" })}\n`); return 2; },
+    });
+    const e = await start(ctx, { topic: "t", participants: two }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(ToolError);
+    expect((e as Error).message).toBe(mcpMessages().startExecutorTimeout(2));
+    expect(listSessions(ctx.dataDir)).toEqual([]);
+    const dir = join(ctx.dataDir, "launch");
+    expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);
   });
 });

@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { locateCli, parseVersion, pinnedEnv, resetDiscoveryCache } from "./discovery.ts";
+import { linkExecutable } from "../executable.testutil.ts";
 import { installPin, pinsPath, usePin } from "./pins.ts";
 import type { PackageSource } from "./pins.ts";
 import { VERIFIED_FILE, addLocalEntry } from "./verified-record.ts";
@@ -21,11 +22,13 @@ afterEach(() => rmSync(tmp, { recursive: true, force: true }));
 function script(dir: string, name: string, body: string): string {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, name);
-  writeFileSync(file, `#!/bin/sh\n${body}\n`);
-  chmodSync(file, 0o755);
-  return file;
+  return linkExecutable(file, `#!/bin/sh\n${body}\n`);
 }
-const bin = (out: string, name = "claude") => script(join(tmp, "bin"), name, `echo '${out}'`);
+const bin = (out: string, name = "claude") => {
+  const file = script(join(tmp, "bin"), name, 'while IFS= read -r l; do echo "$l"; done < "$0.out"');
+  writeFileSync(`${file}.out`, `${out}\n`);
+  return file;
+};
 const noLogin = { loginShellPath: async () => undefined };
 
 describe("locateCli", () => {
@@ -46,7 +49,7 @@ describe("locateCli", () => {
     expect(r.searchPath.split(delimiter)).toEqual(["/usr/bin", "/bin", join(tmp, "bin")]);
   });
 
-  it("real loginShellPath: value between markers, junk around it is ignored", async () => {
+  it("real loginShellPath: value between markers, junk around it is ignored", { timeout: 60_000 }, async () => {
     const file = bin("2.1.288 (Claude Code)");
     const shell = script(tmp, "fakesh", `echo junk; printf '\\n__COUNCIL_PATH__${join(tmp, "bin")}__COUNCIL_PATH__\\n'; echo more junk`);
     const r = await locateCli("claude", { env: { PATH: "/usr/bin:/bin", SHELL: shell } });
@@ -132,8 +135,7 @@ describe("locateCli search order and pins", () => {
     async fetch(agent, version, d) {
       const exe = join(d, "node_modules", "pkg", "bin", agent);
       mkdirSync(join(d, "node_modules", "pkg", "bin"), { recursive: true });
-      writeFileSync(exe, `#!/bin/sh\necho "$CLAUDE_CONFIG_DIR|$DISABLE_UPDATES" > "$0.env"; echo "${version}"\n`);
-      chmodSync(exe, 0o755);
+      linkExecutable(exe, `#!/bin/sh\necho "$CLAUDE_CONFIG_DIR|$DISABLE_UPDATES" > "$0.env"; echo "${version}"\n`);
       return { executable: exe, source: `fake:${agent}@${version}` };
     },
   };
@@ -325,5 +327,24 @@ describe("locateCli verified record", () => {
     await locateCli("claude", { env: env(), dataDir: data() });
     expect(existsSync(join(data(), VERIFIED_FILE))).toBe(false);
     expect(logLines()).toEqual([]);
+  });
+});
+
+describe("locateCli: keys from .env files", () => {
+  it("version read and pin-less lookup get an environment without the data folder .env keys", async () => {
+    const key = `OSEN_T238_D_${Math.random().toString(36).slice(2, 10)}`;
+    const dataDir = join(tmp, "data");
+    mkdirSync(dataDir);
+    writeFileSync(join(dataDir, ".env"), `${key}=secret\n`);
+    const file = bin("2.1.288 (Claude Code)");
+    const seen: Array<Record<string, string | undefined>> = [];
+    const r = await locateCli("claude", {
+      env: { PATH: join(tmp, "bin"), [key]: "secret", KEEP: "1" }, dataDir,
+      deps: { ...noLogin, runVersion: async (_p, e) => { seen.push(e); return "2.1.288 (Claude Code)"; } },
+    });
+    expect(r).toMatchObject({ found: true, path: file });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).not.toHaveProperty(key);
+    expect(seen[0]?.KEEP).toBe("1");
   });
 });

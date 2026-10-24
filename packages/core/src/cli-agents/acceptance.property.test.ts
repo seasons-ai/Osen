@@ -1,4 +1,5 @@
-import { mkdtempSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -47,10 +48,15 @@ afterEach(() => {
   setProcessLanguage("en");
 });
 
-const plan = (): AcceptancePlan => ({
-  agent: "codex", version: "0.159.2", path: "/nonexistent/codex", sha256: "b".repeat(64),
+// acceptance re-checks the install file against the plan sha256: each case gets a real file and its sum
+const plan = (dir: string): AcceptancePlan => {
+  const path = join(dir, "codex");
+  writeFileSync(path, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  return {
+  agent: "codex", version: "0.159.2", path, sha256: createHash("sha256").update(readFileSync(path)).digest("hex"),
   configDir: "/nonexistent/config", model: "default", probes: PROBES, bound: ACCEPTANCE_CALL_BOUND,
-});
+  };
+};
 
 describe("Requirement «Результат приёмки и запись real» (acceptance result and the real record)", () => {
   it(`writes real iff all ${PROBES.length} probes pass and calls <= the bound, over ${CASES} seeded cases`, async () => {
@@ -72,7 +78,7 @@ describe("Requirement «Результат приёмки и запись real»
         return { ok: false, reason: s.kind === "limit" ? "limit reached" : `fail ${i}`, calls: s.calls };
       };
       const seen: ProbeOutcome[] = [];
-      const out = await runAcceptance(dir, plan(), {
+      const out = await runAcceptance(dir, plan(dir), {
         env: {}, language: "en", now: () => NOW, osenVersion: "0.9.0", onProbe: (o) => seen.push(o),
       }, { runProbe: runner, inspect: async () => ({ flags: new Set() }) });
 

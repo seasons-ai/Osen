@@ -247,7 +247,7 @@ describe("SessionScreen: en", () => {
   });
   it("language from the context when the process language is ru", () => {
     const ctx = (language: Language) => renderToStaticMarkup(
-      <LanguageProvider initial={{ language, source: "file", locked: false }}>
+      <LanguageProvider initial={{ language, source: "file", locked: false, damaged: false }}>
         <SessionScreen id="s1" item={null} state={fold([])} live={null} onNew={noop} onError={noop} />
       </LanguageProvider>);
     expect(ctx("en")).toContain(">Session</h1>");

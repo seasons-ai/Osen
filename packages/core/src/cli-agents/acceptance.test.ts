@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setProcessLanguage } from "../i18n/process-language.ts";
+import { resetGuardCache } from "./launch-guard.ts";
 import { DEFAULT_MODEL } from "./types.ts";
+import { writeAcceptanceStub } from "./acceptance-stub.fixture.ts";
 import type { CliAgent } from "./types.ts";
 import type { VerifiedRecord } from "./verified-record.ts";
 import {
@@ -330,6 +332,99 @@ describe("runAcceptance with injected probes", () => {
   });
 });
 
+describe("Пробы реальной приёмки: the install file is re-checked against the pin", () => {
+  beforeEach(() => resetGuardCache());
+  const sha = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
+  const counted = () => {
+    let inspects = 0;
+    return { inspect: async () => { inspects++; return { flags: new Set<string>(), features: new Set<string>() }; }, inspects: () => inspects };
+  };
+
+  it("Файл подменён между пробами: code 2, the second probe is not run, no real entry, both sums and one call in en and ru", async () => {
+    for (const language of ["en", "ru"] as const) {
+      rmSync(join(dataDir, "cli"), { recursive: true, force: true });
+      resetGuardCache();
+      const file = install("codex", "0.159.2");
+      const plan = await planFor(realRecord("codex", "0.159.2"));
+      const seen: ProbeId[] = [];
+      const runner: ProbeRunner = async (probe) => {
+        seen.push(probe);
+        if (probe === "valid_turn") appendFileSync(file, "# swapped\n");
+        return { ok: true, calls: 1, raw: probe === "valid_turn" ? RAW : undefined };
+      };
+      const out = await runAcceptance(dataDir, plan, runOpts({ language }), { runProbe: runner, inspect: counted().inspect });
+      expect(out.code).toBe(2);
+      expect(out.recorded).toBe(false);
+      expect(out.calls).toBe(1);
+      expect(seen).toEqual(["valid_turn"]);
+      expect(out.text).toContain("0.159.2");
+      expect(out.text).toContain(plan.sha256);
+      expect(out.text).toContain(sha(file));
+      expect(out.text).toMatch(language === "en" ? /changed during acceptance.*model calls made: 1;/ : /изменился во время приёмки.*сделано вызовов модели: 1;/);
+      expect(realEntries()).toEqual([]);
+    }
+  });
+
+  it("Файл подменён перед чтением справки: code 2, help not read, no probe run, no real entry", async () => {
+    const file = install("codex", "0.159.2");
+    const plan = await planFor(realRecord("codex", "0.159.2"));
+    appendFileSync(file, "# swapped\n");
+    const { runner, seen } = fakeRunner();
+    const c = counted();
+    const out = await runAcceptance(dataDir, plan, runOpts(), { runProbe: runner, inspect: c.inspect });
+    expect(out.code).toBe(2);
+    expect(out.calls).toBe(0);
+    expect(c.inspects()).toBe(0);
+    expect(seen).toEqual([]);
+    expect(out.text).toContain(sha(file));
+    expect(realEntries()).toEqual([]);
+  });
+
+  it("a removed install file stops acceptance with code 2 and names the missing file", async () => {
+    const file = install("codex", "0.159.2");
+    const plan = await planFor(realRecord("codex", "0.159.2"));
+    const seen: ProbeId[] = [];
+    const runner: ProbeRunner = async (probe) => {
+      seen.push(probe);
+      if (probe === "outside_file") rmSync(file);
+      return { ok: true, calls: 1 };
+    };
+    const out = await runAcceptance(dataDir, plan, runOpts(), { runProbe: runner, inspect: counted().inspect });
+    expect(out.code).toBe(2);
+    expect(out.calls).toBe(2);
+    expect(seen).toEqual(["valid_turn", "outside_file"]);
+    expect(out.text).toContain("found no file");
+    expect(realEntries()).toEqual([]);
+    const ru = install("codex", "0.159.3");
+    const planRu = await planFor(realRecord("codex", "0.159.3"), {}, "0.159.3");
+    rmSync(ru);
+    const outRu = await runAcceptance(dataDir, planRu, runOpts({ language: "ru" }), { runProbe: fakeRunner().runner, inspect: counted().inspect });
+    expect(outRu.code).toBe(2);
+    expect(outRu.text).toContain("сейчас: файла нет");
+  });
+
+  it("Файл подменён во время последней пробы: all seven probes pass, code 2, seven calls, the local record is unchanged", async () => {
+    const file = install("codex", "0.159.2");
+    const plan = await planFor(realRecord("codex", "0.159.2"));
+    const before = treeOf(dataDir).filter((l) => l.startsWith("cli-verified.json"));
+    const seen: ProbeId[] = [];
+    const runner: ProbeRunner = async (probe) => {
+      seen.push(probe);
+      if (probe === "resume") appendFileSync(file, "# swapped\n");
+      return { ok: true, calls: 1, raw: probe === "valid_turn" ? RAW : undefined };
+    };
+    const out = await runAcceptance(dataDir, plan, runOpts(), { runProbe: runner, inspect: counted().inspect });
+    expect(out.code).toBe(2);
+    expect(out.recorded).toBe(false);
+    expect(out.calls).toBe(7);
+    expect(seen).toEqual([...PROBES]);
+    expect(out.text).toContain("model calls made: 7;");
+    expect(out.text).toContain(sha(file));
+    expect(treeOf(dataDir).filter((l) => l.startsWith("cli-verified.json"))).toEqual(before);
+    expect(realEntries()).toEqual([]);
+  });
+});
+
 describe("Turn fixture from the valid turn", () => {
   it("is saved as <agent>-<version>-turn.jsonl when the valid turn passes", async () => {
     install("codex", "0.159.2");
@@ -388,5 +483,40 @@ describe("Turn fixture from the valid turn", () => {
     expect(out.fixture).toBeUndefined();
     expect(out.fixtureError).toContain("JSON");
     expect(existsSync(folder)).toBe(false);
+  });
+});
+
+describe("Порядок поиска и окружение закреплённого CLI: Справка и список возможностей Codex в проверке кандидата и в приёмке", () => {
+  const UPDATE_OFF = "-c check_for_update_on_startup=false";
+  for (const agent of ["claude", "codex"] as const) {
+    it(`accept ${agent}: the real inspectPinned reads help${agent === "codex" ? " and features list with" : " without"} ${UPDATE_OFF}, no --version read`, async () => {
+      const stub = writeAcceptanceStub(root, { help: "  --model <m>\n", features: "shell_tool stable true\n" });
+      const configDir = join(root, "config");
+      mkdirSync(configDir, { recursive: true });
+      const plan: AcceptancePlan = { agent, version: "9.9.9", path: stub, sha256: createHash("sha256").update(readFileSync(stub)).digest("hex"), configDir, model: DEFAULT_MODEL, probes: PROBES, bound: 7 };
+      const argvLog = join(root, "argv.log");
+      const runner: ProbeRunner = async () => ({ ok: true, calls: 1 });
+      await runAcceptance(dataDir, plan, runOpts({ env: { ...ENV, STUB_ARGV_LOG: argvLog } }), { runProbe: runner });
+      const lines = readFileSync(argvLog, "utf8").split("\n").filter(Boolean);
+      expect(lines).toEqual(agent === "claude" ? ["--help"] : [`exec --help ${UPDATE_OFF}`, `features list ${UPDATE_OFF}`]);
+    });
+  }
+});
+
+describe("Ключи из .env не попадают в окружение CLI: acceptance", () => {
+  it("inspect and probes get an environment without the data folder .env keys", async () => {
+    const key = `OSEN_T238_E_${Math.random().toString(36).slice(2, 10)}`;
+    writeFileSync(join(dataDir, ".env"), `${key}=secret\n`);
+    install("codex", "0.159.2");
+    const plan = await planFor(realRecord("codex", "0.159.2"));
+    const envs: Array<Record<string, string | undefined>> = [];
+    const runner: ProbeRunner = async (probe, ctx) => { envs.push(ctx.env); return { ok: true, calls: 1, raw: probe === "valid_turn" ? RAW : undefined }; };
+    const inspect = async (_p: unknown, e: Record<string, string | undefined>) => { envs.push(e); return { flags: new Set<string>(), features: new Set<string>() }; };
+    await runAcceptance(dataDir, plan, runOpts({ env: { ...ENV, [key]: "secret", KEEP: "1" } }), { runProbe: runner, inspect });
+    expect(envs.length).toBeGreaterThan(1);
+    for (const e of envs) {
+      expect(e).not.toHaveProperty(key);
+      expect(e.KEEP).toBe("1");
+    }
   });
 });

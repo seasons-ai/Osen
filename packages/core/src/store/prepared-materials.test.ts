@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -229,6 +229,16 @@ describe("prepared-materials: sources", () => {
     }
   });
 
+  it("sidecar is not part of the set checksum: a valid replaced sources.json is read and changes only sources", () => {
+    const set = savePreparedMaterials(a, { ...base(), sources: [source("m1")] });
+    const other = { ...source("m2"), host: "other.example.net" };
+    writeFileSync(sidecar(a, set.id), JSON.stringify({ version: 1, sources: [other] }));
+    const loaded = loadPreparedMaterials(a, set.id);
+    expect(loaded.sources).toEqual([other]);
+    expect(loaded.materials).toEqual(set.materials);
+    expect(loaded.id).toBe(set.id);
+  });
+
   it("9. source of a foreign material — refusal, no traces", () => {
     expect(problemOf(() => savePreparedMaterials(a, { ...base(), sources: [source("m5")] }))).toBe("limit");
     expect(existsSync(preparedMaterialsDir(a))).toBe(false);
@@ -246,5 +256,40 @@ describe("gitignore exclusions in the prepared set", () => {
     const set = savePreparedMaterials(a, base());
     expect(readFileSync(join(preparedMaterialsDir(a), set.id, "set.json"), "utf8")).not.toContain("excludedPath");
     expect(loadPreparedMaterials(a, set.id).skipped).toEqual([{ name: "s", reason: "r" }]);
+  });
+
+  it("expired sets are removed on prepare", () => {
+    const t0 = new Date("2026-01-10T12:00:00Z");
+    const ago = (h: number) => () => new Date(t0.getTime() - h * 3600_000);
+    const A = savePreparedMaterials(a, base(), { now: ago(25) });
+    const B = savePreparedMaterials(a, base(), { now: ago(23) });
+    const root = preparedMaterialsDir(a);
+    const C = "c".repeat(32);
+    mkdirSync(join(root, C));
+    writeFileSync(join(root, C, "set.json"), "");
+    const D = "d".repeat(32);
+    mkdirSync(join(root, D));
+    const old = JSON.stringify({ version: 1, id: D, createdAt: ago(25)().toISOString() });
+    writeFileSync(join(root, D, "set.json"), old);
+    writeFileSync(join(root, D, "set.sha256"), "0".repeat(64));
+    const n = savePreparedMaterials(a, base(), { now: () => t0 });
+    const left = readdirSync(root);
+    expect(left).not.toContain(A.id);
+    for (const id of [B.id, C, D, n.id]) expect(left).toContain(id);
+    expect(problemOf(() => loadPreparedMaterials(a, A.id, { now: () => t0 }))).toBe("unknown");
+  });
+
+  it("a removal failure does not fail the prepare", () => {
+    const t0 = new Date("2026-01-10T12:00:00Z");
+    const A = savePreparedMaterials(a, base(), { now: () => new Date(t0.getTime() - 25 * 3600_000) });
+    const dirA = join(preparedMaterialsDir(a), A.id);
+    chmodSync(dirA, 0o555); // files inside cannot be unlinked, so rm fails
+    try {
+      expect(() => savePreparedMaterials(a, base(), { now: () => t0 })).not.toThrow();
+    } finally {
+      chmodSync(dirA, 0o755);
+    }
+    const root = preparedMaterialsDir(a);
+    expect(existsSync(join(root, A.id))).toBe(true);
   });
 });

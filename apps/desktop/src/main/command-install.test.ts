@@ -3,6 +3,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { writeExecutable } from "../../../../packages/core/src/executable.testutil.ts";
 import { commandInstall } from "../shared/messages/command-install.ts";
 import { LINK_HINT_LINE, classifyLink, commandStatus, describeState, installCommand, removeCommand } from "./command-install.ts";
 
@@ -27,9 +28,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 const opts = (extra: object = {}) => ({ home, wrapper, language: "en" as const, ...extra });
 const stubShell = (name: string, body: string) => {
   const p = join(root, name);
-  writeFileSync(p, `#!/bin/sh\n${body}\n`);
-  chmodSync(p, 0o755);
-  return p;
+  return writeExecutable(p, `#!/bin/sh\n${body}\n`);
 };
 
 describe("Requirement: foreign council is not overwritten", () => {
@@ -74,6 +73,34 @@ describe("Requirement: foreign council is not overwritten", () => {
     symlinkSync("/usr/local/bin/other-council", link());
     expect((await installCommand(opts())).ok).toBe(false);
     expect(readlinkSync(link())).toBe("/usr/local/bin/other-council");
+  });
+});
+
+describe("Requirement: foreign council is not overwritten (race after the check)", () => {
+  it("Чужой объект появился после проверки: a foreign file is refused and kept", async () => {
+    const symlink = (t: string, p: string) => { writeFileSync(p, "my own script"); symlinkSync(t, p); };
+    const r = await installCommand(opts({ symlink }));
+    expect(r).toMatchObject({ ok: false, code: "foreign", path: link() });
+    expect((r as { detail: string }).detail).toMatch(/file/);
+    expect(readFileSync(link(), "utf8")).toBe("my own script");
+  });
+  it("Чужой объект появился после проверки: a foreign symlink is refused and keeps its target", async () => {
+    const symlink = (t: string, p: string) => { symlinkSync("/usr/local/bin/other-council", p); symlinkSync(t, p); };
+    const r = await installCommand(opts({ symlink }));
+    expect(r).toMatchObject({ ok: false, code: "foreign", path: link() });
+    expect(readlinkSync(link())).toBe("/usr/local/bin/other-council");
+  });
+  it("Чужой объект появился после проверки: a parallel own install is success without changes", async () => {
+    const symlink = (t: string, p: string) => { symlinkSync(t, p); symlinkSync(t, p); };
+    const r = await installCommand(opts({ symlink }));
+    expect(r).toMatchObject({ ok: true, changed: false });
+    expect(readlinkSync(link())).toBe(wrapper);
+  });
+  it("Чужой объект появился после проверки: another error still cleans the created dirs", async () => {
+    const symlink = () => { throw Object.assign(new Error("EACCES: denied"), { code: "EACCES" }); };
+    const r = await installCommand(opts({ symlink }));
+    expect(r).toMatchObject({ ok: false, code: "create_failed" });
+    expect(existsSync(join(home, ".local"))).toBe(false);
   });
 });
 

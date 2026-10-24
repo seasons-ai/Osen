@@ -53,9 +53,10 @@ export function classifyHttpFailure(input: { status: number; body: string; model
     const hint = runtime.apiKeyEnv ? m.httpKeyHint(runtime.apiKeyEnv, runtime.keyFile) : m.httpKeyRequired;
     return { message: m.httpAuthDenied(status, hint), retryable: false };
   }
-  if (status === 429) return { message: m.httpRateLimit(tail), retryable: true };
   const data = parseJson(body);
   const code = isObj(data) && isObj(data.error) ? data.error.code : undefined;
+  if (status === 429) return { message: m.httpRateLimit("HTTP 429", tail), retryable: true };
+  if (code === "rate_limit_exceeded" || code === "insufficient_quota") return { message: m.httpRateLimit(code, tail), retryable: true };
   // ponytail: heuristics over OpenAI/OpenRouter/Ollama texts; revisit when a provider with another format appears
   const notFound = code === "model_not_found" || status === 404 ||
     (status === 400 && /model/i.test(text) && /not found|does not exist|not a valid|unknown|no endpoints/i.test(text));

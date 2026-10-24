@@ -133,6 +133,26 @@ describe("HTTP driver: errors", () => {
     expect(e.message).toBe("Эндпоинт ответил HTTP 502: Provider returned error");
     expect(e.retryable).toBe(true);
   });
+  it("Строковый код лимита в потоке: fake-midstream-rate is a rate limit, not HTTP 502", async () => {
+    const s = await start();
+    const e = await fails(createHttpDriver(rt(s.url)).call(req("fake-midstream-rate")));
+    expect(e.kind).toBe("call_error");
+    expect(e.message).toBe("Превышен лимит запросов (rate_limit_exceeded): Rate limit exceeded");
+    expect(e.message).not.toContain("HTTP 502");
+    expect(e.retryable).toBe(true);
+  });
+  for (const code of ["rate_limit_exceeded", "insufficient_quota"]) {
+    it(`Строковый код лимита в потоке: SSE error event with ${code}`, async () => {
+      const sse = `data: {"choices":[{"delta":{"content":"x"}}]}\n\ndata: {"error":{"code":"${code}"}}\n\n`;
+      vi.stubGlobal("fetch", async () => new Response(sse, { status: 200, headers: { "Content-Type": "text/event-stream" } }));
+      try {
+        const e = await fails(createHttpDriver(rt("http://x/v1")).call(req("m")));
+        expect(e.message.startsWith(`Превышен лимит запросов (${code})`)).toBe(true);
+        expect(e.message).not.toContain("HTTP 502");
+        expect(e.retryable).toBe(true);
+      } finally { vi.unstubAllGlobals(); }
+    });
+  }
 });
 
 describe("classifyHttpFailure", () => {
@@ -148,6 +168,14 @@ describe("classifyHttpFailure", () => {
     expect(r.message).toBe("Эндпоинт ответил HTTP 400: bad request");
     expect(r.retryable).toBe(false);
   });
+  for (const code of ["rate_limit_exceeded", "insufficient_quota"]) {
+    it(`Строковый код лимита в потоке: ${code} with the SSE fallback status 502`, () => {
+      const r = c(502, JSON.stringify({ error: { message: "slow down", code } }));
+      expect(r.message).toBe(`Превышен лимит запросов (${code}): slow down`);
+      expect(r.message).not.toContain("HTTP 502");
+      expect(r.retryable).toBe(true);
+    });
+  }
   it("408 and 503 are retried", () => { expect(c(408, "").retryable).toBe(true); expect(c(503, "").retryable).toBe(true); });
   it("key in the body is hidden", () => {
     const m = c(500, `{"error":{"message":"bad key ${KEY}"}}`, rt("http://x/v1", withKey)).message;

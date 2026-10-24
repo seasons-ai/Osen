@@ -1,10 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import { accessSync, chmodSync, constants, existsSync, mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { isBuiltin } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 import { parseSource, visitAst } from "../../../packages/core/src/ast-scan.testutil.ts";
 import type { Node } from "../../../packages/core/src/ast-scan.testutil.ts";
+import { writeStub } from "../../../packages/core/scenarios/launch-guard/stub.ts";
 import { TOOLS } from "../../../packages/mcp/src/server.ts";
 
 // Checks of the headless entry points (bin/osen-mcp, bin/council) in an Osen.app copy. `contents` is Osen.app/Contents,
@@ -22,24 +23,34 @@ const dirs = (work: string, name: string) => {
   return { env: { COUNCIL_DEV: "1", COUNCIL_HOME: home, HOME: userHome }, home };
 };
 
+// "missing" or "not executable" for an unusable wrapper, "" otherwise
+const unusable = (contents: string, name: string) => {
+  const p = bin(contents, name);
+  if (!existsSync(p)) return "is missing";
+  try { accessSync(p, constants.X_OK); return ""; } catch { return "is not executable"; }
+};
+
 /** Wrappers exist, are executable and name neither /Applications nor a user folder. */
 export function wrappersLine(contents: string): Line {
   const bad: string[] = [];
   for (const name of WRAPPERS) {
-    const p = bin(contents, name);
-    if (!existsSync(p)) { bad.push(`${name} is missing`); continue; }
-    try { accessSync(p, constants.X_OK); } catch { bad.push(`${name} is not executable`); continue; }
-    const text = readFileSync(p, "utf8");
+    const why = unusable(contents, name);
+    if (why) { bad.push(`${name} ${why}`); continue; }
+    const text = readFileSync(bin(contents, name), "utf8");
     for (const lit of ["/Applications", "/Users/"]) if (text.includes(lit)) bad.push(`${name} contains ${lit}`);
   }
   return { ok: bad.length === 0, text: `wrappers bin/osen-mcp and bin/council: executable, no install path literals${bad.length ? `: ${bad.join("; ")}` : ""}` };
 }
 
-/** Every module specifier of the entry files and chunks is a Node builtin or a file inside out/main. */
+// pdf.js loaders in pdf-worker.mjs import the worker and wasm by an address the library computes
+const COMPUTED_IMPORT_ALLOWED = ["pdf-worker.mjs"];
+
+/** Every module specifier of the *.mjs files of out/main (entry files and workers) and of the chunks is a Node builtin or a file inside out/main. */
 export function selfContainedLine(contents: string): Line {
   const main = mainDir(contents);
   const chunks = existsSync(join(main, "chunks")) ? readdirSync(join(main, "chunks")).filter((f) => f.endsWith(".js")).map((f) => `chunks/${f}`) : [];
-  const files = ["osen-mcp.mjs", "council.mjs", ...chunks];
+  const mjs = existsSync(main) ? readdirSync(main).filter((f) => f.endsWith(".mjs")) : [];
+  const files = [...new Set(["osen-mcp.mjs", "council.mjs", ...mjs])].concat(chunks);
   const offenders: string[] = [];
   for (const f of files) {
     const p = join(main, f);
@@ -51,7 +62,7 @@ export function selfContainedLine(contents: string): Line {
       const arg = (n["arguments"] as Node[] | undefined)?.[0];
       if (n.type === "CallExpression" && callee && (callee.type === "Import" || (callee.type === "Identifier" && callee["name"] === "require"))) {
         if (arg?.type === "StringLiteral") specs.push(arg["value"] as string);
-        else offenders.push(`${f}: computed specifier`);
+        else if (!COMPUTED_IMPORT_ALLOWED.includes(f) || callee.type !== "Import") offenders.push(`${f}: computed specifier`);
       }
     });
     for (const s of specs) {
@@ -63,7 +74,7 @@ export function selfContainedLine(contents: string): Line {
       offenders.push(`${f}: ${s}`);
     }
   }
-  return { ok: offenders.length === 0, text: `entry files and chunks import only node:* and files of out/main (${files.length} files)${offenders.length ? `: ${offenders.join("; ")}` : ""}` };
+  return { ok: offenders.length === 0, text: `entry files, workers and chunks import only node:* and files of out/main (${files.length} files)${offenders.length ? `: ${offenders.join("; ")}` : ""}` };
 }
 
 /** osen-mcp over stdio: only JSON-RPC lines on stdout, the tools of the server registry, exit 0 when stdin closes. */
@@ -198,6 +209,107 @@ export async function detachedStartLine(contents: string, work: string, timeoutM
   }
 }
 
+const sleep = (ms: number) => new Promise<void>((res) => setTimeout(res, ms));
+const until = async (cond: () => boolean, ms: number) => { for (const end = Date.now() + ms; !cond() && Date.now() < end;) await sleep(100); return cond(); };
+
+/** bin/osen-mcp started with a stdio client that has sent initialize and awaited its reply (id 1). */
+async function startMcp(contents: string, env: NodeJS.ProcessEnv) {
+  const child = spawn(bin(contents, "osen-mcp"), [], { env, stdio: ["pipe", "pipe", "pipe"] });
+  let stderr = "", out = "", spawnError = "", code: number | null | "none" = "none";
+  child.on("error", (e) => { spawnError = e.message; });
+  child.stderr.on("data", (d: Buffer) => { stderr += d.toString(); });
+  child.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+  child.on("close", (c) => { code = c; });
+  child.stdin.on("error", () => { /* the server died early: reported by the checks */ });
+  const send = (m: object) => child.stdin.write(`${JSON.stringify(m)}\n`);
+  send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: LATEST_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "headless-check", version: "1" } } });
+  send({ jsonrpc: "2.0", method: "notifications/initialized" });
+  const initialized = await until(() => out.includes('"id":1') || spawnError !== "", 30000);
+  const reply = (id: number) => out.split("\n").find((l) => l.includes(`"id":${id}`)) ?? "";
+  return { child, send, initialized, reply, exitCode: () => code, err:() => `${spawnError}${stderr ? ` (stderr: ${stderr.trim().slice(0, 200)})` : ""}` };
+}
+
+/** Start of bin/osen-mcp sweeps launch/ files older than 60 s, keeps fresh ones and logs the sweep. */
+export async function launchSweepLine(contents: string, work: string): Promise<Line> {
+  const { env, home } = dirs(work, "sweep");
+  const label = "MCP server osen-mcp without PATH: start removes launch/ files older than 60 s, keeps fresh ones";
+  const launch = join(home, "launch");
+  mkdirSync(launch, { recursive: true });
+  const old = ["x.old.err", "x.old.accepted.json"], fresh = ["y.new.err", "y.new.accepted.json"];
+  for (const f of [...old, ...fresh]) writeFileSync(join(launch, f), "{}");
+  const past = new Date(Date.now() - 120_000), recent = new Date(Date.now() - 1000);
+  for (const f of old) utimesSync(join(launch, f), past, past);
+  for (const f of fresh) utimesSync(join(launch, f), recent, recent);
+  const swept = () => existsSync(join(home, "logs", "app.log")) && readFileSync(join(home, "logs", "app.log"), "utf8").includes("Launch folder swept: 2 stale files removed");
+  const mcp = await startMcp(contents, env);
+  try {
+    await until(() => old.every((f) => !existsSync(join(launch, f))) && swept(), 5000);
+    const left = readdirSync(launch).sort();
+    const why = [
+      old.some((f) => left.includes(f)) ? "old files remain" : "",
+      fresh.some((f) => !left.includes(f)) ? "fresh files removed" : "",
+      swept() ? "" : "no sweep line in logs/app.log",
+    ].filter(Boolean).join(", ");
+    mcp.child.stdin.end();
+    await until(() => mcp.exitCode() !== "none", 10000);
+    const code = mcp.exitCode();
+    if (why || code !== 0) return { ok: false, text: `${label}: ${why || `exit code ${String(code)}`}; launch/ has [${left.join(", ")}] ${mcp.err()}` };
+    return { ok: true, text: label };
+  } finally {
+    mcp.child.kill(); // no-op after a normal exit
+  }
+}
+
+/** Closing bin/osen-mcp (SIGTERM, then stdin) while council_start waits for the executor leaves no launch/ files, no session, no executor. */
+export async function launchCloseLine(contents: string, work: string): Promise<Line> {
+  const { env, home } = dirs(work, "close");
+  const label = "MCP server osen-mcp: closing during the council_start wait leaves no launch/ files, no session, no executor";
+  // stub `claude` whose --help hangs 6 s and fails when run by an executor (run-prepared), as in step 199.4 of packages/mcp/scenarios/detached/check.ts
+  const stubDir = join(home, "stub");
+  mkdirSync(stubDir, { recursive: true });
+  writeStub(join(stubDir, "claude-real"), { agent: "claude", version: "1.0.0", mark: join(stubDir, "marks"), side: join(stubDir, "side") });
+  writeFileSync(join(stubDir, "claude"), `#!/bin/sh
+if [ "$1" = "--help" ]; then
+  case "$(ps -o command= -p "$PPID")" in
+    *run-prepared*) sleep 6; exit 1 ;;
+  esac
+fi
+exec "${stubDir}/claude-real" "$@"
+`);
+  chmodSync(join(stubDir, "claude"), 0o755);
+  writeFileSync(join(stubDir, "shell"), `#!/bin/sh\nprintf '\\n__COUNCIL_PATH__%s__COUNCIL_PATH__\\n' "$PATH"\n`);
+  chmodSync(join(stubDir, "shell"), 0o755);
+  const launch = join(home, "launch"), sessions = join(home, "sessions");
+  const launchLeft = () => (existsSync(launch) ? readdirSync(launch) : []);
+  const sessionsLeft = () => (existsSync(sessions) ? readdirSync(sessions) : []);
+  const executorsLeft = () => {
+    const ps = spawnSync("ps", ["-axo", "command="], { encoding: "utf8" });
+    return ps.status !== 0 ? ["ps failed"] : ps.stdout.split("\n").filter((l) => l.includes("run-prepared") && l.includes(home));
+  };
+  const mcp = await startMcp(contents, { ...env, PATH: `${stubDir}:/usr/bin:/bin`, SHELL: join(stubDir, "shell") });
+  try {
+    if (!mcp.initialized) return { ok: false, text: `${label}: no initialize reply ${mcp.err()}` };
+    const before = new Set(launchLeft());
+    const mine = () => launchLeft().filter((f) => !before.has(f));
+    mcp.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "council_start", arguments: { topic: "Entry points check", participants: [{ providerId: "claude", model: "default" }, { providerId: "scripted", model: "consensus/p1.json" }], maxRounds: 3 } } });
+    // the server inspects the fresh stub first (macOS scans a new executable; under load it took over 10 s), then starts the executor;
+    // a council_start reply before any launch file means the start was refused or failed, so the wait ends there
+    await until(() => mine().length > 0 || mcp.reply(2) !== "", 60000);
+    const during = mine();
+    if (during.length === 0) return { ok: false, text: `${label}: no launch file in launch/ while the server waits; council_start reply: ${mcp.reply(2).slice(0, 300) || "none in 60 s"} ${mcp.err()}` };
+    mcp.child.kill("SIGTERM");
+    mcp.child.stdin.end();
+    await until(() => mcp.exitCode() !== "none", 10000);
+    const code = mcp.exitCode(), after = mine();
+    if (code !== 0 || after.length > 0) return { ok: false, text: `${label}: exit code ${String(code)}, launch/ files left after the exit [${after.join(", ")}] (were [${during.join(", ")}]) ${mcp.err()}` };
+    await sleep(9000);
+    const why = [sessionsLeft().length > 0 ? `sessions [${sessionsLeft().join(", ")}]` : "", executorsLeft().length > 0 ? "executor process left" : "", mine().length > 0 ? `launch/ files [${mine().join(", ")}]` : ""].filter(Boolean).join(", ");
+    return why ? { ok: false, text: `${label}: 9 s later: ${why}` } : { ok: true, text: label };
+  } finally {
+    mcp.child.kill(); // no-op after the exit
+  }
+}
+
 /** All lines in order; `report` prints them. A folder `work` is created by the caller. */
 export async function reportHeadlessLines(contents: string, work: string, report: (ok: boolean, text: string) => void): Promise<void> {
   const wrappers = wrappersLine(contents);
@@ -205,6 +317,8 @@ export async function reportHeadlessLines(contents: string, work: string, report
   const self = selfContainedLine(contents);
   report(self.ok, self.text);
   // the runs below need the wrappers: without them the lines would only repeat the same fault
+  const mcpWhy = unusable(contents, "osen-mcp");
+  if (mcpWhy) report(false, `MCP server osen-mcp: FAIL — the wrapper is missing or not executable (bin/osen-mcp ${mcpWhy})`);
   if (!wrappers.ok) return;
-  for (const line of [await mcpLine(contents, work), helpLine(contents, work), scriptedRunLine(contents, work), await detachedStartLine(contents, work)]) report(line.ok, line.text);
+  for (const line of [await mcpLine(contents, work), helpLine(contents, work), scriptedRunLine(contents, work), await detachedStartLine(contents, work), await launchSweepLine(contents, work), await launchCloseLine(contents, work)]) report(line.ok, line.text);
 }

@@ -10,7 +10,7 @@ import { CFB_SIGNATURE } from "./documents/cfb.ts";
 import { DOC_LIMITS, documentReason, readDocumentText } from "./documents/extract.ts";
 import { nonTextReason, TAIL_BYTES } from "./documents/kinds.ts";
 import { expandArchive } from "./materials-archive.ts";
-import { pdfReason, readPdfText } from "./pdf/extract.ts";
+import { newPdfOcrBudget, PDF_LIMITS, pdfReason, readPdfText } from "./pdf/extract.ts";
 import { imageSignature, type ImageFormat } from "./ocr/image-header.ts";
 import { imageReason, OCR_LIMITS, readImageText } from "./ocr/run.ts";
 import { decodeFileText } from "./text-encoding.ts";
@@ -89,7 +89,8 @@ export function rebaseRule(line: string, base: string): string {
 }
 
 export function isEnvName(name: string): boolean {
-  return name === ".env" || name.startsWith(".env.");
+  const lower = name.toLowerCase(); // case-insensitive: on APFS .ENV and .env are one file
+  return lower === ".env" || lower.startsWith(".env.");
 }
 
 export function sha256Of(text: string): string {
@@ -128,24 +129,25 @@ function readTail(fd: number): Buffer | undefined {
   return readSync(fd, tail, 0, TAIL_BYTES, size - TAIL_BYTES) === TAIL_BYTES ? tail : undefined;
 }
 
-// string — text, { refused } — not text or the PDF, document or image was refused with a reason, { image } — an image whose recognition is deferred (defer)
-function readText(abs: string, defer = false): string | { refused: string } | { image: ImageFormat } | { archive: true } {
+// string — text, { refused } — not text or the PDF, document or image was refused with a reason (archive: true — a ZIP archive in a folder, defer), { image } — an image whose recognition is deferred (defer)
+function readText(abs: string, defer = false): string | { refused: string; archive?: true } | { image: ImageFormat } | { pdf: true } | { archive: true } {
   const fd = openSync(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     if (!fstatSync(fd).isFile()) throw new Error(materialsMessages().notRegularFile);
     const head = Buffer.alloc(HEAD_BYTES);
     const n = readSync(fd, head, 0, HEAD_BYTES, 0);
     if (head.subarray(0, Math.min(n, 5)).toString("latin1") === "%PDF-") {
+      if (defer) return { pdf: true };
       const r = readPdfText(fd);
       return r.ok ? r.text : { refused: pdfReason(r) };
     }
     // an empty ZIP is only the end record: it goes to the archive reader, which refuses it as empty
-    if (n === 22 && head.readUInt32LE(0) === 0x06054b50) return defer ? { refused: materialsMessages().archiveInFolder } : { archive: true };
+    if (n === 22 && head.readUInt32LE(0) === 0x06054b50) return defer ? { refused: materialsMessages().archiveInFolder, archive: true } : { archive: true };
     if (n >= 4 && head.readUInt32LE(0) === 0x04034b50) {
       const r = readDocumentText(fd);
       if (r.ok) return r.text;
       if (r.code === "bytes") return { refused: materialsMessages().zipTooLarge(DOC_LIMITS.bytes / 2 ** 20) };
-      if (r.code === "unsupported") return defer ? { refused: materialsMessages().archiveInFolder } : { archive: true };
+      if (r.code === "unsupported") return defer ? { refused: materialsMessages().archiveInFolder, archive: true } : { archive: true };
       return { refused: documentReason(r) };
     }
     // RTF is ASCII, so this check comes before the plain-text decode; CFB covers DOC and encrypted Office files
@@ -171,12 +173,12 @@ function readText(abs: string, defer = false): string | { refused: string } | { 
   }
 }
 
-// Recognition of an image found during a folder walk: the files are opened again after the folder is sorted
-function readImage(abs: string, format: ImageFormat): ReturnType<typeof readImageText> {
+// Recognition of an image or PDF found during a folder walk: the files are opened again after the folder is sorted
+function readDeferred<T>(abs: string, read: (fd: number) => T): T {
   const fd = openSync(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     if (!fstatSync(fd).isFile()) throw new Error(materialsMessages().notRegularFile);
-    return readImageText(fd, format);
+    return read(fd);
   } finally {
     closeSync(fd);
   }
@@ -226,7 +228,7 @@ export function attachedFolderPrefixes(paths: readonly string[]): Map<string, st
   return folderPrefixes(dirs);
 }
 
-type WalkOut = { rel: string; text?: string; skip?: string; excludedPath?: string; rule?: string; abs?: string; image?: ImageFormat }[];
+type WalkOut = { rel: string; text?: string; skip?: string; excludedPath?: string; rule?: string; abs?: string; image?: ImageFormat; pdf?: true }[];
 
 export function collectMaterials(paths: readonly string[], options: CollectOptions): MaterialSet {
   const m = materialsMessages();
@@ -235,6 +237,7 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
   const skipped: SkippedMaterial[] = [];
   const seen = new Set<string>();
   const include = new Set((options.include ?? []).map((p) => resolve(p)));
+  const explicit = new Set(paths.map((p) => resolve(p)));
   const returned = new Set<string>();
   const shownRule = new Map<string, string>();
   const prefixes = attachedFolderPrefixes(paths);
@@ -315,7 +318,12 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
           try {
             const text = readText(abs, true);
             if (typeof text === "object" && "image" in text) out.push({ rel: eRel, abs, image: text.image });
-            else if (typeof text === "object") skip((text as { refused: string }).refused); // defer: an archive is never returned here
+            else if (typeof text === "object" && "pdf" in text) out.push({ rel: eRel, abs, pdf: true });
+            else if (typeof text === "object") {
+              // an archive attached separately by the same path is expanded under its own prefix, not skipped here
+              const { refused, archive } = text as { refused: string; archive?: true };
+              if (!(archive && explicit.has(abs))) skip(refused);
+            }
             else {
               seen.add(abs);
               out.push({ rel: eRel, text });
@@ -331,10 +339,17 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
   // first folders, then explicit files: a file that includes the walk of a folder is named with the folder whatever the order of paths; the place in the set is by the index of the input path
   const buckets = paths.map((): typeof found => []);
   const isFolder = (i: number) => Number(prefixes.has(resolve(paths[i]!)));
+  // a path named again (same resolved path) is taken once: by its first occurrence, before any walk or reason
+  const firstIndex = new Map<string, number>();
+  paths.forEach((p, i) => {
+    const r = resolve(p);
+    if (!firstIndex.has(r)) firstIndex.set(r, i);
+  });
   for (const i of paths.map((_, i) => i).sort((a, b) => isFolder(b) - isFolder(a))) {
     const p = paths[i]!;
     found = buckets[i]!;
     const abs = resolve(p);
+    if (firstIndex.get(abs) !== i) continue;
     const base = basename(abs);
     if (isEnvName(base)) {
       reasons.push(m.pathNamed(p, m.envRefused));
@@ -353,14 +368,27 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
         out.sort((a, b) => compare(a.rel, b.rel));
         // images are recognized in the final name order: the first folderImages that reach the helper; refusals by size and header take no slot
         let recognized = 0;
+        const pdfBudget = newPdfOcrBudget(); // one recognition budget per attached folder, spent in the same name order
         for (const o of out) {
+          if (o.pdf) {
+            try {
+              const r = readDeferred(o.abs!, (fd) => readPdfText(fd, PDF_LIMITS, pdfBudget));
+              if (r.ok) {
+                seen.add(o.abs!);
+                o.text = r.text;
+              } else o.skip = pdfReason(r);
+            } catch (e) {
+              o.skip = m.readFailed(errText(e));
+            }
+            continue;
+          }
           if (!o.image) continue;
           if (recognized >= OCR_LIMITS.folderImages) {
             o.skip = m.imgFolderLimit(OCR_LIMITS.folderImages);
             continue;
           }
           try {
-            const r = readImage(o.abs!, o.image);
+            const r = readDeferred(o.abs!, (fd) => readImageText(fd, o.image!));
             if (!(!r.ok && (r.code === "bytes" || r.code === "pixels" || r.code === "damaged"))) recognized++;
             if (r.ok) {
               seen.add(o.abs!);
@@ -456,8 +484,12 @@ export function verifyMaterials(materials: readonly CollectedMaterial[], limit: 
 
 export interface LeftMaterial { name: string; reason: string }
 
-const DOC_EXT = /\.(md|markdown|mdx|txt|rst|adoc|pdf|docx|docm|pptx|pptm|odt|odp|epub)$/i;
-const LEGACY_DOC_EXT = /\.(rtf|doc)$/i;
+/** Extensions treated as descriptions when a folder is over the limit; also printed in `council --help`. */
+export const DESCRIPTION_EXTENSIONS = [
+  "md", "markdown", "mdx", "txt", "rst", "adoc", "pdf", "docx", "docm", "dotx", "dotm", "pptx", "pptm", "potx", "potm",
+  "ppsx", "ppsm", "odt", "ott", "odp", "otp", "epub", "rtf", "doc",
+] as const;
+const DOC_EXT = new RegExp(`\\.(${DESCRIPTION_EXTENSIONS.join("|")})$`, "i");
 const total = (ms: readonly CollectedMaterial[]) => ms.reduce((s, m) => s + m.chars, 0);
 
 /** "Always included": without "/" in the name — an explicitly attached file; otherwise only if the file path is named and explicit. roots — absolute paths. */
@@ -485,7 +517,7 @@ export function selectMaterials(
   const taken = new Set<CollectedMaterial>(pinned);
   if (total(folder) <= left) folder.forEach((m) => taken.add(m));
   else {
-    const docs = folder.filter((m) => DOC_EXT.test(m.name) || LEGACY_DOC_EXT.test(m.name));
+    const docs = folder.filter((m) => DOC_EXT.test(m.name));
     const candidates = new Set(docs.length > 0 ? docs : folder);
     const byDepth = [...candidates].map((m, i) => ({ m, i, depth: m.name.split("/").length })).sort((x, y) => x.depth - y.depth || x.i - y.i);
     for (const { m } of byDepth) {

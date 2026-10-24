@@ -3,7 +3,11 @@ import { DocError } from "./limits.ts";
 import { decodeXml, parseXml, type XmlElement } from "./xml.ts";
 import type { Zip } from "./zip.ts";
 
-export const DOCX_TYPES = ["application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", "application/vnd.ms-word.document.macroEnabled.main+xml"];
+export const DOCX_TYPES = [
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", "application/vnd.ms-word.document.macroEnabled.main+xml",
+  // DOTX and DOTM: templates are read as their main format (change 222)
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml", "application/vnd.ms-word.template.macroEnabledTemplate.main+xml",
+];
 
 export const kids = (el: XmlElement): XmlElement[] => el.children.filter((c): c is XmlElement => typeof c !== "string");
 export const xmlPart = (zip: Zip, name: string): XmlElement => parseXml(decodeXml(zip.read(name)));

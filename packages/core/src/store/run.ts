@@ -36,7 +36,7 @@ export async function runStoredSession(options: StoredRunOptions): Promise<Sessi
   let created = false; // this run created the session folder
   let locked = false; // this run holds resume.lock
   let journaled = false; // the first event is written: from then on the folder is the owner's session
-  markRunningHere(session.id);
+  let marked = false; // this run owns the in-process running mark (a repeated id must not clear the first run's mark)
   try {
     checkSessionMaterials(session, rest.materials);
     checkSessionWorkspace(session, rest.workspace);
@@ -46,6 +46,8 @@ export async function runStoredSession(options: StoredRunOptions): Promise<Sessi
     }
     createSessionJournal(dataDir, session.id);
     created = true;
+    markRunningHere(session.id);
+    marked = true;
     // The single-executor lock before the first event; the folder is new, so the lock cannot be busy (a repeated id fails above).
     if (!tryPidLock(resumeLockPath(dataDir, session.id), isAlive ?? isProcessAlive)) throw new Error(`Session ${session.id}: the executor lock is held`);
     locked = true;
@@ -83,7 +85,7 @@ export async function runStoredSession(options: StoredRunOptions): Promise<Sessi
   } finally {
     clearInterval(timer);
     if (locked) releaseOwnLock(resumeLockPath(dataDir, session.id));
-    unmarkRunningHere(session.id);
+    if (marked) unmarkRunningHere(session.id);
   }
 }
 

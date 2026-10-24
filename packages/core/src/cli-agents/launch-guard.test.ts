@@ -1,7 +1,8 @@
-import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { detachExecutable } from "../executable.testutil.ts";
 import { setProcessLanguage } from "../i18n/process-language.ts";
 import { checkPinFile, checkPinnedLaunch, pinBinaryState, resetGuardCache } from "./launch-guard.ts";
 import { ifaceEntry, installStub, realEntry, runs, tamper } from "./launch-guard.fixture.ts";
@@ -114,6 +115,7 @@ describe(R, () => {
     const { path, input } = await pinned();
     const link = join(dir, "link");
     symlinkSync(path, link);
+    copyFileSync(`${path}.version`, `${link}.version`); // the stub reads its version next to $0, which is the link
     expect(await checkPinnedLaunch(input({ pin: { ...(await pinnedPin()), path: link }, launchPath: link }))).toMatchObject({ ok: true });
     tamper(path);
     expect(await checkPinnedLaunch(input({ pin: { ...(await pinnedPin()), path: link }, launchPath: link }))).toMatchObject({ ok: false });
@@ -144,6 +146,7 @@ describe(`${R}: checksum cache`, () => {
     let hashes = 0;
     const hash = async () => { hashes++; return input().pin.sha256; };
     await checkPinnedLaunch(input(), { hash });
+    detachExecutable(path);
     utimesSync(path, new Date(), new Date(Date.now() + 5000));
     await checkPinnedLaunch(input(), { hash });
     expect(hashes).toBe(2);
@@ -151,6 +154,7 @@ describe(`${R}: checksum cache`, () => {
 
   it(`${R}: file rewritten in place with the same size and restored mtime`, async () => {
     const { path, a } = await pinned();
+    detachExecutable(path);
     utimesSync(path, 1_700_000_000, 1_700_000_000); // whole-second mtime: restorable exactly
     expect(await checkPinFile(path, a.sha256)).toEqual({ ok: true });
     const before = pinBinaryState(dir, "claude");

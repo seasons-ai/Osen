@@ -10,7 +10,7 @@ export const OCR_LIMITS = { bytes: 50 * 2 ** 20, pixels: 100_000_000, ms: 30_000
 
 export type OcrFailure = "missing" | "start" | "bytes" | "pixels" | "damaged" | "no_text" | "timeout" | "memory" | "chars" | "failed";
 export type OcrResult = { ok: true; text: string } | { ok: false; code: OcrFailure; detail?: string };
-export type OcrPdfResult = { ok: true; pages: { n: number; text: string }[] } | { ok: false; code: OcrFailure | "page_timeout"; detail?: string };
+export type OcrPdfResult = { ok: true; pages: { n: number; text: string }[] } | { ok: false; code: OcrFailure | "page_timeout" | "encrypted"; detail?: string };
 export interface OcrImageRequest { mode: "image"; ms: number; rssBytes: number }
 export interface OcrPdfRequest { mode: "pdf"; pages: number[]; pageMs: number; ms: number; rssBytes: number }
 export type OcrRequest = OcrImageRequest | OcrPdfRequest;
@@ -30,6 +30,8 @@ function helperPath(): string {
   if (process.env.COUNCIL_DEV === "1" && process.env.COUNCIL_OCR_HELPER) return process.env.COUNCIL_OCR_HELPER;
   return join(import.meta.dirname, "bin/osen-ocr");
 }
+
+const valid = (l: unknown): l is OcrLine => typeof l === "object" && l !== null && typeof (l as OcrLine).t === "string";
 
 /** The only launch point of the helper: empty environment, no file paths in arguments, bytes on stdin. */
 export function runOcrHelper(request: OcrImageRequest, bytes: Uint8Array): OcrResult;
@@ -59,27 +61,27 @@ export function runOcrHelper(request: OcrRequest, bytes: Uint8Array): OcrResult 
       if (!Array.isArray(reply.pages)) return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
       const raw = reply.pages as ({ n?: unknown; lines?: unknown } | null)[];
       // a malformed page would become silently empty: the whole reply is refused instead
-      const valid = (l: unknown): l is OcrLine => typeof l === "object" && l !== null && typeof (l as OcrLine).t === "string";
       if (!raw.every((p) => typeof p?.n === "number" && Array.isArray(p.lines) && p.lines.every(valid))) {
         return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
       }
       return { ok: true, pages: raw.map((p) => ({ n: p!.n as number, text: orderLines(p!.lines as OcrLine[]) })) };
     }
     const c = typeof reply.code === "string" ? reply.code : "";
-    if (c === "damaged" || c === "no_text" || c === "timeout" || c === "memory" || c === "page_timeout") return { ok: false, code: c };
-    return { ok: false, code: "failed", detail: c || materialsMessages().docBadReply };
+    if (c === "damaged" || c === "no_text" || c === "timeout" || c === "memory" || c === "page_timeout" || c === "encrypted") return { ok: false, code: c };
+    return { ok: false, code: "failed", detail: c ? `helper:${c}` : materialsMessages().docBadReply };
   }
   if (reply.ok === true && Array.isArray(reply.lines)) {
+    if (!reply.lines.every(valid)) return { ok: false, code: "failed", detail: materialsMessages().docBadReply };
     const text = orderLines(reply.lines as OcrLine[]);
     if (text.length > DOC_LIMITS.chars) return { ok: false, code: "chars" };
     return /\S/.test(text) ? { ok: true, text } : { ok: false, code: "no_text" };
   }
   const c = typeof reply.code === "string" ? reply.code : "";
   if (c === "damaged" || c === "no_text" || c === "timeout" || c === "memory") return { ok: false, code: c };
-  return { ok: false, code: "failed", detail: c || materialsMessages().docBadReply };
+  return { ok: false, code: "failed", detail: c ? `helper:${c}` : materialsMessages().docBadReply };
 }
 
-const NOT_CACHED: readonly OcrFailure[] = ["timeout", "memory", "missing", "start", "failed"];
+export const OCR_NOT_CACHED: readonly OcrFailure[] = ["timeout", "memory", "missing", "start", "failed"];
 const CACHE_CHARS = 20_000_000;
 const cache = new Map<string, OcrResult>();
 let cacheChars = 0;
@@ -96,12 +98,18 @@ export function readImageText(fd: number, format: ImageFormat): OcrResult {
   if (!dims) return { ok: false, code: "damaged" };
   if (dims.width * dims.height > OCR_LIMITS.pixels) return { ok: false, code: "pixels" };
   const result = runOcrHelper({ mode: "image", ms: OCR_LIMITS.ms, rssBytes: OCR_LIMITS.rssBytes }, bytes);
-  if (result.ok || !NOT_CACHED.includes(result.code)) {
+  if (result.ok || !OCR_NOT_CACHED.includes(result.code)) {
     cache.set(key, result);
     if (result.ok) cacheChars += result.text.length;
     if (cacheChars > CACHE_CHARS) { cache.clear(); cacheChars = 0; }
   }
   return result;
+}
+
+// an unknown helper code stays language-free in detail as helper:<code>; the reason gets catalog words instead
+export function ocrFailedDetail(detail: string | undefined): string {
+  const m = materialsMessages();
+  return detail?.startsWith("helper:") ? m.ocrHelperError : detail ?? m.docBadReply;
 }
 
 export function imageReason(failure: { code: OcrFailure; detail?: string }): string {
@@ -116,6 +124,6 @@ export function imageReason(failure: { code: OcrFailure; detail?: string }): str
     case "timeout": return m.imgTimeout(OCR_LIMITS.ms / 1000);
     case "memory": return m.imgMemory(OCR_LIMITS.rssBytes / 2 ** 20);
     case "chars": return m.imgChars(DOC_LIMITS.chars);
-    case "failed": return m.imgFailed(failure.detail ?? m.docBadReply);
+    case "failed": return m.imgFailed(ocrFailedDetail(failure.detail));
   }
 }

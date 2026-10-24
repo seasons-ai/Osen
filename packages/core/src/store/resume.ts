@@ -30,7 +30,7 @@ import { resumeMessages } from "../messages/resume.ts";
 
 export type ResumeRejection =
   | "not_found" | "consensus" | "failed" | "running" | "too_few_active" | "corrupted" | "newer_version"
-  | "no_rounds_left" | "bad_rounds" | "token_cap" | "bad_token_cap" | "material" | "draft" | "synthesizer" | "participant" | "busy" | "replacement" | "stale_plan";
+  | "no_rounds_left" | "bad_rounds" | "token_cap" | "bad_token_cap" | "material" | "draft" | "synthesizer" | "participant" | "busy" | "replacement" | "stale_plan" | "launch_expired";
 
 export class ResumeRejectedError extends Error {
   readonly reason: ResumeRejection;
@@ -118,10 +118,11 @@ export function planResume(
   if (read!.stopped === "newer_version") {
     reject("newer_version", m.newerVersion(id, partialNote({ reason: "newer_version", lastEvent: events.length })));
   }
+  // a live executor may be mid-write: a tail without a newline is its line in progress, not damage
+  if (status === "running") reject("running", m.running(id));
   if (offset !== journalBytes) {
     reject("corrupted", m.corrupted(id, events.length));
   }
-  if (status === "running") reject("running", m.running(id));
   const message = options.message?.trim() ? options.message : undefined;
   if (status === "consensus" && message === undefined) reject("consensus", m.consensus(id));
   if (status === "failed" && state.finish?.reasonCode !== INSUFFICIENT_ACTIVE_REASON_CODE) {
@@ -320,7 +321,7 @@ export async function runResumedSession(options: ResumeRunOptions): Promise<Sess
   markRunningHere(id);
   try {
     if (statSync(eventsPath(dataDir, id)).size !== plan.journalBytes) {
-      reject("busy", resumeMessages().journalChanged(id));
+      reject("stale_plan", resumeMessages().journalChanged(id));
     }
     await options.revalidate?.();
     rmSync(stopRequestPath(dataDir, id), { force: true });

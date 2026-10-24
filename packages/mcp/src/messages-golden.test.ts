@@ -10,6 +10,7 @@ const GOLDEN = join(import.meta.dirname, "__golden__/ru-messages.json");
 const VARIANTS: Record<string, unknown[][]> = {
   scenarioUnavailable: [["S1"]],
   sessionNotFound: [["ID1"]],
+  sessionUnreadable: [["ID1", "EACCES"]],
   statusText: [["consensus"], ["no_consensus"], ["stopped"], ["failed"], ["interrupted"], ["running"]],
   statusDrafting: [[2, 3]],
   journalUndefined: [["NOTE"]],

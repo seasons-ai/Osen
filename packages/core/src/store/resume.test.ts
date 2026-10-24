@@ -209,6 +209,18 @@ describe("planResume: journal integrity", () => {
     expect(reasonOf(() => planResume(dir, "s", { isAlive: growing }))).toBe("running");
   });
 
+  it("live executor writing a line: tail without a newline gives running; the same tail with a dead executor gives corrupted, bytes the same", async () => {
+    const dir = tmp();
+    await prior(dir, mk("s"), [scripted(amend("v1"), agree()), scripted(agree(), agree())]);
+    cutAfter(dir, "s", (e) => e.type === "turn_completed");
+    appendFileSync(eventsPath(dir, "s"), '{"seq":99,"ts":"2026-01-01T00:00:00.000Z","type":"turn_st');
+    const before = journal(dir, "s");
+    expect(reasonOf(() => planResume(dir, "s", { isAlive: alive }))).toBe("running");
+    expect(reasonOf(() => planResume(dir, "s", { rounds: 1, isAlive: dead }))).toBe("corrupted");
+    expect(journal(dir, "s")).toBe(before);
+    expect(existsSync(resumeLockPath(dir, "s"))).toBe(false);
+  });
+
   it("truncated and invalid entry: corrupted, prefix readable, bytes the same", async () => {
     for (const tail of ['{"seq":99,"ts":"x","ty', '{"bad":1}\n']) {
       const dir = tmp();
@@ -430,6 +442,23 @@ describe("runResumedSession", () => {
     expect(existsSync(resumeLockPath(dir, "s"))).toBe(false);
   });
 
+  it("a second resume of a session running in this process is busy and the first stays running", async () => {
+    const dir = tmp();
+    await noConsensus(dir);
+    const plan = planResume(dir, "s", { rounds: 1, isAlive: dead });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let started!: () => void;
+    const hasStarted = new Promise<void>((r) => { started = r; });
+    const slow: ParticipantDriver = { call: async (r) => { started(); await gate; return scripted(agree()).call(r); } };
+    const first = runResumedSession({ dataDir: dir, plan, drivers: { p1: slow, p2: scripted(agree()) } });
+    await hasStarted;
+    expect((await rejects(runResumedSession({ dataDir: dir, plan, drivers: { p1: scripted(agree()), p2: scripted(agree()) } }))).reason).toBe("busy");
+    expect(readSession(dir, "s")!.status).toBe("running");
+    release();
+    await first;
+  });
+
   it("killed new executor: interrupted, repeat continuation accepted", async () => {
     const dir = tmp();
     await noConsensus(dir);
@@ -470,7 +499,7 @@ describe("runResumedSession", () => {
     expect((await go(d3, planResume(d3, "s", { rounds: 1, isAlive: dead }))).state.finish?.status).toBe("consensus");
   });
 
-  it("journal changed after plan: busy, no events, lock removed", async () => {
+  it("journal changed after plan: stale_plan, no events, lock removed", async () => {
     const dir = tmp();
     await noConsensus(dir);
     const plan = planResume(dir, "s", { rounds: 1, isAlive: dead });
@@ -478,7 +507,8 @@ describe("runResumedSession", () => {
     const before = journal(dir, "s");
     writeFileSync(stopRequestPath(dir, "s"), "");
     const e = await rejects(go(dir, plan));
-    expect(e.reason).toBe("busy");
+    expect(e.reason).toBe("stale_plan");
+    expect(e.message).toBe("Сессия s: журнал изменился после проверки: повторите команду.");
     expect(journal(dir, "s")).toBe(before);
     expect(existsSync(stopRequestPath(dir, "s"))).toBe(true);
     expect(existsSync(resumeLockPath(dir, "s"))).toBe(false);

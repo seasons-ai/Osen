@@ -26,8 +26,19 @@ export const canLaunch = (s: { starting: boolean; busy: boolean; previewBusy: bo
 export const refetchOnReturn = (prev: boolean, now: boolean, bridge: { materials(): Promise<MaterialsView> }): Promise<MaterialsView> | null =>
   !prev && now ? bridge.materials() : null;
 
-function Setup({ registry, template, last, rerun = null, active = true, onBack, onStarted }: {
+// The same return rereads the registry: availability and defaults in the setup checks follow "Settings". A failure gives registry null — the caller keeps the previous one.
+export const reloadRegistryOnReturn = (prev: boolean, now: boolean, bridge: { registry(): Promise<RegistryView> }): Promise<{ registry: RegistryView | null; error: string | null }> | null =>
+  !prev && now ? bridge.registry().then((registry) => ({ registry, error: null }), (e) => ({ registry: null, error: message(e) })) : null;
+
+// Setup reads the remembered lineup once on mount, so it opens only after the registry and the lineup request (answer, null or error) have both settled.
+export const setupReady = (registry: RegistryView | null, lastLoaded: boolean): boolean => registry !== null && lastLoaded;
+// The remembered lineup always settles: an error gives null, so the setup opens with the registry defaults.
+export const loadLast = (bridge: { lastParticipants(): Promise<RosterEntry[] | null> }): Promise<RosterEntry[] | null> =>
+  bridge.lastParticipants().then((v) => v, () => null);
+
+function Setup({ registry, registryError = null, template, last, rerun = null, active = true, onBack, onStarted }: {
   registry: RegistryView;
+  registryError?: string | null;
   template: TemplateCard | null;
   last: RosterEntry[] | null;
   rerun?: RerunView | null;
@@ -184,7 +195,7 @@ function Setup({ registry, template, last, rerun = null, active = true, onBack, 
   };
   if (saveAs !== null) return <TemplateEditorScreen data={saveAs} backLabel={m.toSetup} onDone={() => setSaveAs(null)} />;
   return (
-    <SessionSetup form={form} registry={registry} template={template} starting={starting} error={error} dispatch={dispatch}
+    <SessionSetup form={form} registry={registry} registryError={registryError} template={template} starting={starting} error={error} dispatch={dispatch}
       lineups={{ list: lineups.lineups, error: lineups.error, name: lineupName, busy: lineupBusy, saveError: lineupSaveError, pickError: lineupPickError, notice: lineupNotice, nameRef, onPick: onPickLineup, onName: (t) => { setLineupName(t); setLineupSaveError(null); }, onSave: onSaveLineup }}
       onStart={onStart}
       onSaveAs={onSaveAs} saveAsBusy={saveAsBusy} saveAsError={saveAsError}
@@ -208,7 +219,9 @@ export function NewFlow({ onStarted, rerun = null, active = true }: { onStarted(
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [registry, setRegistry] = useState<RegistryView | null>(null);
   const [registryError, setRegistryError] = useState<string | null>(null);
+  const [reloadError, setReloadError] = useState<string | null>(null);
   const [last, setLast] = useState<RosterEntry[] | null>(null);
+  const [lastLoaded, setLastLoaded] = useState(false);
   const [picked, setPicked] = useState<{ template: TemplateCard | null } | null>(null);
   const [rerunUsed, setRerunUsed] = useState(false); // "Back to templates" returns to the gallery, the rerun is no longer substituted
   const activeRerun = rerun !== null && !rerunUsed ? rerun : null;
@@ -252,9 +265,22 @@ export function NewFlow({ onStarted, rerun = null, active = true }: { onStarted(
       (v) => { if (alive) setRegistry(v); },
       (e) => { if (alive) setRegistryError(message(e)); },
     );
-    window.council.lastParticipants().then((v) => { if (alive) setLast(v); }, () => {});
+    loadLast(window.council).then((v) => { if (alive) { setLast(v); setLastLoaded(true); } });
     return () => { alive = false; };
   }, []);
+  const wasActive = useRef(active);
+  useEffect(() => {
+    const p = reloadRegistryOnReturn(wasActive.current, active, window.council);
+    wasActive.current = active;
+    if (!p) return;
+    let alive = true;
+    p.then((r) => {
+      if (!alive) return;
+      if (r.registry) setRegistry(r.registry);
+      setReloadError(r.error);
+    });
+    return () => { alive = false; };
+  }, [active]);
 
   if (editor !== null) {
     return <TemplateEditorScreen key={editor.id ?? "new"} data={editor} backLabel={m.toTemplates} onDone={() => setEditor(null)} />;
@@ -275,8 +301,8 @@ export function NewFlow({ onStarted, rerun = null, active = true }: { onStarted(
       />
     );
   }
-  const back = () => { setPicked(null); setRerunUsed(true); };
-  if (registry === null) {
+  const back = () => { setPicked(null); setRerunUsed(true); setReloadError(null); }; // the next setup starts without the previous reread error
+  if (registry === null || !setupReady(registry, lastLoaded)) {
     return (
       <>
         <header className="topbar">
@@ -302,5 +328,5 @@ export function NewFlow({ onStarted, rerun = null, active = true }: { onStarted(
   const template = activeRerun
     ? (activeRerun.templateId === null ? null : (templates?.templates.find((t) => t.id === activeRerun.templateId) ?? null))
     : picked!.template;
-  return <Setup key={activeRerun ? `rerun:${activeRerun.sessionId}` : (template?.id ?? "custom")} registry={registry} template={template} last={last} rerun={activeRerun} active={active} onBack={back} onStarted={onStarted} />;
+  return <Setup key={activeRerun ? `rerun:${activeRerun.sessionId}` : (template?.id ?? "custom")} registry={registry} registryError={reloadError} template={template} last={last} rerun={activeRerun} active={active} onBack={back} onStarted={onStarted} />;
 }

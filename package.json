@@ -12,6 +12,7 @@
   },
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "pretest": "npm run build:ocr -- --if-stale",
     "test": "vitest run",
     "prepare": "git config core.hooksPath .githooks || true",
     "release": "node scripts/release.ts",

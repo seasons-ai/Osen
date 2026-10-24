@@ -1,8 +1,9 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { writeExecutable } from "../../../../packages/core/src/executable.testutil.ts";
 
 const BIN = join(import.meta.dirname, "../../resources/bin");
 const WRAPPERS = ["osen-mcp", "council"] as const;
@@ -29,6 +30,14 @@ exit "\${STUB_EXIT:-0}"
 `;
 
 const roots: string[] = [];
+// Prototypes are warmed once; each seed hard-links them (same inode), so no fresh executable is launched under load.
+const protos = {} as Record<string, string>;
+beforeAll(() => {
+  const dir = mkdtempSync(join(realpathSync(tmpdir()), "wrappers-proto-"));
+  roots.push(dir);
+  protos.Osen = writeExecutable(join(dir, "Osen"), STUB);
+  for (const w of WRAPPERS) protos[w] = writeExecutable(join(dir, w), readFileSync(join(BIN, w)));
+}, 120_000);
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
 interface Built { launch: string; stub: string; entry: string; cwd: string; links: number }
@@ -47,8 +56,8 @@ function build(seed: number, wrapper: (typeof WRAPPERS)[number]): Built {
   mkdirSync(join(contents, "MacOS"), { recursive: true });
   mkdirSync(join(contents, "Resources/bin"), { recursive: true });
   mkdirSync(outMain, { recursive: true });
-  writeFileSync(join(contents, "MacOS/Osen"), STUB, { mode: 0o755 });
-  writeFileSync(join(contents, "Resources/bin", wrapper), readFileSync(join(BIN, wrapper)), { mode: 0o755 });
+  linkSync(protos.Osen!, join(contents, "MacOS/Osen"));
+  linkSync(protos[wrapper]!, join(contents, "Resources/bin", wrapper));
   const app = join(parent, `${name()} renamed.app`);
   renameSync(before, app);
   let launch = join(app, "Contents/Resources/bin", wrapper);

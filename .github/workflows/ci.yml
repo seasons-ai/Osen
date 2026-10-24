@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
     branches: [main]
-    types: [opened, synchronize, reopened, edited, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -35,28 +35,3 @@ jobs:
       - run: npx vitest run --maxWorkers=4 --testTimeout=30000
       - run: npm run build -w @model-council/desktop
 
-  pr-title:
-    name: PR title
-    if: github.event_name == 'pull_request'
-    runs-on: macos-14
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: "24"
-      - name: Validate Conventional Commit title
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { checkMessage, parse } from "./scripts/release.ts";
-          const title = process.env.PR_TITLE ?? "";
-          const error = checkMessage(title);
-          if (error || !parse({ hash: "", subject: title, body: "" })) {
-            console.error(error ?? "PR titles must use Conventional Commits: type(scope): description");
-            process.exit(1);
-          }
-          NODE

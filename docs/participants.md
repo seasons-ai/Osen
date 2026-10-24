@@ -34,6 +34,8 @@ Cost: the sha256 of the whole file is computed once and cached by file identity 
 
 A check without cost (stub CLIs, real `council` and MCP processes, no model calls): `COUNCIL_DEV=1 COUNCIL_HOME=<new folder inside the repository> node packages/core/scenarios/launch-guard/check.ts`. It prints one `ok -` line per step and exits non-zero if any step fails.
 
+**CLI process environment.** A CLI process (`claude`, `codex`) does not get variables that come only from a `.env` file: from the `.env` in the current folder or from the data folder's `.env`, and are absent or empty in Osen's own environment. This keeps an API key meant for an HTTP provider (for example `OPENAI_API_KEY`) from switching a CLI from the subscription to paid API billing. Variables set in the shell pass as they are. The same filtering applies to the version and help reads, the candidate check, the acceptance probes, the turns, the app's start-up lookup and the detached executor of `council_start` (it reads `.env` itself, so HTTP providers still find their keys). HTTP providers keep reading keys from `.env`. Other `.env` variables (for example a proxy) do not reach the CLIs either: set them in the shell. A check without cost (stub CLIs, real `council` and MCP processes, a fake HTTP server, no model calls): `COUNCIL_DEV=1 node packages/core/scenarios/cli-key-env/check.ts`.
+
 ## HTTP participants
 
 Any model behind an endpoint compatible with OpenAI Chat Completions (OpenRouter, a local server and others). The provider is described in the data folder's `config.json`, the key in `.env`.
@@ -51,7 +53,7 @@ Any model behind an endpoint compatible with OpenAI Chat Completions (OpenRouter
 }
 ```
 
-   `baseUrl` is the address up to `/chat/completions`, `http` or `https` only. `apiKeyEnv` is the name of the variable holding the key; the key itself is not in `config.json`, and a field containing it is rejected. For a local server without authorization, leave `apiKeyEnv` out. Leave `models` empty: the list is requested from the endpoint.
+   `baseUrl` is the address up to `/chat/completions`, `http` or `https` only. `apiKeyEnv` is the name of the variable holding the key; the key itself is not in `config.json`, and a field containing it is rejected. For a local server without authorization, leave `apiKeyEnv` out. `models` holds only the models added by the owner; the list is always requested from the endpoint and merged with them. If the endpoint has no list, the provider stays available with the added models.
 
 2. Put the key into the data folder's `.env` as a single line `OPENROUTER_API_KEY=<value>`. The key is read from an environment variable; the environment is supplemented from the data folder's `.env`, then from the `.env` in the current folder. A variable set in the environment takes precedence over the files; an empty value counts as unset.
 
@@ -102,4 +104,6 @@ COUNCIL_HOME=.council-data npx council providers
 COUNCIL_HOME=.council-data npx council --topic "Как назвать кота" --participant fake:fake-amend --participant fake:fake-agree --max-rounds 2
 ```
 
-Expected: a block `fake  openai-http  available  http://127.0.0.1:8787/v1` with the server's model list, then two turns and `══ Outcome: consensus`. The server's behavior is set by the model name: `fake-amend` proposes a solution, `fake-agree` agrees, `fake-auth` — authorization refused, `fake-rate` — rate limit exceeded, `fake-hang` — a hang (check with `--turn-timeout 2`), `fake-error` — a server error, any other name — model not found.
+Expected: a block `fake  openai-http  available  http://127.0.0.1:8787/v1` with the server's model list, then two turns and `══ Outcome: consensus`. The server's behavior is set by the model name: `fake-amend` proposes a solution, `fake-agree` agrees, `fake-auth` — authorization refused, `fake-rate` — rate limit exceeded, `fake-hang` — a hang (check with `--turn-timeout 2`), `fake-error` — a server error, `fake-midstream-error` — an error event with the numeric code 502 in the middle of the stream, `fake-midstream-rate` — an error event with the string code `rate_limit_exceeded` in the middle of the stream (recorded as a rate limit with one retry, like HTTP 429; the code `insufficient_quota` is treated the same), any other name — model not found.
+
+A `baseUrl` with a login or password (`http://user:pass@host/v1`) makes the provider unavailable: `council providers` names the provider and the `baseUrl` field without echoing the address, and no request is sent to it. Remove the login and password from the address; the key is set by the `apiKeyEnv` variable.

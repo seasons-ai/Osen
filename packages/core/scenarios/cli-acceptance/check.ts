@@ -13,6 +13,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, readdir
 import { homedir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { isInsideRepo } from "../inside-repo.ts";
+import { detachExecutable } from "../../src/executable.testutil.ts";
 import { findPersonalData } from "../../src/cli-agents/turn-fixtures.ts";
 
 if (process.env.COUNCIL_DEV !== "1") {
@@ -85,7 +86,7 @@ const isAlive = (pid: number): boolean => {
 };
 
 interface Result { code: number; out: string; err: string; tag: string }
-interface RunOpts { lang?: "en" | "ru"; mode?: string; limits?: { timeoutMs?: number; maxBytes?: number }; onSpawn?: (child: ChildProcess, tag: string) => void }
+interface RunOpts { lang?: "en" | "ru"; mode?: string; swapAt?: number; limits?: { timeoutMs?: number; maxBytes?: number }; onSpawn?: (child: ChildProcess, tag: string) => void }
 let runNo = 0;
 function run(home: string, args: string[], o: RunOpts = {}): Promise<Result> {
   const tag = `run-${String(++runNo).padStart(3, "0")}`;
@@ -93,8 +94,9 @@ function run(home: string, args: string[], o: RunOpts = {}): Promise<Result> {
   mkdirSync(state, { recursive: true });
   const env: Record<string, string> = {
     PATH: `${bin}:/usr/bin:/bin`, HOME: homedir(), SHELL: fakeShell, COUNCIL_HOME: home, COUNCIL_DEV: "1", COUNCIL_LANG: o.lang ?? "en",
-    STUB_MODE: o.mode ?? "good", STUB_LOG: join(logs, `${tag}.log`), STUB_STATE: state, STUB_PIDFILE: join(pidDir, `${tag}.pid`),
+    STUB_MODE: o.mode ?? "good", STUB_LOG: join(logs, `${tag}.log`), STUB_ARGV_LOG: join(logs, `${tag}.argv`), STUB_STATE: state, STUB_PIDFILE: join(pidDir, `${tag}.pid`),
     ...(o.limits ? { CLI_ACCEPT_STAND_LIMITS: JSON.stringify(o.limits) } : {}),
+    ...(o.swapAt ? { STUB_SWAP_AT: String(o.swapAt) } : {}),
   };
   return new Promise((res, rej) => {
     const child = spawn(process.execPath, [entry, ...args], { env, cwd: repo, stdio: ["ignore", "pipe", "pipe"] });
@@ -203,6 +205,11 @@ try {
   ok(`exactly one real entry: checkedAt ${e.checkedAt}, os, osenVersion, version 9.9.9, sha256 equal to the install record, modelCalls ${e.modelCalls} <= 7`);
   assert.equal(turnPids(pass).length, PROBES, "the stub is launched once per probe");
   ok("the stub was launched 7 times in total, no more");
+  const argvLines = readFileSync(join(logs, `${pass.tag}.argv`), "utf8").split("\n").filter(Boolean);
+  const UPDATE_OFF = "-c check_for_update_on_startup=false";
+  assert.ok(argvLines.includes(`exec --help ${UPDATE_OFF}`), argvLines.join("\n"));
+  assert.ok(argvLines.includes(`features list ${UPDATE_OFF}`), argvLines.join("\n"));
+  ok("acceptance reads of codex help and features list carry -c check_for_update_on_startup=false (stub argv log)");
   assert.equal((await run(h3, ["list"])).out, listBefore);
   assert.equal(treeHash(join(h3, "sessions")), sessionsBefore);
   ok("council list output and the sessions folder are the same before and after the acceptance");
@@ -301,12 +308,37 @@ try {
   // ---- 6b: changed installed file ----
   const h6b = H("changed");
   await install(h6b);
-  appendFileSync(stubOf(h6b)!, "\n// changed\n");
+  const changed = stubOf(h6b)!;
+  detachExecutable(changed);
+  appendFileSync(changed, "\n// changed\n");
   const rb = await accept(h6b, ["--candidate", "--max-calls", "7"]);
   assert.equal(rb.code, 2, rb.err);
   assert.match(rb.err, /sha256/);
   assert.deepEqual(turnPids(rb), []);
   ok("installed stub changed after install: exit 2, stderr names the sha256 mismatch, no stub launch");
+
+  // ---- 6c: the installed file is swapped during the acceptance (change 237) ----
+  // the stub replaces its own file (temporary file + rename, a new inode) on the first or the seventh turn launch
+  const SWAP_TEXT = { en: (n: number) => `model calls made: ${n};`, ru: (n: number) => `сделано вызовов модели: ${n};` } as const;
+  for (const swapAt of [1, PROBES]) {
+    for (const lang of ["en", "ru"] as const) {
+      const h = H(`swap-${swapAt}-${lang}`);
+      await install(h);
+      const expected = installed(h).sha256;
+      const r = await accept(h, ["--candidate", "--max-calls", "7"], { lang, swapAt });
+      const found = hash(readFileSync(stubOf(h)!));
+      assert.notEqual(found, expected, "the stub did not replace its file");
+      assert.equal(r.code, 2, `swap at ${swapAt} ${lang}: ${r.out}\n${r.err}`);
+      assert.ok(r.err.includes("9.9.9") && r.err.includes(expected) && r.err.includes(found), r.err);
+      assert.ok(r.err.includes(SWAP_TEXT[lang](swapAt)), r.err);
+      if (lang === "ru") assert.ok(CYR.test(r.err), r.err);
+      else assert.ok(!CYR.test(r.err), r.err);
+      assert.equal(turnPids(r).length, swapAt, `swap at ${swapAt}: the stub was launched ${turnPids(r).length} times`);
+      assert.equal(probeLines(r.out).length, swapAt, r.out);
+      assert.deepEqual(realOf(h), []);
+      ok(`${lang}: the stub swaps its file on launch ${swapAt}: exit 2, stderr names 9.9.9, both sums and ${swapAt} call(s), ${swapAt} stub launch(es), no real entry`);
+    }
+  }
 
   // ---- 7: corrupted local record ----
   const h7 = H("corrupt");
