@@ -2,6 +2,8 @@ import { sessionLanguage, turnResponseSchema } from "./schema.ts";
 import type { Stance } from "./schema.ts";
 import { promptMessages } from "../messages/prompt.ts";
 import type { Language } from "../i18n/language.ts";
+import { describeIssue } from "../messages/zod.ts";
+import type { z } from "zod";
 import { OWNER_ID, activeParticipantIds, currentVersion, openQuestionsFor } from "./state.ts";
 import type { SessionState } from "./state.ts";
 
@@ -102,6 +104,14 @@ export function parseFileRequest(raw: string): string[] | null {
   return names.length > 0 ? names : null;
 }
 
+// Built-in zod texts go through describeIssue in the session language; custom texts (refine) are already in it.
+function issueTexts(issues: z.core.$ZodIssue[], language: Language): string[] {
+  return issues.map((i) => {
+    const text = describeIssue(i, language);
+    return i.path.length ? `${i.path.join(".")}: ${text}` : text;
+  });
+}
+
 // Error descriptions are in the session language: they go into the fix request and into the record of the turn failure.
 export function parseTurnResponse(raw: string, state: SessionState, participantId: string): ParseResult {
   const language = state.session ? sessionLanguage(state.session) : "ru";
@@ -113,7 +123,7 @@ export function parseTurnResponse(raw: string, state: SessionState, participantI
   if (!parsed.success) {
     return {
       ok: false,
-      errors: parsed.error.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ${i.message}` : i.message)),
+      errors: issueTexts(parsed.error.issues, language),
     };
   }
   const r = parsed.data;
@@ -167,7 +177,7 @@ export function parseDraftResponse(raw: string, language: Language): DraftParseR
   if (!parsed.success) {
     return {
       ok: false,
-      errors: parsed.error.issues.map((i) => (i.path.length ? `${i.path.join(".")}: ${i.message}` : i.message)),
+      errors: issueTexts(parsed.error.issues, language),
     };
   }
   const r = parsed.data;

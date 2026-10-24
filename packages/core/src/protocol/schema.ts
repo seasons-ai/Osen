@@ -117,7 +117,7 @@ export function sessionLanguage(session: Pick<Session, "language">): Language {
   return session.language ?? "ru";
 }
 
-// Messages of the model reply schema go into a repeated request (parse.ts) in the session language; the built-in zod texts are not translated.
+// Messages of the model reply schema go into a repeated request (parse.ts) in the session language; describeIssue translates the built-in zod texts there.
 function makeTurnResponseSchema(language: Language) {
   const m = promptMessages(language);
   const responseNonBlank = z.string().refine((s) => s.trim().length > 0, m.blank);
