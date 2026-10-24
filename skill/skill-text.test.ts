@@ -31,6 +31,12 @@ describe("osen skill text", () => {
     expect(text).toContain("`.osen-install`");
   });
 
+  it("Сервер недоступен: Загрузка отложенных инструментов - the step-1 select query lists all seven tools", () => {
+    const query = /select:(mcp__osen__\w+(?:,mcp__osen__\w+)*)/.exec(text)?.[1]?.split(",") ?? [];
+    expect(query.sort()).toEqual(["council_continue", "council_options", "council_resume", "council_say", "council_start", "council_status", "council_stop"].map((n) => `mcp__osen__${n}`));
+    expect(text).not.toContain("four server tools");
+  });
+
   it("tells to reply in the language of the owner's request and to translate template labels", () => {
     expect(lineWith(/Reply to the owner in the language of the owner's request/, /translate their labels/)).toBe(true);
   });

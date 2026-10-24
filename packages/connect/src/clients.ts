@@ -107,15 +107,22 @@ function writeDesktop(file: string, name: string, cmd: ServerCommand | null): Fa
   }
 }
 
-async function writeCli(client: ClientId, deps: ConnectDeps, name: string, op: Op, cmd: ServerCommand): Promise<Failure | null> {
+async function writeCli(client: ClientId, deps: ConnectDeps, name: string, op: Op, cmd: ServerCommand, prev?: ServerCommand): Promise<Failure | null> {
   const bin = client === "codex" ? "codex" : "claude";
   const rm = client === "codex" ? ["mcp", "remove", name] : ["mcp", "remove", "--scope", "user", name];
-  const add = client === "codex" ? ["mcp", "add", name, "--", cmd.command, ...cmd.args] : ["mcp", "add", "--scope", "user", name, "--", cmd.command, ...cmd.args];
-  for (const args of [...(op === "add" ? [] : [rm]), ...(op === "remove" ? [] : [add])]) {
-    const r = await deps.exec(bin, args);
-    if (!r.ok) return { ok: false, reason: { code: "cli", detail: (r.stderr || r.stdout).trim() } };
+  const addOf = (c: ServerCommand) => client === "codex" ? ["mcp", "add", name, "--", c.command, ...c.args] : ["mcp", "add", "--scope", "user", name, "--", c.command, ...c.args];
+  const fail = (r: { stderr: string; stdout: string }): Failure => ({ ok: false, reason: { code: "cli", detail: (r.stderr || r.stdout).trim() } });
+  if (op === "remove") { const r = await deps.exec(bin, rm); return r.ok ? null : fail(r); }
+  // codex mcp add overwrites an existing entry, so a replace never removes first
+  if (op === "replace" && client !== "codex") {
+    const r = await deps.exec(bin, rm);
+    if (!r.ok) return fail(r);
   }
-  return null;
+  const r = await deps.exec(bin, addOf(cmd));
+  if (r.ok) return null;
+  // best effort: put the previous entry back; the caller re-reads the real state
+  if (op === "replace" && prev && client !== "codex") await deps.exec(bin, addOf(prev));
+  return fail(r);
 }
 
 async function apply(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions, before: Status, op: Op): Promise<ActionResult> {
@@ -123,7 +130,7 @@ async function apply(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, op
   const { file } = before;
   const goal: State = op === "remove" ? "not_connected" : "connected";
   if (opts.dryRun) return { ok: true, client, file, changed: true, state: goal, need: NEED[client] };
-  const f = client === "claude-desktop" ? writeDesktop(file, name, op === "remove" ? null : cmd) : await writeCli(client, deps, name, op, cmd);
+  const f = client === "claude-desktop" ? writeDesktop(file, name, op === "remove" ? null : cmd) : await writeCli(client, deps, name, op, cmd, before.entry);
   const after = await status(client, cmd, deps, opts);
   if (f) return { ok: false, client, file, refusal: "failed", state: after.state, ...(before.entry ? { entry: before.entry } : {}), reason: f.reason };
   if (after.state !== goal) return { ok: false, client, file, refusal: "failed", state: after.state, ...(after.entry ? { entry: after.entry } : {}), reason: { code: "verify", detail: file } };
