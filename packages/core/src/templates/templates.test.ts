@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -165,6 +165,31 @@ describe("loadTemplates: loading", () => {
   });
 });
 
+describe("loadTemplates: symbolic links", () => {
+  it("a symlink instead of a template file is not loaded and is listed in errors with its reason", () => {
+    const d = dirs();
+    const outside = tmp();
+    put(outside, "linked.json", tpl({ id: "linked" }));
+    mkdirSync(join(outside, "dir"));
+    put(d.userDir, "ok.json", tpl({ id: "ok" }));
+    symlinkSync(join(outside, "linked.json"), join(d.userDir, "x.json"));
+    symlinkSync(join(outside, "dir"), join(d.userDir, "d.json"));
+    for (const [language, reason] of [["ru", "символьная ссылка не загружается"], ["en", "symbolic link is not loaded"]] as const) {
+      setProcessLanguage(language);
+      try {
+        const c = loadTemplates({ ...d, language: "ru" });
+        expect(c.templates.map((t) => t.id)).toEqual(["ok"]);
+        expect(c.errors).toEqual([
+          { source: "user", file: "d.json", reason },
+          { source: "user", file: "x.json", reason },
+        ]);
+      } finally {
+        setProcessLanguage("ru");
+      }
+    }
+  });
+});
+
 describe("loadTemplates: neutral frame", () => {
   it("built-in only", () => {
     expect(load(dirs()).neutralFraming).toBe("Нейтральная рамка");
@@ -216,6 +241,16 @@ describe("loadTemplates: neutral frame", () => {
     const noBuiltin = { builtinDir: tmp(), userDir: tmp() };
     mkdirSync(join(noBuiltin.userDir, "neutral.md"));
     expect(() => loadTemplates(noBuiltin)).toThrow("Нейтральная рамка не найдена");
+  });
+
+  it("built-in frame of the language is missing, a user one exists: rejected with the same path", () => {
+    const d = dirs();
+    rmSync(join(d.ru, "neutral.md"));
+    put(d.ru, "a.json", tpl());
+    put(d.userDir, "neutral.md", "Моя\n");
+    expect(() => loadTemplates({ ...d, language: "ru" })).toThrow(`Нейтральная рамка не найдена: ${join(d.ru, "neutral.md")}`);
+    mkdirSync(join(d.ru, "neutral.md"));
+    expect(() => loadTemplates({ ...d, language: "ru" })).toThrow(`Нейтральная рамка не найдена: ${join(d.ru, "neutral.md")}`);
   });
 
   it("no language folder or its neutral.md: rejected with the path, another language is not substituted", () => {
