@@ -595,6 +595,26 @@ describe("bridge", () => {
       expect(await bridge.call("clearMaterials", [])).toMatchObject({ ok: true, value: { items: [], chars: 0 } });
     });
 
+    it("Excluded by rules and return in session setup: Reset of a return — \"Back to templates\" (clearMaterials) and the same folder again", async () => {
+      const proj = join(root, "proj");
+      mkdirSync(join(proj, "src"), { recursive: true });
+      mkdirSync(join(proj, "out"), { recursive: true });
+      writeFileSync(join(proj, ".gitignore"), "out/\n");
+      writeFileSync(join(proj, "src", "a.txt"), "исходник");
+      writeFileSync(join(proj, "out", "main.js"), "собранный");
+      const { bridge } = setup();
+      const names = (r: unknown) => (r as { value: { items: { name: string }[] } }).value.items.map((i) => i.name);
+      const first = await bridge.call("attachMaterials", [[proj]]);
+      expect(first).toMatchObject({ ok: true, value: { ignored: [{ id: "x1", name: "proj/out/", returned: false }] } });
+      const back = await bridge.call("returnIgnored", ["x1"]);
+      expect(back).toMatchObject({ ok: true, value: { ignored: [{ name: "proj/out/", returned: true }] } });
+      expect(names(back)).toContain("proj/out/main.js");
+      await bridge.call("clearMaterials", []);
+      const again = await bridge.call("attachMaterials", [[proj]]);
+      expect(again).toMatchObject({ ok: true, value: { ignored: [{ id: "x1", name: "proj/out/", returned: false }] } });
+      expect(names(again).filter((n) => n.startsWith("proj/out/"))).toEqual([]);
+    });
+
     it("previewMaterials: a non-boolean argument is an error, a boolean is passed, PreviewError is a reply with a message", async () => {
       const { bridge, deps } = setup();
       for (const bad of [[], ["да"], [1], [null]]) expect(await bridge.call("previewMaterials", bad)).toMatchObject({ ok: false });
