@@ -45,8 +45,11 @@ export interface LaunchResumePayload {
 export type LaunchFile = LaunchPayload | LaunchResumePayload;
 
 export class LaunchFileError extends Error {
-  constructor(message: string) {
+  /** expired: the launch deadline has passed (the executor refuses with the code launch_expired, not with plain text) */
+  readonly expired: boolean;
+  constructor(message: string, expired = false) {
     super(message);
+    this.expired = expired;
     this.name = "LaunchFileError";
   }
 }
@@ -112,7 +115,7 @@ export function readLaunchFile(path: string, now: Date = new Date()): LaunchFile
   const resume = typeof json === "object" && json !== null && (json as { kind?: unknown }).kind === "resume";
   const parsed = resume ? LaunchResumeSchema.safeParse(json) : LaunchSchema.safeParse(json);
   if (!parsed.success) throw new LaunchFileError(t.launchInvalid(path, parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")));
-  if (now.getTime() > Date.parse(parsed.data.deadline)) throw new LaunchFileError(t.launchExpired(parsed.data.deadline));
+  if (now.getTime() > Date.parse(parsed.data.deadline)) throw new LaunchFileError(t.launchExpired(parsed.data.deadline), true);
   return parsed.data as LaunchFile;
 }
 

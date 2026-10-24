@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { closeSync, existsSync, openSync, readFileSync, rmSync, statSync } from "node:fs";
 import { isAbsolute } from "node:path";
-import { checkLineup, cliEnv, collectSessionMaterials, createSession, eventsPath, launchAcceptedPath, launchErrPath, launchFilePath, ResumeRejectedError, writeLaunchFile, DEFAULT_MODEL, ensureRegistry, envFilePath, FOLDER_LIMITS, folderStats, inspectProvider, LineupsError, maxCallsBound, loadTemplates, logRegistryLoaded, MaterialsError, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, readLineups, readRegistry, readScenario, ScriptedUnavailableError, scriptedDevOnlyMessage, SessionInputError, templateSessionInput, UnknownTemplateError, userTemplatesDir } from "@model-council/core";
+import { checkLineup, cliEnv, engineMessages, collectSessionMaterials, createSession, eventsPath, launchAcceptedPath, launchErrPath, launchFilePath, ResumeRejectedError, writeLaunchFile, DEFAULT_MODEL, ensureRegistry, envFilePath, FOLDER_LIMITS, folderStats, inspectProvider, LineupsError, maxCallsBound, loadTemplates, logRegistryLoaded, MaterialsError, OWNER_WAIT_DEFAULT_SEC, OWNER_WAIT_MAX_SEC, readLineups, readRegistry, readScenario, ScriptedUnavailableError, scriptedDevOnlyMessage, SessionInputError, templateSessionInput, UnknownTemplateError, userTemplatesDir } from "@model-council/core";
 import type { FolderFile, LaunchPayload, LaunchResumePayload, ResumeRejection } from "@model-council/core";
 import { z } from "zod";
 import { defineTool, ROUNDS_BOUNDS, resumeScenarioPath, SCRIPTED_PROVIDER_ID, scriptedProviderLabel, scenarioPath, ToolError } from "./context.ts";
@@ -128,7 +128,7 @@ export async function launchExecutor(ctx: ToolContext, id: string, payload: Prep
   }
 }
 
-// A refusal of a prepared resume is one JSON line {code, message} first on stderr.
+// A refusal of a prepared launch (new session or resume) is one JSON line {code, message} first on stderr.
 function rejection(text: string): ResumeRejectedError | null {
   try {
     const j = JSON.parse(text.split("\n")[0]!) as { code?: unknown; message?: unknown };
@@ -163,6 +163,8 @@ export const councilStart = defineTool({
   async run(ctx, input) {
     const m = mcpMessages();
     if (ctx.env.COUNCIL_PARTICIPANT === "1") throw new ToolError(m.startParticipant);
+    // before any materials work: createSession checks the topic too, but only after the attachments were read
+    if (input.topic.trim().length === 0) throw new ToolError(engineMessages().topicRequired);
     if (input.lineupId !== undefined && input.participants !== undefined) throw new ToolError(m.startLineupAndParticipants);
     const { min, max } = ROUNDS_BOUNDS;
     if (input.maxRounds !== undefined && (input.maxRounds < min || input.maxRounds > max)) throw new ToolError(m.startRoundsBounds(min, max));
