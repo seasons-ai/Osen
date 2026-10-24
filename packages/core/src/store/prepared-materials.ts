@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import type { MaterialSource } from "./material-sources.ts";
 import { FOLDER_LIMITS, folderStats } from "../protocol/folder.ts";
 import type { FolderFile } from "../protocol/folder.ts";
 import { storeMessages } from "../messages/store.ts";
+import { createLogger } from "./log.ts";
 
 export const PREPARED_TTL_MS = 24 * 60 * 60 * 1000;
 // ponytail: a rough byte bound — 8 bytes per character with a margin for JSON escaping; more precisely — count after reading
@@ -111,7 +112,31 @@ export function savePreparedMaterials(dataDir: string, input: PreparedInput, opt
     rmSync(tmp, { recursive: true, force: true });
     throw e;
   }
+  removeExpiredSets(dataDir, set.id, options);
   return set;
+}
+
+// Removes sets older than the TTL; unreadable or damaged ones are left, and a failure never fails the prepare.
+// ponytail: full parse of each set on prepare, ceiling hundreds of sets; upgrade = read only createdAt
+function removeExpiredSets(dataDir: string, newId: string, options: { now?: () => Date }): void {
+  const root = preparedMaterialsDir(dataDir);
+  try {
+    for (const id of readdirSync(root)) {
+      if (id === newId || !isValidPreparedId(id)) continue;
+      try {
+        loadPreparedMaterials(dataDir, id, options);
+      } catch (e) {
+        if (!(e instanceof PreparedMaterialsError) || e.problem !== "expired") continue;
+        try {
+          rmSync(join(root, id), { recursive: true, force: true });
+        } catch (err) {
+          createLogger(dataDir, "store").error(`Could not remove the expired prepared set ${id}`, err);
+        }
+      }
+    }
+  } catch (err) {
+    createLogger(dataDir, "store").error("Could not scan prepared sets for expired ones", err);
+  }
 }
 
 const corrupt = () => new PreparedMaterialsError("corrupt", storeMessages().preparedCorrupt);
