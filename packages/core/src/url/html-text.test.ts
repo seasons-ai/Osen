@@ -49,4 +49,8 @@ describe("htmlToText", () => {
   it("control characters from entities do not reach the result", () => {
     expect(htmlToText("<p>a&#1;b&#127;c</p>")).toBe("abc");
   });
+
+  it("a self-closing <title/> in a page still opens title (EPUB chapters expand it, pages do not)", () => {
+    expect(htmlToText("<html><head><title/></head><body><p>Hello chapter</p></body></html>")).toBe("");
+  });
 });

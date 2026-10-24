@@ -142,6 +142,14 @@ export async function odfEpubSuite(c: Ctx) {
   writeFileSync(ep, bytesOf.epub!);
   await accepted("o2", ep, EPUB_TEXT);
   c.ok(`${tag} 210-2: EPUB with chapters stored 3,1,2 and spine 1,2,3 gives the text 1,2,3 separated by blank lines; hidden element, script, style and img alt are absent`);
+  // change 252: XHTML self-closing <title/>, <script/>, <style/>, <textarea/> do not swallow the rest of a chapter
+  const selfClosing = join(fx, "self-closing.epub");
+  writeFileSync(selfClosing, makeEpub({ chapters: [
+    { path: "OEBPS/ch1.xhtml", html: '<html xmlns="http://www.w3.org/1999/xhtml"><head><title/></head><body><p>Hello chapter</p></body></html>' },
+    { path: "OEBPS/ch2.xhtml", html: '<html xmlns="http://www.w3.org/1999/xhtml"><head><script/><style/></head><body><p>Second chapter</p><textarea/></body></html>' },
+  ] }));
+  await accepted("o2-self-closing", selfClosing, "Hello chapter\n\nSecond chapter");
+  c.ok(`${tag} 252: EPUB chapters with self-closing <title/>, <script/>, <style/>, <textarea/> give "Hello chapter", a blank line and "Second chapter"; no chapter is skipped`);
 
   // ---- 3. Parity and deleted source ----
   for (const f of formats) {
