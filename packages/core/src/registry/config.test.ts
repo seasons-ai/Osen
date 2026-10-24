@@ -261,6 +261,11 @@ describe("materials: materialsIgnore and materialsChars", () => {
     expect(message(() => readRegistry(stripped((x) => (x.materialsIgnore = "node_modules"))))).toContain("defaults.materialsIgnore: ожидается массив");
   });
 
+  it("materialsIgnore: names with brackets, braces and a leading ! are accepted", () => {
+    const names = ["[id]", "{a,b}", "!x"];
+    expect(readRegistry(stripped((x) => (x.materialsIgnore = names))).defaults.materialsIgnore).toEqual(names);
+  });
+
   it("writeRegistry returns and writes both fields; removeProvider keeps them", () => {
     const dir = tmp();
     const r: any = initialRegistry(["claude", "codex"]);

@@ -339,10 +339,17 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
   // first folders, then explicit files: a file that includes the walk of a folder is named with the folder whatever the order of paths; the place in the set is by the index of the input path
   const buckets = paths.map((): typeof found => []);
   const isFolder = (i: number) => Number(prefixes.has(resolve(paths[i]!)));
+  // a path named again (same resolved path) is taken once: by its first occurrence, before any walk or reason
+  const firstIndex = new Map<string, number>();
+  paths.forEach((p, i) => {
+    const r = resolve(p);
+    if (!firstIndex.has(r)) firstIndex.set(r, i);
+  });
   for (const i of paths.map((_, i) => i).sort((a, b) => isFolder(b) - isFolder(a))) {
     const p = paths[i]!;
     found = buckets[i]!;
     const abs = resolve(p);
+    if (firstIndex.get(abs) !== i) continue;
     const base = basename(abs);
     if (isEnvName(base)) {
       reasons.push(m.pathNamed(p, m.envRefused));
