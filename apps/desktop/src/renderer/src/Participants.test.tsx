@@ -443,3 +443,20 @@ describe("Numbers, dates and inflection in the Summary and export: token inflect
     expect(tp([tcreated(1000), started(1, "p1"), tok(1, "p1", { inputTokens: 11 })])).toContain('<span class="mono">11 из 1000</span> токенов');
   });
 });
+
+describe("token spending while a turn is running", () => {
+  const u = { inputTokens: 150, outputTokens: 100 };
+  const s = fold([tcreated(1200), started(1, "p1"), tok(1, "p1", u), started(2, "p2"), tok(2, "p2", u), started(3, "p3")]);
+  it("running: meter and counter show the sum without the incomplete mark", () => {
+    const h = renderToStaticMarkup(<ParticipantsPanel state={s} running />);
+    expect(h).toContain("500 из 1200");
+    expect(h).not.toContain("учёт неполный");
+    const c = renderToStaticMarkup(<RoundCounter state={s} running />);
+    expect(c).toContain("500 tok");
+    expect(c).not.toContain("≥");
+  });
+  it("not running (interrupted session): the incomplete mark stays", () => {
+    expect(renderToStaticMarkup(<ParticipantsPanel state={s} running={false} />)).toContain("учёт неполный");
+    expect(renderToStaticMarkup(<RoundCounter state={s} running={false} />)).toContain("≥500 tok");
+  });
+});

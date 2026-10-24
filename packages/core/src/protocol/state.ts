@@ -304,11 +304,26 @@ export function sessionTotals(state: SessionState): SessionTotals {
 
 export interface TokenUsage { inputTokens: number; outputTokens: number; total: number; incomplete: boolean }
 
+// Calls running right now: the current turn, or in the drafts phase the latest draft attempt without an outcome
+// (the engine runs drafts one at a time, so an older attempt without an outcome is lost, not running).
+// currentTurn is set exactly while its turn_started is the one open entry of sessionUsage.
+function runningCalls(state: SessionState): number {
+  if (state.currentTurn !== null) return 1;
+  if (draftPhase(state) !== "drafting") return 0;
+  const ev = state.usageEvents;
+  const i = ev.findLastIndex((e) => e.type === "draft_attempt_started");
+  const s = ev[i];
+  if (s?.type !== "draft_attempt_started") return 0;
+  const ended = ev.slice(i + 1).some((e) => (e.type === "draft_completed" || e.type === "draft_attempt_failed" || e.type === "draft_files_served") && e.draftId === s.draftId);
+  return ended ? 0 : 1;
+}
+
 // Sum of reported session tokens by sessionUsage records; cost is not included.
 // Incomplete if there is a call without an outcome or a record without input and output tokens.
-export function tokenUsage(state: SessionState): TokenUsage {
+// live: calls running right now do not make the sum incomplete (a lost call, such as a gap in attempts, still does).
+export function tokenUsage(state: SessionState, opts: { live?: boolean } = {}): TokenUsage {
   const { records, open } = sessionUsage(state.usageEvents);
-  let inputTokens = 0, outputTokens = 0, incomplete = open.length > 0;
+  let inputTokens = 0, outputTokens = 0, incomplete = open.length > (opts.live ? runningCalls(state) : 0);
   for (const { usage: u } of records) {
     inputTokens += u.inputTokens ?? 0;
     outputTokens += u.outputTokens ?? 0;

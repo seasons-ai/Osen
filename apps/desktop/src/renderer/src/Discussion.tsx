@@ -88,7 +88,7 @@ export function Discussion({ state, status, live, expired, confirming, stopping,
           {view ? <span className="badge" data-tone="warn"><Icon name="i-alert" size="sm" />{view.badge}</span> : <StatusBadge status={status} tokenCap={capStop} />}
         </div>
         <div className="topbar__actions">
-          <RoundCounter state={state} />
+          <RoundCounter state={state} running={running} />
           {running && <button type="button" className="btn" disabled title={t.resultAfterFinish}>{t.toResult}</button>}
           {running && (!confirming || waitPanel) && (
             <button type="button" className="btn btn--danger" disabled={stopping} onClick={onStopAsk}>
