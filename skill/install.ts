@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { parseArgs } from "node:util";
-import { DEFAULT_LANGUAGE, defineMessages, peekDataDir, resolveLanguage } from "@model-council/core";
+import { parseArgs, parseEnv } from "node:util";
+import { DEFAULT_LANGUAGE, defineMessages, envFilePath, peekDataDir, resolveLanguage } from "@model-council/core";
 import type { Language } from "@model-council/core";
 import { connect, desktopApps, disconnect, skillsDir, status } from "@model-council/connect";
 import type { ActionResult, Bin, ClientAction, ClientId, ConnectDeps, Reason, ServerCommand } from "@model-council/connect";
@@ -20,6 +20,8 @@ export interface Deps {
   desktopApps?: string[];
   // node for Claude Desktop (an app started from Finder does not see the shell PATH); not set — this process's node
   nodePath?: string;
+  // copies the skill source into a temporary folder; not set — cpSync (a seam for tests)
+  copy?: (src: string, dst: string) => void;
 }
 
 const NAME = "osen";
@@ -66,6 +68,8 @@ Modes:
     notOursAfterAdd: "error: after adding, the entry is missing or not ours",
     noSkill: "no skill: support is not confirmed, the rules come from the MCP server instructions",
     staleEntry: (command: string) => `the entry points to a missing file: ${command}`,
+    otherProgram: (recorded: string, expected: string) => `the entry runs the same server with another program: ${recorded}, expected ${expected}`,
+    serverNotAdded: "server not added: the osen skill folder is foreign",
     unexpectedShape: (file: string) => `${file}: mcpServers is not an object or the file is not a JSON object`,
     unreadable: (file: string, reason: string) => `could not read ${file}: ${reason}`,
     writeFailed: (file: string, reason: string) => `could not write ${file}: ${reason}`,
@@ -112,6 +116,8 @@ Modes:
     notOursAfterAdd: "ошибка: после добавления запись не найдена или не наша",
     noSkill: "без скилла: поддержка не подтверждена, правила приходят из инструкций MCP-сервера",
     staleEntry: (command: string) => `запись указывает на несуществующий файл: ${command}`,
+    otherProgram: (recorded: string, expected: string) => `запись запускает тот же сервер другой программой: ${recorded}, ожидается ${expected}`,
+    serverNotAdded: "сервер не добавлен: папка скилла osen чужая",
     unexpectedShape: (file: string) => `${file}: mcpServers не объект или файл не объект JSON`,
     unreadable: (file: string, reason: string) => `не удалось прочитать ${file}: ${reason}`,
     writeFailed: (file: string, reason: string) => `не удалось записать ${file}: ${reason}`,
@@ -157,6 +163,39 @@ function sameFiles(a: string, b: string): boolean {
   return x.size === y.size && [...x].every(([k, v]) => y.get(k) === v);
 }
 
+// Replaces the skill folder atomically: copy and marker go to a dot-prefixed temporary folder, the old folder is kept as a backup until the swap succeeds.
+// Returns the failure text, or null; no temporary or backup folder is left.
+function swapSkill(src: string, skill: string, skillsRoot: string, marker: string, copy: (src: string, dst: string) => void): string | null {
+  const id = `${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
+  const tmp = join(skillsRoot, `.osen-tmp-${id}`), bak = join(skillsRoot, `.osen-bak-${id}`);
+  try {
+    mkdirSync(skillsRoot, { recursive: true });
+    copy(src, tmp);
+    writeFileSync(join(tmp, MARKER), marker);
+    if (existsSync(skill)) renameSync(skill, bak);
+    renameSync(tmp, skill);
+  } catch (e) {
+    rmSync(tmp, { recursive: true, force: true });
+    try { if (existsSync(bak) && !existsSync(skill)) renameSync(bak, skill); } catch { return `${(e as Error).message}; the previous copy is in ${bak}`; }
+    return (e as Error).message;
+  }
+  // the new copy is in place: a failed cleanup of the backup is not a failed install
+  try { rmSync(bak, { recursive: true, force: true }); } catch { /* the backup stays */ }
+  return null;
+}
+
+// COUNCIL_LANG → .env of the data folder → preferences.json → en; only reads, never creates or migrates the data folder (changes 98, 257)
+export function installerLanguage(env: NodeJS.ProcessEnv): Language {
+  try {
+    const dir = peekDataDir(env);
+    let lang = env.COUNCIL_LANG;
+    if (!lang) {
+      try { lang = parseEnv(readFileSync(envFilePath(dir), "utf8")).COUNCIL_LANG; } catch { /* no or broken .env */ }
+    }
+    return resolveLanguage({ ...env, COUNCIL_LANG: lang }, dir).language;
+  } catch { return DEFAULT_LANGUAGE; }
+}
+
 export async function run(argv: string[], deps: Deps): Promise<number> {
   const m = installMessages(deps.language);
   let values;
@@ -198,6 +237,7 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
       print(r.reason ? reasonText(m, r.reason, r.file) : m.notOursAfterAdd);
     };
 
+    let foreign = "";
     if (skillsRoot === null) deps.out(`${title} · ${m.skill} · ${m.noSkill}`);
     else {
       const skill = join(skillsRoot, NAME);
@@ -205,7 +245,7 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
       // skill: our own folder has a marker with this copy's path; without a marker, or with another copy's marker, it is foreign
       const owner = existsSync(join(skill, MARKER)) ? readFileSync(join(skill, MARKER), "utf8") : null;
       const own = owner === marker;
-      const foreign = existsSync(skill) && !own ? (owner === null ? m.foreignFolder : m.otherCopyFolder(owner.replace(/\n$/, ""))) : "";
+      foreign = existsSync(skill) && !own ? (owner === null ? m.foreignFolder : m.otherCopyFolder(owner.replace(/\n$/, ""))) : "";
       if (un) {
         if (foreign) bad(sLine, foreign);
         else if (!own) sLine(m.notInstalled);
@@ -216,14 +256,10 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
         const upToDate = own && sameFiles(src, skill);
         if (upToDate) sLine(m.alreadyInstalled);
         else {
-          if (!dry) {
-            rmSync(skill, { recursive: true, force: true });
-            mkdirSync(skillsRoot, { recursive: true });
-            cpSync(src, skill, { recursive: true });
-            writeFileSync(join(skill, MARKER), marker);
-          }
-          changed = true;
-          sLine(own ? will(m.willUpdate, m.updated) : will(m.willAdd, m.added));
+          // the copy is built aside and swapped in, so a failure leaves the previous folder (change 257)
+          const failed = dry ? null : swapSkill(src, skill, skillsRoot, marker, deps.copy ?? ((a, b) => cpSync(a, b, { recursive: true })));
+          if (failed) { problems++; sLine(m.writeFailed(skill, failed)); }
+          else { changed = true; sLine(own ? will(m.willUpdate, m.updated) : will(m.willAdd, m.added)); }
         }
       }
     }
@@ -231,7 +267,12 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
     // server: a stale_path entry is only reported, the app updates it (change 142)
     const mismatch = (print: (s: string) => void, s: typeof st) => {
       if (s.state === "corrupt") bad(print, reasonText(m, s.reason!, s.file));
-      else bad(print, s.state === "stale_path" ? m.staleEntry(joined(s.entry!)) : m.pointsTo(joined(s.entry!)));
+      else if (s.state !== "stale_path") bad(print, m.pointsTo(joined(s.entry!)));
+      else {
+        // the same server file with another launcher is not a missing file
+        const e = s.entry!, file = e.args.length ? e.args[e.args.length - 1]! : e.command;
+        bad(print, existsSync(file) ? m.otherProgram(e.command, cmd.command) : m.staleEntry(joined(e)));
+      }
     };
     const done = (r: ActionResult) => {
       if (!r.ok) { fail(vLine, r); return; }
@@ -245,6 +286,7 @@ export async function run(argv: string[], deps: Deps): Promise<number> {
       else if (st.state === "connected") done(await disconnect(id, cmd, cdeps, { dryRun: dry }));
       else mismatch(vLine, st);
     } else if (st.state === "connected") vLine(m.alreadyInstalled);
+    else if (st.state === "not_connected" && foreign) bad(vLine, m.serverNotAdded);
     else if (st.state === "not_connected") done(await connect(id, cmd, cdeps, { dryRun: dry }));
     else mismatch(vLine, st);
 
@@ -280,8 +322,7 @@ if (import.meta.main) {
   const code = await run(process.argv.slice(2), {
     home: homedir(),
     repoRoot: resolve(import.meta.dirname, ".."),
-    // COUNCIL_LANG → preferences.json of the data folder → en; only reads the data folder, never migrates it (change 98)
-    language: (() => { try { return resolveLanguage(process.env, peekDataDir(process.env)).language; } catch { return DEFAULT_LANGUAGE; } })(),
+    language: installerLanguage(process.env),
     hasCommand: (b) => { try { execFileSync(b, ["--version"], { stdio: "ignore" }); return true; } catch { return false; } },
     exec: (b, args) => {
       try { return { ok: true, stdout: execFileSync(b, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }), stderr: "" }; }
