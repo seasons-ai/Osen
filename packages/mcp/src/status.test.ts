@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -8,7 +8,7 @@ import { setProcessLanguage, appendEvent, eventsPath, partialNote, collectMateri
 import type { Scenario, SessionEvent } from "@model-council/core";
 import { ToolError } from "./context.ts";
 import type { ToolContext } from "./context.ts";
-import { councilStatus, councilStop, WAIT_CAP_SEC } from "./status.ts";
+import { councilStatus, councilStop, load, WAIT_CAP_SEC } from "./status.ts";
 
 const root = join(import.meta.dirname, "../../..");
 const scenarios = join(root, "packages/core/scenarios");
@@ -811,5 +811,26 @@ describe("council_status: journal of a newer version", () => {
     expect(r.message).not.toMatch(/прервана|идёт/);
     expect(r.journal).toEqual({ reason: "newer_version", lastEvent: n });
     expect(readFileSync(eventsPath(dir, "nv5")).equals(before)).toBe(true);
+  });
+});
+
+describe("Session status: session journal unreadable", () => {
+  it("an unreadable journal names the id and EACCES in the message and in logText; an unknown id stays 'not found'", async () => {
+    const dir = tmp();
+    await start(dir, "un1", "consensus");
+    const file = eventsPath(dir, "un1");
+    chmodSync(file, 0o000);
+    try {
+      const err = (() => { try { load(ctxOf(dir), "un1"); } catch (e) { return e as ToolError; } return null; })();
+      expect(err).toBeInstanceOf(ToolError);
+      expect(err!.message).toContain("un1");
+      expect(err!.message).toContain("EACCES");
+      expect(err!.logText).toContain("EACCES");
+    } finally {
+      chmodSync(file, 0o644);
+    }
+    const missing = (() => { try { load(ctxOf(dir), "nope"); } catch (e) { return e as ToolError; } return null; })();
+    expect(missing!.message).toContain("не найдена");
+    expect(missing!.logText).toBeUndefined();
   });
 });

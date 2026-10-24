@@ -2713,3 +2713,46 @@ describe("run-prepared: the launch deadline is rechecked after slow provider che
     });
   });
 });
+
+describe("Sessions and store in council: unreadable session in the terminal list", () => {
+  const ts = "2026-01-01T00:00:00.000Z";
+  const mk = (home: string, id: string) => {
+    createSessionJournal(home, id);
+    appendEvent(home, id, {
+      seq: 1, ts, type: "session_created", pid: 1,
+      session: {
+        id, createdAt: ts, origin: "cli", topic: `Topic ${id}`, templateId: null, framing: "",
+        participants: [1, 2].map((i) => ({ id: `p${i}`, name: `n${i}`, providerId: "scripted", model: "m", role: null })),
+        limits: { maxRounds: 3, turnTimeoutSec: 60, contextChars: 1000 },
+      },
+    });
+  };
+  it("stdout only the readable one, stderr `<id>: reason` per skipped one, logged, code 0, --json unchanged", async () => {
+    const prev = getProcessLanguage();
+    const home = tmp(), clean = tmp();
+    mk(home, "sess-a"); mk(clean, "sess-a");
+    mk(home, "sess-b"); writeFileSync(eventsPath(home, "sess-b"), "garbage\n");
+    mk(home, "sess-c"); chmodSync(eventsPath(home, "sess-c"), 0o000);
+    try {
+      for (const lang of ["en", "ru"] as const) {
+        setProcessLanguage(lang);
+        const m = cliMessages(lang);
+        const r = await run(["list"], { env: dev(home) });
+        expect(r.code, lang).toBe(0);
+        expect(r.out, lang).toContain("sess-a");
+        expect(r.out, lang).not.toMatch(/sess-[bc]/);
+        const storeNoCreation = lang === "en" ? "the journal has no session creation event" : "в журнале нет события создания сессии";
+        expect(r.err.split("\n"), lang).toEqual([m.sessionNotRead("sess-b", storeNoCreation), m.sessionNotRead("sess-c", "EACCES")]);
+        const j = await run(["list", "--json"], { env: dev(home) });
+        const jc = await run(["list", "--json"], { env: dev(clean) });
+        expect(j.code, lang).toBe(0);
+        expect(j.out, lang).toBe(jc.out);
+      }
+      const log = readFileSync(join(home, "logs", "app.log"), "utf8");
+      expect(log.match(/ERROR \[cli\] Session journal not read/g)).toHaveLength(8);
+    } finally {
+      chmodSync(eventsPath(home, "sess-c"), 0o600);
+      setProcessLanguage(prev);
+    }
+  });
+});
