@@ -45,6 +45,13 @@ describe("Osen components layer", () => {
     expect(rule(css, ".eyebrow")).toMatch(/font-weight:\s*var\(--fw-bold\)/);
   });
 
+  // Requirement: "Вид редактора шаблона в стиле osen" — the role row avatar number is on the neutral --text, not --text-dim
+  it(".avatar number is --text, not --text-dim", () => {
+    const avatar = rule(read(layerPath), ".avatar");
+    expect(avatar).toMatch(/(?:^|;)\s*color:\s*var\(--text\)\s*;/);
+    expect(avatar).not.toContain("--text-dim");
+  });
+
   it("keyboard focus in the layer — --leaf outline", () => {
     const css = read(layerPath);
     for (const sel of [":is(a,button,input,select,textarea,[tabindex]):focus-visible", ".disclosure summary:focus-visible"]) {

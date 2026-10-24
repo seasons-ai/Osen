@@ -65,6 +65,7 @@ export const settings = defineMessages({
     // Provider card
     available: "available",
     unavailable: "unavailable",
+    notResponding: "not responding",
     keyNotSet: "key not set",
     keySet: "key set",
     version: "Version",
@@ -340,6 +341,7 @@ export const settings = defineMessages({
 
     available: "доступен",
     unavailable: "недоступен",
+    notResponding: "не отвечает",
     keyNotSet: "ключ не задан",
     keySet: "ключ задан",
     version: "Версия",
