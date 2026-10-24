@@ -25,6 +25,7 @@ export const mcpMessages = defineMessages({
     scriptedLabel: "Scripted",
     scenarioUnavailable: (model: string) => `Scenario “${model}” is unavailable.`,
     sessionNotFound: (id: string) => `Session ${id} was not found.`,
+    sessionUnreadable: (id: string, reason: string) => `Session ${id} could not be read: ${reason}.`,
 
     // council_options
     optionsDesc: "Returns the discussion templates, the providers with their availability and models, the defaults for council_start, and the owner's named lineups (lineups) with the availability of each position. It starts nothing and spends nothing.",
@@ -176,6 +177,7 @@ export const mcpMessages = defineMessages({
     scriptedLabel: "Сценарный",
     scenarioUnavailable: (model: string) => `Сценарий «${model}» недоступен.`,
     sessionNotFound: (id: string) => `Сессия ${id} не найдена.`,
+    sessionUnreadable: (id: string, reason: string) => `Сессию ${id} не удалось прочитать: ${reason}.`,
 
     optionsDesc: "Возвращает шаблоны обсуждений, провайдеров с доступностью и моделями и значения по умолчанию для council_start и именованные составы владельца (lineups) с доступностью каждой позиции. Сам ничего не запускает и ничего не расходует.",
     optionsProviderUnavailable: "Провайдер недоступен",

@@ -124,11 +124,13 @@ export function statusView(stored: StoredSession, dataDir: string): StatusView {
 }
 
 export function load(ctx: ToolContext, id: string): StoredSession {
-  let s: StoredSession | null = null;
+  let s: StoredSession | null;
   try {
     s = readSession(ctx.dataDir, id);
-  } catch {
-    // an invalid identifier — the same "not found"
+  } catch (e) {
+    // an existing session whose journal cannot be read is not "not found"; the server wrapper logs logText
+    const reason = (e as NodeJS.ErrnoException).code ?? (e instanceof Error ? e.message : String(e));
+    throw new ToolError(mcpMessages().sessionUnreadable(id, reason), `${id}: ${reason}`);
   }
   if (s === null) throw new ToolError(mcpMessages().sessionNotFound(id));
   return s;
