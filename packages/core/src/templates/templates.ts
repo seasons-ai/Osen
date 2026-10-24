@@ -26,7 +26,10 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 function readDir(dir: string, source: TemplateSource, errors: TemplateLoadError[]): LoadedTemplate[] {
   let names: string[];
   try {
-    names = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isFile() && e.name.endsWith(".json")).map((e) => e.name);
+    const entries = readdirSync(dir, { withFileTypes: true }).filter((e) => e.name.endsWith(".json")).sort((a, b) => (a.name < b.name ? -1 : 1));
+    // A link is reported, not followed: the same rule as for materials.
+    for (const e of entries) if (e.isSymbolicLink()) errors.push({ source, file: e.name, reason: templateMessages().symlinkSkipped });
+    names = entries.filter((e) => e.isFile()).map((e) => e.name);
   } catch (e) {
     if (errCode(e) !== "ENOENT") errors.push({ source, file: dir, reason: templateMessages().cannotRead(errText(e)) });
     return [];
@@ -78,6 +81,12 @@ export function loadTemplates(dirs: { builtinDir: string; userDir: string; langu
   for (const t of [...readDir(builtinDir, "builtin", errors), ...readDir(dirs.userDir, "user", errors)]) all.set(t.id, t);
   const templates = [...all.values()].sort((a, b) => a.category.localeCompare(b.category, language) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
+  // The built-in frame of the language is required even when the user frame overrides its text.
+  let builtinFraming: string | null = null;
+  try {
+    builtinFraming = readNeutral(builtinDir);
+  } catch {}
+  if (!builtinFraming) throw new Error(templateMessages().neutralMissing(join(builtinDir, NEUTRAL_FRAMING_FILE)));
   let neutralFraming: string | null = null;
   try {
     neutralFraming = readNeutral(dirs.userDir);
@@ -85,11 +94,7 @@ export function loadTemplates(dirs: { builtinDir: string; userDir: string; langu
     errors.push({ source: "user", file: NEUTRAL_FRAMING_FILE, reason: templateMessages().cannotRead(errText(e)) });
   }
   if (neutralFraming === "") errors.push({ source: "user", file: NEUTRAL_FRAMING_FILE, reason: templateMessages().neutralEmpty });
-  if (!neutralFraming) {
-    neutralFraming = readNeutral(builtinDir);
-    if (!neutralFraming) throw new Error(templateMessages().neutralMissing(join(builtinDir, NEUTRAL_FRAMING_FILE)));
-  }
-  return { templates, errors, neutralFraming };
+  return { templates, errors, neutralFraming: neutralFraming || builtinFraming };
 }
 
 export class UnknownTemplateError extends Error {
