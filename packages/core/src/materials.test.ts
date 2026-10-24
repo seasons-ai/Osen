@@ -92,6 +92,39 @@ describe("collectMaterials", () => {
     ]);
   });
 
+  it("folder named twice (also another spelling of the same path) is collected once, skips appear once", () => {
+    put("proj/a.txt", "aaa");
+    put("proj/.hid", "x");
+    put("proj/node_modules/x.js", "x");
+    const dir = join(root, "proj");
+    for (const again of [dir, join(root, "other", "..", "proj", ".")]) {
+      const set = collectMaterials([dir, again], opts);
+      expect(set.materials.map((m) => m.name)).toEqual(["proj/a.txt"]);
+      expect(set.skipped).toEqual([
+        { name: "proj/.hid", reason: "скрытое имя" },
+        { name: "proj/node_modules", reason: "в списке игнорирования" },
+      ]);
+    }
+  });
+
+  it("same-named explicit files from different places stay separate materials", () => {
+    const a = put("a/x.txt", "one");
+    const b = put("b/x.txt", "two");
+    const set = collectMaterials([a, b], opts);
+    expect(set.materials.map((m) => [m.id, m.name, m.text])).toEqual([
+      ["m1", "x.txt", "one"],
+      ["m2", "x.txt", "two"],
+    ]);
+  });
+
+  it("ignore name with brackets matches the literal name", () => {
+    put("app/[id]/p.txt", "p");
+    put("app/i/q.txt", "q");
+    const set = collectMaterials([join(root, "app")], { ...opts, materialsIgnore: ["[id]"] });
+    expect(set.materials.map((m) => m.name)).toEqual(["app/i/q.txt"]);
+    expect(set.skipped).toEqual([{ name: "app/[id]", reason: "в списке игнорирования" }]);
+  });
+
   it("gitignore rule: file excluded by one entry, .gitignore itself is a hidden name", () => {
     put("d/.gitignore", "a.txt\n");
     put("d/a.txt", "aaa");
