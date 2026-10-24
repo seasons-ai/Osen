@@ -82,7 +82,13 @@ export function listSessions(
       onUnreadable?.(d.name, e);
       continue;
     }
-    if (s !== null) out.push(summarize(s));
+    if (s !== null) { out.push(summarize(s)); continue; }
+    // No creation event: a missing or empty journal is a session being created (silent); a non-empty one is unreadable.
+    try {
+      if ((readEvents(dataDir, d.name)?.size ?? 0) > 0) onUnreadable?.(d.name, new Error(storeMessages().journalNoCreation));
+    } catch (e) {
+      onUnreadable?.(d.name, e);
+    }
   }
   return out.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
 }

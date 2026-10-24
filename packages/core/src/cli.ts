@@ -886,7 +886,11 @@ export async function main(argv: string[], io: CliIo): Promise<number> {
         }
       }
       if (cmd === "list") {
-        const all = listSessions(dataDir);
+        const all = listSessions(dataDir, undefined, (id, e) => {
+          const reason = (e as NodeJS.ErrnoException)?.code ?? (e instanceof Error ? e.message : String(e));
+          log.error("Session journal not read", `${id}: ${reason}`);
+          io.stderr(t.sessionNotRead(id, reason));
+        });
         if (values.json) {
           io.stdout(JSON.stringify(listJson(all)));
           return EXIT.consensus;
