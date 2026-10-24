@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CliLocation } from "../cli-agents/discovery.ts";
 import { FAKE_MODELS, startFakeServer } from "../http/fake-server.ts";
 import type { FakeServer } from "../http/fake-server.ts";
-import { linkExecutable } from "../executable.testutil.ts";
+import { linkExecutable, writeExecutable } from "../executable.testutil.ts";
 import { configPath, initialRegistry, readRegistry } from "./config.ts";
 import { setProcessLanguage } from "../i18n/index.ts";
 import type { CliProvider, HttpProvider, Provider, Registry } from "./config.ts";
@@ -500,4 +500,22 @@ describe("CLI participants: keys from .env files stay out of the CLI environment
     const http = await inspectProvider({ id: "h", kind: "openai-http", label: "H", baseUrl: "http://127.0.0.1:1/v1", apiKeyEnv: keyA, models: ["m"] }, { env: merged, dataDir, withModels: false });
     expect(http.http?.apiKey).toBe("secret-a");
   });
+});
+
+describe("Таймаут и прерывание: Чтение справки вне хода с потомком, игнорирующим SIGTERM", () => {
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  it("a hung help read times out, the reason is named and the SIGTERM-ignoring descendant is gone after the stop grace", async () => {
+    // the descendant holds no pipes: the old execFile read returned on the leader's exit and left it alive
+    const pidfile = join(dir, "descendant.pid");
+    writeExecutable(join(dir, "claude"), `#!/bin/sh\ncase "$1" in --version) echo '2.1.288 (Claude Code)';; --help) /bin/sh -c 'trap "" TERM; echo $$ > "$1"; exec /bin/sleep 30' sh '${pidfile}' >/dev/null 2>&1 </dev/null & while [ ! -s '${pidfile}' ]; do /bin/sleep 0.05; done; exec /bin/sleep 30;; esac\n`);
+    const r = await inspectProvider(claude, { env: env(), deps: noModels });
+    const pid = Number(readFileSync(pidfile, "utf8").trim());
+    try {
+      expect(alive(pid)).toBe(true);
+      expect(r.status.available).toBe(false);
+      expect(r.status.reason).toMatch(/^(Could not read the help of claude|Не удалось прочитать справку claude): .*no answer within 10000 ms/);
+      await new Promise((res) => setTimeout(res, 3000));
+      expect(alive(pid)).toBe(false);
+    } finally { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+  }, 60_000);
 });

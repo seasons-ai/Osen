@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { isInsideRepo } from "../inside-repo.ts";
+import { isInsideRepo, isInsideRepoBeforeCreate } from "../inside-repo.ts";
 import { eventsPath, foldEvents, readEvents, sessionsDir } from "../../src/index.ts";
 import type { Language, SessionEvent } from "../../src/index.ts";
 import { promptMessages } from "../../src/messages/prompt.ts";
@@ -20,6 +20,7 @@ if (process.env.COUNCIL_DEV !== "1") {
 const repo = resolve(import.meta.dirname, "../../../..");
 const rawHome = process.env.COUNCIL_HOME;
 if (!rawHome) { console.error("Set COUNCIL_HOME: a new folder inside the project."); process.exit(2); }
+if (!isInsideRepoBeforeCreate(repo, rawHome)) { console.error(`COUNCIL_HOME ${resolve(rawHome)} is outside the project.`); process.exit(2); }
 mkdirSync(resolve(rawHome), { recursive: true });
 const work = realpathSync(resolve(rawHome));
 if (!isInsideRepo(realpathSync(repo), work)) { console.error(`COUNCIL_HOME ${work} is outside the project.`); process.exit(2); }

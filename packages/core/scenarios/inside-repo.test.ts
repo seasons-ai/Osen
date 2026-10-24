@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { isInsideRepo } from "./inside-repo.ts";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { isInsideRepo, isInsideRepoBeforeCreate } from "./inside-repo.ts";
 
 const nfc = (s: string) => s.normalize("NFC");
 const nfd = (s: string) => s.normalize("NFD");
@@ -61,6 +64,38 @@ describe("isInsideRepo", () => {
       for (const r of [nfc, nfd]) for (const f of [nfc, nfd]) {
         expect(isInsideRepo(r(repo), f(folder)), `seed ${seed}: ${folder}`).toBe(expected);
       }
+    }
+  });
+});
+
+describe("isInsideRepoBeforeCreate", () => {
+  it("Папка вне проекта не создаётся: decides without creating anything", () => {
+    const tmp = realpathSync(mkdtempSync(join(tmpdir(), "inside-repo-")));
+    try {
+      const repo = join(tmp, "repo-й");
+      mkdirSync(repo);
+      const other = (s: string) => (s === s.normalize("NFC") ? s.normalize("NFD") : s.normalize("NFC"));
+      expect(isInsideRepoBeforeCreate(repo, join(tmp, "outside/a/b"))).toBe(false);
+      expect(existsSync(join(tmp, "outside"))).toBe(false);
+      expect(isInsideRepoBeforeCreate(repo, join(repo, "../x"))).toBe(false);
+      expect(isInsideRepoBeforeCreate(repo, join(repo, "new/a/b"))).toBe(true);
+      expect(isInsideRepoBeforeCreate(repo, join(repo, "..foo/x"))).toBe(true);
+      expect(isInsideRepoBeforeCreate(repo, other(join(repo, "new/x")))).toBe(true);
+      expect(isInsideRepoBeforeCreate(other(repo), join(repo, "new/x"))).toBe(true);
+      expect(existsSync(join(repo, "new"))).toBe(false);
+      mkdirSync(join(tmp, "elsewhere"));
+      symlinkSync(join(tmp, "elsewhere"), join(repo, "link"));
+      expect(isInsideRepoBeforeCreate(repo, join(repo, "link/new/x"))).toBe(false);
+      expect(existsSync(join(tmp, "elsewhere/new"))).toBe(false);
+      symlinkSync(join(tmp, "nowhere"), join(repo, "dangling"));
+      expect(isInsideRepoBeforeCreate(repo, join(repo, "dangling/new/x"))).toBe(false);
+      expect(existsSync(join(tmp, "nowhere"))).toBe(false);
+      writeFileSync(join(tmp, "file"), "");
+      expect(isInsideRepoBeforeCreate(repo, join(tmp, "file/x"))).toBe(false);
+      writeFileSync(join(repo, "file"), "");
+      expect(isInsideRepoBeforeCreate(repo, join(repo, "file/x"))).toBe(true);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
     }
   });
 });

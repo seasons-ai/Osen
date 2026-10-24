@@ -1,10 +1,9 @@
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { promisify } from "node:util";
 import { HELP_ARGS, planLaunch } from "../cli-agents/args.ts";
 import { locateCli, pinnedEnv } from "../cli-agents/discovery.ts";
 import { declaredFlags, parseCodexFeatures } from "../cli-agents/flags.ts";
 import { listModels } from "../cli-agents/models.ts";
+import { readOutput } from "../cli-agents/process.ts";
 import { CLI_AGENTS, DEFAULT_MODEL } from "../cli-agents/types.ts";
 import type { CliRuntime } from "../cli-agents/types.ts";
 import { listHttpModels } from "../http/models.ts";
@@ -47,10 +46,9 @@ export interface InspectDeps {
   listHttpModels: typeof listHttpModels;
 }
 
-const run = promisify(execFile);
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
-const exec = async (path: string, args: readonly string[], env: Env) =>
-  (await run(path, [...args], { env, timeout: 10_000, maxBuffer: 4 * 1024 * 1024 })).stdout;
+// Own process group: the 10 s limit or more than 4 MiB of output ends the whole group (SIGTERM, then SIGKILL).
+const exec = (path: string, args: readonly string[], env: Env) => readOutput(path, args, env);
 
 const realDeps: InspectDeps = {
   locate: locateCli,
