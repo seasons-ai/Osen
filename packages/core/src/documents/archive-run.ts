@@ -11,7 +11,7 @@ function run(bytes: Uint8Array, limits: DocLimits, extra: object, maxBuffer: num
   const runtime = documentExtractorRuntime();
   const { ms, rssBytes, chars, parts, unpackedBytes, ratio, cells } = limits;
   const r = spawnSync(runtime.command, [runtime.script, JSON.stringify({ ms, rssBytes, chars, parts, unpackedBytes, ratio, cells, ...extra })], {
-    input: bytes, env: runtime.env, timeout: ms + 2000, killSignal: "SIGKILL", maxBuffer, stdio: ["pipe", "pipe", "ignore"],
+    input: bytes, env: runtime.env, cwd: "/", timeout: ms + 2000, killSignal: "SIGKILL", maxBuffer, stdio: ["pipe", "pipe", "ignore"],
   });
   const code = (r.error as NodeJS.ErrnoException | undefined)?.code;
   if (code === "ETIMEDOUT") return { ok: false, code: "timeout" };

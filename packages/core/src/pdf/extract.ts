@@ -37,14 +37,14 @@ export function extractPdfText(bytes: Uint8Array, limits: PdfLimits = PDF_LIMITS
   const { pages, chars, ms, rssBytes } = limits;
   // ponytail: a synchronous call holds the event loop for up to ms + 2 s of PDF.js plus 300 s + 2 s of recognition per file; asynchronous collection is a separate change, if PDFs become heavy.
   const r = spawnSync(runtime.command, [runtime.script, JSON.stringify({ pages, chars, ms, rssBytes })], {
-    input: bytes, env: runtime.env, timeout: ms + 2000, killSignal: "SIGKILL",
+    input: bytes, env: runtime.env, cwd: "/", timeout: ms + 2000, killSignal: "SIGKILL",
     maxBuffer: chars * 4 + 2 ** 20, stdio: ["pipe", "pipe", "ignore"],
   });
   const code = (r.error as NodeJS.ErrnoException | undefined)?.code;
   if (code === "ETIMEDOUT") return { ok: false, code: "timeout" };
   if (code === "ENOBUFS") return { ok: false, code: "chars" };
   if (r.error) return { ok: false, code: "failed", detail: code ?? materialsMessages().pdfStartError };
-  if (r.status !== 0) return { ok: false, code: "failed", detail: r.signal ?? `exit ${r.status}` };
+  if (r.status !== 0) return { ok: false, code: "failed", detail: r.signal ? `signal:${r.signal}` : `exit:${r.status}` };
   try {
     const result = JSON.parse(r.stdout.toString("utf8")) as PdfResult | PdfScan;
     if (typeof result === "object" && result !== null && typeof result.ok === "boolean") {
@@ -119,6 +119,14 @@ export function readPdfText(fd: number, limits: PdfLimits = PDF_LIMITS, budget?:
   return result;
 }
 
+// the detail of a failed process is a language-free label; the parent builds the words
+function failedDetail(detail: string | undefined): string | undefined {
+  const m = materialsMessages();
+  const exit = /^exit:(\d+)$/.exec(detail ?? "");
+  if (exit) return m.docExitCode(Number(exit[1]));
+  return detail?.startsWith("signal:") ? m.archiveSignal(detail.slice(7)) : detail;
+}
+
 export function pdfReason(failure: { code: PdfFailure; detail?: string }, limits: PdfLimits = PDF_LIMITS): string {
   const m = materialsMessages();
   switch (failure.code) {
@@ -130,7 +138,7 @@ export function pdfReason(failure: { code: PdfFailure; detail?: string }, limits
     case "encrypted": return m.pdfEncrypted;
     case "damaged": return m.pdfDamaged;
     case "no_text": return m.pdfNoText;
-    case "failed": return m.pdfFailed(failure.detail ?? m.pdfStartError);
+    case "failed": return m.pdfFailed(failedDetail(failure.detail) ?? m.pdfStartError);
     case "ocr_pages": return m.pdfOcrPages(PDF_OCR_LIMITS.pages);
     case "ocr_missing": return m.imgMissing;
     case "ocr_start": return m.imgStart;

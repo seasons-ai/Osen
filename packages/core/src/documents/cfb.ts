@@ -9,11 +9,13 @@ const NO_STREAM = 0xffffffff;
 /**
  * Names of the stream entries (type 2) that are direct children of the root entry of a Compound File Binary file.
  * Directory only: stream contents are never read. Nested storages are not entered, so an MSG that embeds a Word file is not a DOC.
- * Not a CFB header: unsupported. A good header and then a broken structure: damaged.
+ * No CFB signature: unsupported. The signature but shorter than one 512-byte header: damaged (a cut-off CFB).
+ * A good header and then a broken structure: damaged.
  */
 export function cfbStreams(bytes: Uint8Array): string[] {
   const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.length);
-  if (b.length < 512 || !b.subarray(0, 8).equals(CFB_SIGNATURE)) throw new DocError("unsupported");
+  if (!b.subarray(0, 8).equals(CFB_SIGNATURE)) throw new DocError("unsupported");
+  if (b.length < 512) throw new DocError("damaged");
   const shift = b.readUInt16LE(0x1e);
   if (shift !== 9 && shift !== 12) throw new DocError("unsupported");
   const size = 1 << shift;
