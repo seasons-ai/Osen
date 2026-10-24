@@ -201,8 +201,9 @@ describe("council --url / --preview-materials / --prepared-materials", () => {
   it("9. bad set: unknown, invalid, outdated, corrupted", async () => {
     const mk = (home: string, now?: () => Date) => savePreparedMaterials(home, { materials: [{ id: "m1", name: "a.txt", chars: 3, sha256: sha256Of("abc"), text: "abc" }], workspace: [], skipped: [], left: [], materialsChars: 1000, stamp: "t" }, now ? { now } : {});
     const home = tmp();
-    const expired = mk(home, () => new Date(Date.now() - 25 * 3600 * 1000)).id;
+    // the expired set is saved last: preparing a set removes the expired ones before it
     const corrupt = mk(home).id;
+    const expired = mk(home, () => new Date(Date.now() - 25 * 3600 * 1000)).id;
     writeFileSync(join(preparedMaterialsDir(home), corrupt, "set.sha256"), "garbage");
     const cases: [string, string][] = [["f".repeat(32), "не найден"], ["../sessions/x", "Недопустимый идентификатор"], [expired, "устарел"], [corrupt, "повреждён"]];
     for (const [id, why] of cases) {

@@ -232,6 +232,82 @@ await run("session C", msC, mainScripts(), { contextChars: 1 }, (prompt, n, who)
   assert.ok(prompt.includes("[Ранние ходы опущены из-за лимита контекста:"), `session C, call ${n} (${who}): no note about omitted turns`);
 });
 
-// 7. Finish
+// 7. Duplicate attachments, same-named files and expired prepared sets (real council process, 0 model calls)
+{
+  const stand = join(dataDir, "stand-250");
+  const repoRoot = resolve(import.meta.dirname, "../../../..");
+  const sum = (b: string) => createHash("sha256").update(b).digest("hex");
+  for (const lang of ["en", "ru"] as const) {
+    const sh = join(stand, lang);
+    rmSync(sh, { recursive: true, force: true });
+    const fx = join(sh, "fx");
+    const data = join(sh, "data");
+    mkdirSync(join(fx, "proj/node_modules"), { recursive: true });
+    mkdirSync(join(fx, "a"), { recursive: true });
+    mkdirSync(join(fx, "b"), { recursive: true });
+    writeFileSync(join(fx, "proj/a.txt"), "hello");
+    writeFileSync(join(fx, "proj/.hid"), "hidden");
+    writeFileSync(join(fx, "proj/node_modules/x.js"), "x");
+    writeFileSync(join(fx, "a/x.txt"), "one");
+    writeFileSync(join(fx, "b/x.txt"), "two");
+    const council = (args: string[]) => {
+      const r = spawnSync(process.execPath, [join(repoRoot, "packages/core/src/council.ts"), ...args], {
+        cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120_000,
+        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", COUNCIL_DEV: "1", COUNCIL_LANG: lang, COUNCIL_HOME: data },
+      });
+      return { code: r.status, out: r.stdout + r.stderr };
+    };
+    const preview = (...attach: string[]) => council(["--preview-materials", ...attach.flatMap((x) => ["--attach", join(fx, x)])]);
+    const setId = (out: string) => out.match(/\b([0-9a-f]{32})\b/)![1]!;
+    const skippedCount = lang === "en" ? /^Skipped: (\d+)$/m : /^Пропущено: (\d+)$/m;
+    const materialsCount = lang === "en" ? /^Materials: (\d+),/m : /^Материалы: (\d+),/m;
+
+    // MA1: the same path named twice
+    const dup = preview("proj", "proj");
+    assert.equal(dup.code, 0, `${lang}: duplicate path preview\n${dup.out}`);
+    assert.equal(dup.out.match(materialsCount)?.[1], "1", `${lang}: duplicate path must give one material\n${dup.out}`);
+    assert.equal(dup.out.match(skippedCount)?.[1], "2", `${lang}: each skip must be listed once\n${dup.out}`);
+    assert.equal(dup.out.split("\n").filter((l) => l.includes("proj/.hid")).length, 1, `${lang}: .hid listed more than once`);
+    assert.equal(dup.out.split("\n").filter((l) => l.includes("proj/node_modules")).length, 1, `${lang}: node_modules listed more than once`);
+    console.log(`✓ ${lang}: the same path named twice gives one material and each skip once`);
+
+    // MA7: same-named files stay two materials with their own ids
+    const same = preview("a/x.txt", "b/x.txt");
+    assert.equal(same.code, 0, `${lang}: same-named preview\n${same.out}`);
+    assert.equal(same.out.match(materialsCount)?.[1], "2", `${lang}: two same-named files\n${same.out}`);
+    assert.ok(/m1: x\.txt\none\n/.test(same.out) && /m2: x\.txt\ntwo\n/.test(same.out), `${lang}: m1/m2 names or texts wrong\n${same.out}`);
+    console.log(`✓ ${lang}: same-named files stay m1: x.txt and m2: x.txt with their own texts`);
+
+    // MA2: expired sets are removed on prepare, damaged ones stay
+    const root = join(data, "prepared-materials");
+    const oldId = setId(preview("a/x.txt").out);
+    const oldJson = join(root, oldId, "set.json");
+    const obj = JSON.parse(readFileSync(oldJson, "utf8"));
+    obj.createdAt = new Date(Date.now() - 25 * 3600_000).toISOString();
+    const text = JSON.stringify(obj);
+    writeFileSync(oldJson, text);
+    writeFileSync(join(root, oldId, "set.sha256"), sum(text));
+    const emptyId = "e".repeat(32);
+    mkdirSync(join(root, emptyId));
+    writeFileSync(join(root, emptyId, "set.json"), "");
+    const wrongId = "f".repeat(32);
+    mkdirSync(join(root, wrongId));
+    writeFileSync(join(root, wrongId, "set.json"), JSON.stringify({ ...obj, id: wrongId }));
+    writeFileSync(join(root, wrongId, "set.sha256"), "0".repeat(64));
+    const fresh = setId(preview("b/x.txt").out);
+    const names = readdirSync(root);
+    assert.ok(!names.includes(oldId), `${lang}: the expired set was not removed`);
+    for (const id of [emptyId, wrongId, fresh]) assert.ok(names.includes(id), `${lang}: ${id} must stay`);
+    const start = council(["--topic", "x", "--participant", "scripted:packages/core/scenarios/consensus/p1.json", "--participant", "scripted:packages/core/scenarios/consensus/p2.json", "--prepared-materials", oldId]);
+    const reason = lang === "en" ? "The prepared set was not found" : "Подготовленный набор не найден";
+    assert.equal(start.code, 2, `${lang}: start by the removed set\n${start.out}`);
+    assert.ok(start.out.includes(reason), `${lang}: expected the "unknown" reason\n${start.out}`);
+    console.log(`✓ ${lang}: the expired set is removed on prepare, damaged ones stay, the removed id gives "unknown" (code 2)`);
+  }
+  rmSync(stand, { recursive: true, force: true });
+  console.log("✓ duplicates, same-named files and expired sets: en and ru passed");
+}
+
+// 8. Finish
 makeFixtures();
 console.log("Materials check passed.");
