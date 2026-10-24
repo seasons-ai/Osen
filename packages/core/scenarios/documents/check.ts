@@ -14,6 +14,7 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { listArchiveEntries } from "../../src/documents/archive-run.ts";
 import { collectMaterials, DOC_LIMITS, documentReason, extractDocumentText, MaterialsError, setDocumentExtractorRuntime, setProcessLanguage } from "../../src/index.ts";
 import { makeCfb, makeDocx, makePptx, makeRtf, makeXlsx, makeZip, p, pptxTable, sp, table } from "../../src/documents/fixture.ts";
 import { SANDBOX_PROFILE } from "../../src/documents/textutil.ts";
@@ -349,6 +350,15 @@ async function suite(lang: "ru" | "en") {
   await refuse("loop", join(fx, "loop.doc"), t.reason.damaged, 5000);
   ok(`${tag} L6: a CFB with neither WordDocument nor EncryptedPackage keeps "${t.nonText}"; a CFB with a looping directory chain is "${t.reason.damaged}" in under 5 s`);
 
+  await refuse("short-cfb", join(fx, "t.doc"), t.reason.damaged);
+  await refuse("short-no-signature", join(fx, "z.doc"), t.nonText);
+  const rShort = await attach("s251", join(fx, "shortdir"), undefined);
+  assert.equal(rShort.code, 0, dump(rShort.r));
+  const namesShort = (created(sessionId(rShort.r)).materials as { name: string }[]).map((m) => m.name);
+  assert.ok(namesShort.length === 1 && namesShort[0]!.endsWith("README.md"), `collected: ${namesShort}`);
+  assert.ok(rShort.r.out.split("\n").some((l) => l.includes("t.doc") && l.includes(t.reason.damaged)), `no skipped line with the damaged reason${dump(rShort.r)}`);
+  ok(`${tag} S251: an 8-byte CFB signature + 100 zero bytes named t.doc is refused as "${t.reason.damaged}" (code 2), 108 zero bytes z.doc keep "${t.nonText}"; in a folder t.doc is skipped as damaged and README is collected`);
+
   // ---- 4. Tracked changes, header, comments ----
   const tracked = makeDocx({
     body: `<w:p><w:r><w:t xml:space="preserve">Было </w:t></w:r><w:ins w:id="1"><w:r><w:t>вставлено</w:t></w:r></w:ins><w:del w:id="2"><w:r><w:delText>удалено</w:delText></w:r></w:del></w:p>`,
@@ -671,6 +681,29 @@ async function inProcess() {
   }
 }
 
+async function cwdInProcess() {
+  // change 251: the extraction processes run in /, not in the owner's project folder
+  const log = join(work, "cwds.log"), wrapCwd = join(fx, "wrap-cwd.ts");
+  writeFileSync(wrapCwd, `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(log)}, process.cwd() + "\\n");\nawait import(${JSON.stringify(join(repo, "packages/core/src/documents/doc-extract.ts"))});\n`);
+  const prevCwd = process.cwd();
+  try {
+    process.chdir(repo);
+    setDocumentExtractorRuntime({ script: wrapCwd });
+    const f = join(fx, "cwd.docx");
+    writeFileSync(f, makeDocx({ body: p("Текст для проверки каталога") }));
+    assert.equal(collectMaterials([f], { materialsChars: 10_000, materialsIgnore: [] as string[] }).materials[0]!.text, "Текст для проверки каталога");
+    const listed = listArchiveEntries(makeZip([{ name: "a.txt", data: "a" }]));
+    assert.equal(listed.ok, true, JSON.stringify(listed));
+    const cwds = readFileSync(log, "utf8").split("\n").filter(Boolean);
+    assert.ok(cwds.length >= 2, `recorded ${cwds.length} starts`);
+    assert.deepEqual([...new Set(cwds)], ["/"], `extraction processes ran in: ${cwds}`);
+    ok(`S251 cwd: with the parent in ${repo}, the DOCX extraction process and the ZIP listing process both ran in "/" (${cwds.length} starts)`);
+  } finally {
+    process.chdir(prevCwd);
+    setDocumentExtractorRuntime();
+  }
+}
+
 async function main() {
   server = net.createServer((s) => { connections++; s.destroy(); });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -703,10 +736,17 @@ async function main() {
   writeFileSync(join(fx, "encdir", "secret.docx"), makeCfb({ streams: ["EncryptedPackage", "EncryptionInfo"] }));
   writeFileSync(join(fx, "nostream.bin"), makeCfb({ streams: ["Contents"] }));
   writeFileSync(join(fx, "loop.doc"), makeCfb({ streams: ["WordDocument"], loop: true }));
+  // change 251: a file with the CFB signature but shorter than one sector is damaged; without the signature it stays a binary file
+  writeFileSync(join(fx, "t.doc"), Buffer.concat([Buffer.from("D0CF11E0A1B11AE1", "hex"), Buffer.alloc(100)]));
+  writeFileSync(join(fx, "z.doc"), Buffer.alloc(108));
+  mkdirSync(join(fx, "shortdir"), { recursive: true });
+  writeFileSync(join(fx, "shortdir", "README.md"), "Описание проекта.\n");
+  copyFileSync(join(fx, "t.doc"), join(fx, "shortdir", "t.doc"));
   const srcBefore = Object.fromEntries(allFiles(fx).map((f) => [f, sha(readFileSync(f))]));
-  const keep = ["report.docx", "report-macro.docm", "broken.docx", "sheet.xlsx", "sheet-macro.xlsm", "deck.pptx", "big.xlsx", "note.rtf", "legacy.bin", "fake.rtf", "secret.docx", "nostream.bin", "loop.doc", "encdir/README.md", "encdir/secret.docx"].map((n) => join(fx, n));
+  const keep = ["report.docx", "report-macro.docm", "broken.docx", "sheet.xlsx", "sheet-macro.xlsm", "deck.pptx", "big.xlsx", "note.rtf", "legacy.bin", "fake.rtf", "secret.docx", "nostream.bin", "loop.doc", "t.doc", "z.doc", "shortdir/README.md", "shortdir/t.doc", "encdir/README.md", "encdir/secret.docx"].map((n) => join(fx, n));
   for (const lang of ["ru", "en"] as const) await suite(lang);
   await inProcess();
+  await cwdInProcess();
   await legacyInProcess();
   for (const f of keep) assert.equal(sha(readFileSync(f)), srcBefore[f], `${f} changed`);
   ok("source documents are byte-identical after all parts");

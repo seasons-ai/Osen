@@ -8,6 +8,7 @@ import { makePdf } from "./pdf/fixture.ts";
 import { setProcessLanguage } from "./i18n/process-language.ts";
 import { materialsMessages } from "./messages/materials.ts";
 import { setDocumentExtractorRuntime, DOC_NOT_CACHED } from "./documents/extract.ts";
+import { listArchiveEntries } from "./documents/archive-run.ts";
 import { writeExecutable } from "./executable.testutil.ts";
 import { OCR_NOT_CACHED, setOcrRuntime } from "./ocr/run.ts";
 import { PDF_NOT_CACHED, setPdfExtractorRuntime, setPdfOcrTesting } from "./pdf/extract.ts";
@@ -516,6 +517,19 @@ process.stdout.write('{"ok":false,"code":"failed","detail":"worker exit"}\\n');
       const reasons = refusal(() => collectMaterials([f], opts)).reasons;
       expect(reasons).toEqual([`«${f}»: ${m().archiveFailed(expected[lang][mode])}`]);
       expect(reasons[0]).not.toMatch(/\bexit \d|worker error|worker exit/);
+    }
+  }, SLOW);
+});
+
+describe("Document extraction isolation: working directory of the archive process", () => {
+  it("listArchiveEntries runs the extraction process in /, not in the parent's working directory", () => {
+    const before = process.cwd();
+    process.chdir(root);
+    try {
+      setDocumentExtractorRuntime({ script: join(import.meta.dirname, "pdf/testdata/child-cwd.ts") });
+      expect(listArchiveEntries(makeZip([{ name: "a.txt", data: "a" }]))).toMatchObject({ ok: true, cwd: "/" });
+    } finally {
+      process.chdir(before);
     }
   }, SLOW);
 });

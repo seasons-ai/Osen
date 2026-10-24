@@ -38,6 +38,19 @@ describe("Зашифрованные документы Office", () => {
     expect(code(() => cfbStreams(makeCfb({ streams: ["a"] }).subarray(0, 1100)))).toBe("damaged");
   });
 
+  it("RTF and DOC text: a short file with the CFB signature is damaged, without it unsupported", () => {
+    const sig = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+    for (let n = 8; n < 512; n++) {
+      const signed = Buffer.concat([sig, Buffer.alloc(n - 8)]);
+      expect(code(() => cfbStreams(signed)), `signed ${n}`).toBe("damaged");
+      expect(code(() => cfbStreams(new Uint8Array(n))), `zeros ${n}`).toBe("unsupported");
+    }
+    expect(code(() => cfbStreams(new Uint8Array(100)))).toBe("unsupported");
+    const wrongShift = Buffer.concat([sig, Buffer.alloc(504)]);
+    wrongShift.writeUInt16LE(10, 0x1e);
+    expect(code(() => cfbStreams(wrongShift))).toBe("unsupported");
+  });
+
   it("EncryptedPackage wins over WordDocument; a CFB with neither is unsupported; RTF and others are not system files", () => {
     expect(code(() => systemKind(makeCfb({ streams: ["WordDocument", "EncryptedPackage"] })))).toBe("encrypted");
     expect(systemKind(makeCfb({ streams: ["WordDocument"] }))).toBe("doc");

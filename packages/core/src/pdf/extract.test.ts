@@ -53,7 +53,9 @@ describe("Limits and reasons", () => {
       ocr_folder: "распознавание PDF в папке дольше 300 секунд — остальные PDF со сканами пропущены",
     };
     for (const [code, text] of Object.entries(reasons)) expect(pdfReason({ code: code as PdfFailure })).toBe(text);
-    expect(pdfReason({ code: "failed", detail: "exit 3" })).toBe("не удалось извлечь текст PDF — exit 3");
+    expect(pdfReason({ code: "failed", detail: "exit:3" })).toBe("не удалось извлечь текст PDF — код выхода 3");
+    expect(pdfReason({ code: "failed", detail: "signal:SIGTERM" })).toBe("не удалось извлечь текст PDF — процесс извлечения остановлен сигналом SIGTERM");
+    expect(pdfReason({ code: "failed", detail: "ENOENT" })).toBe("не удалось извлечь текст PDF — ENOENT");
     expect(pdfReason({ code: "ocr_failed", detail: "helper:bad_request" })).toBe("не удалось распознать текст PDF — помощник распознавания сообщил об ошибке");
   });
 });
@@ -216,11 +218,46 @@ describe("Parent safeguard", () => {
     setPdfExtractorRuntime({ script: data("child-garbage.ts") });
     expect(extractPdfText(makePdf(["а"]))).toEqual({ ok: false, code: "failed", detail: "ответ не разобран" });
     setPdfExtractorRuntime({ script: data("child-exit3.ts") });
-    expect(extractPdfText(makePdf(["а"]))).toEqual({ ok: false, code: "failed", detail: "exit 3" });
+    expect(extractPdfText(makePdf(["а"]))).toEqual({ ok: false, code: "failed", detail: "exit:3" });
+  }, SLOW);
+
+  it("Explicit PDF refusals: exit code and signal of the extraction process are worded from the catalog", () => {
+    const cases = [
+      { script: "child-exit3.ts", detail: "exit:3", ru: "не удалось извлечь текст PDF — код выхода 3", en: "could not extract PDF text — exit code 3" },
+      { script: "child-signal.ts", detail: "signal:SIGTERM", ru: "не удалось извлечь текст PDF — процесс извлечения остановлен сигналом SIGTERM", en: "could not extract PDF text — the extraction process was stopped by signal SIGTERM" },
+    ];
+    try {
+      for (const c of cases) {
+        setPdfExtractorRuntime({ script: data(c.script) });
+        const r = extractPdfText(makePdf(["а"]));
+        expect(r).toEqual({ ok: false, code: "failed", detail: c.detail });
+        for (const lang of ["ru", "en"] as const) {
+          setProcessLanguage(lang);
+          const reason = pdfReason(r as { code: "failed"; detail: string });
+          expect(reason).toBe(c[lang]);
+          expect(reason).not.toMatch(/exit \d|signal:|exit:/);
+        }
+        setProcessLanguage("ru");
+      }
+    } finally {
+      setProcessLanguage("ru");
+    }
   }, SLOW);
 });
 
 describe("Isolation", () => {
+  it("PDF extraction isolation: the extraction process runs in /, not in the parent's working directory", () => {
+    const before = process.cwd();
+    const dir = tmp();
+    process.chdir(dir);
+    try {
+      setPdfExtractorRuntime({ script: data("child-cwd.ts") });
+      expect(extractPdfText(makePdf(["а"]))).toMatchObject({ ok: true, text: "/" });
+    } finally {
+      process.chdir(before);
+    }
+  }, SLOW);
+
   it("child process does not get the parent's environment", () => {
     process.env.PDF_TEST_MARKER = "1";
     try {
