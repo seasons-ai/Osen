@@ -9,7 +9,8 @@ import type { CliLocation } from "../cli-agents/discovery.ts";
 import { FAKE_MODELS, startFakeServer } from "../http/fake-server.ts";
 import type { FakeServer } from "../http/fake-server.ts";
 import { linkExecutable } from "../executable.testutil.ts";
-import { configPath } from "./config.ts";
+import { configPath, initialRegistry, readRegistry } from "./config.ts";
+import { setProcessLanguage } from "../i18n/index.ts";
 import type { CliProvider, HttpProvider, Provider, Registry } from "./config.ts";
 import { ensureRegistry, inspectProvider, inspectProviders } from "./providers.ts";
 
@@ -323,6 +324,45 @@ describe("inspectProvider openai-http", () => {
   it("listHttpModels throws", async () => {
     const r = await inspectProvider(prov({ url: "http://x" }), { env: {}, deps: { listHttpModels: async () => { throw new Error("boom"); } } });
     expect(r.status).toMatchObject({ available: false, reason: "Осмотр gw завершился ошибкой: boom" });
+  });
+});
+
+describe("Сведения о доступности провайдера: Логин и пароль в адресе", () => {
+  afterEach(() => setProcessLanguage("ru"));
+  const http = (id: string, baseUrl: string): HttpProvider => ({ id, kind: "openai-http", label: id, models: ["m"], baseUrl });
+  const counted = () => { const calls: unknown[] = []; return { calls, deps: { listHttpModels: async (h: unknown) => { calls.push(h); return { models: ["m"], confirmed: true }; } } }; };
+
+  for (const [lang, word] of [["ru", "логин или пароль"], ["en", "login or password"]] as const) {
+    for (const [what, url] of [["login and password", "http://user:SECRETPASS@127.0.0.1:9/v1"], ["login only", "http://user@127.0.0.1:9/v1"]] as const) {
+      it(`${lang}: ${what} in baseUrl is unavailable, the address is not echoed, no request`, async () => {
+        setProcessLanguage(lang);
+        const { calls, deps } = counted();
+        const r = await inspectProvider(http("gw", url), { env: {}, deps });
+        expect(r.status.available).toBe(false);
+        expect(r.status.reason).toContain("gw");
+        expect(r.status.reason).toContain("baseUrl");
+        expect(r.status.reason).toContain(word);
+        expect(r.status).not.toHaveProperty("baseUrl");
+        const text = JSON.stringify(r);
+        for (const leak of ["SECRETPASS", "user", "127.0.0.1"]) expect(text).not.toContain(leak);
+        expect(r.http).toBeUndefined();
+        expect(calls).toHaveLength(0);
+      });
+    }
+  }
+
+  it("a neighbour without userinfo (with a query) stays available; readRegistry keeps both", async () => {
+    const bad = http("bad", "http://user:SECRETPASS@127.0.0.1:9/v1");
+    const good = http("good", "http://127.0.0.1:9/v1?api-version=1");
+    writeFileSync(configPath(dir), JSON.stringify({ ...initialRegistry([]), providers: [bad, good] }));
+    const reg = readRegistry(dir);
+    expect(reg.providers.map((p) => p.id)).toEqual(["bad", "good"]);
+    const { calls, deps } = counted();
+    const [b, g] = await inspectProviders(reg, { env: {}, deps });
+    expect(b?.status.available).toBe(false);
+    expect(g?.status).toMatchObject({ available: true, baseUrl: "http://127.0.0.1:9/v1?api-version=1" });
+    expect(g?.http).toBeDefined();
+    expect(calls).toHaveLength(1);
   });
 });
 

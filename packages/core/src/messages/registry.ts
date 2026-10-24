@@ -48,6 +48,7 @@ export const registryMessages = defineMessages({
     keyFileDefault: ".env in the data folder",
     keyNotSet: (env: string, file: string) => `Key not set: put the value of the variable ${env} into the file ${file}`,
     inspectFailed: (name: string, err: string) => `Inspection of ${name} failed: ${err}`,
+    baseUrlUserinfo: (id: string) => `Address of provider ${id}: the baseUrl field contains a login or password; remove them from the address, the key is set by the apiKeyEnv variable`,
   },
   ru: {
     reservedId: "идентификатор «scripted» зарезервирован за сценарным участником",
@@ -95,5 +96,6 @@ export const registryMessages = defineMessages({
     keyFileDefault: ".env папки данных",
     keyNotSet: (env: string, file: string) => `Ключ не задан: впишите значение переменной ${env} в файл ${file}`,
     inspectFailed: (name: string, err: string) => `Осмотр ${name} завершился ошибкой: ${err}`,
+    baseUrlUserinfo: (id: string) => `Адрес провайдера ${id}: поле baseUrl содержит логин или пароль; уберите их из адреса, ключ задаётся переменной apiKeyEnv`,
   },
 });
