@@ -144,6 +144,15 @@ describe("Verified-versions record", () => {
     expect(addLocalEntry(dir, iface("codex", "1.0.0"))).toEqual({ ok: true, changed: false });
     expect(JSON.parse(readFileSync(file(), "utf8")).entries).toEqual([real("codex", "1.0.0")]);
   });
+
+  it("addLocalEntry replaces a real of the same pair only with replaceSameLevel (explicit acceptance)", () => {
+    addLocalEntry(dir, real("claude", "2.1.288", "2026-10-01"));
+    const before = readFileSync(file(), "utf8");
+    expect(addLocalEntry(dir, real("claude", "2.1.288", "2026-10-21"))).toEqual({ ok: true, changed: false });
+    expect(readFileSync(file(), "utf8")).toBe(before);
+    expect(addLocalEntry(dir, real("claude", "2.1.288", "2026-10-21"), { replaceSameLevel: true })).toEqual({ ok: true, changed: true });
+    expect(JSON.parse(readFileSync(file(), "utf8")).entries).toEqual([real("claude", "2.1.288", "2026-10-21")]);
+  });
 });
 
 const WORKER = `import { addLocalEntry, recordTestHooks } from ${JSON.stringify(pathToFileURL(join(import.meta.dirname, "verified-record.ts")).href)};

@@ -229,6 +229,16 @@ describe("prepared-materials: sources", () => {
     }
   });
 
+  it("sidecar is not part of the set checksum: a valid replaced sources.json is read and changes only sources", () => {
+    const set = savePreparedMaterials(a, { ...base(), sources: [source("m1")] });
+    const other = { ...source("m2"), host: "other.example.net" };
+    writeFileSync(sidecar(a, set.id), JSON.stringify({ version: 1, sources: [other] }));
+    const loaded = loadPreparedMaterials(a, set.id);
+    expect(loaded.sources).toEqual([other]);
+    expect(loaded.materials).toEqual(set.materials);
+    expect(loaded.id).toBe(set.id);
+  });
+
   it("9. source of a foreign material — refusal, no traces", () => {
     expect(problemOf(() => savePreparedMaterials(a, { ...base(), sources: [source("m5")] }))).toBe("limit");
     expect(existsSync(preparedMaterialsDir(a))).toBe(false);
