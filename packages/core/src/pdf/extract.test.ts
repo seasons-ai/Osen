@@ -12,6 +12,7 @@ import { setProcessLanguage } from "../i18n/process-language.ts";
 import { makeEncryptedPdf, makeImageOnlyPdf, makeMalformedPdf, makePdf } from "./fixture.ts";
 import { extractText } from "./pdf-text.ts";
 import type { PdfResult } from "./extract.ts";
+import type { OcrPdfRequest } from "../ocr/run.ts";
 
 const here = import.meta.dirname;
 const data = (name: string): string => join(here, "testdata", name);
@@ -122,13 +123,19 @@ describe("Local PDF text", () => {
 });
 
 describe("Refusals", () => {
+  afterEach(() => { setPdfOcrTesting(); });
+
   it("encrypted, without text even after recognition, and damaged PDF", () => {
+    // the real helper's reply to a blank page; the real osen-ocr misses its 5 s page deadline on a loaded runner (scenarios/pdf covers it)
+    const requests: OcrPdfRequest[] = [];
+    setPdfOcrTesting({ run: (request) => { requests.push(request); return { ok: true, pages: [{ n: 1, text: "" }] }; } });
     for (const [make, code] of [[makeEncryptedPdf, "encrypted"], [makeImageOnlyPdf, "no_text"], [makeMalformedPdf, "damaged"]] as const) {
       const bytes = make();
       const copy = bytes.slice();
       expect(extractPdfText(bytes)).toEqual({ ok: false, code });
       expect(bytes).toEqual(copy);
     }
+    expect(requests).toMatchObject([{ mode: "pdf", pages: [1] }]);
   }, SLOW);
 });
 
