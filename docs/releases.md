@@ -12,9 +12,9 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 | `refactor`, `docs`, `test`, `build`, `ci`, `chore`, `style`, `revert` | everything else | — | not included |
 | `!` before the colon or `BREAKING CHANGE: …` in the body | incompatible (log, config, MCP) | major | "Breaking changes" |
 
-The hooks in `.githooks/` are connected by `npm install` (the `prepare` script); in an already installed folder — `git config core.hooksPath .githooks`. `commit-msg` rejects a message that does not match the format; `pre-push` rejects a tag that does not match the version in `apps/desktop/package.json` and runs the type check and tests.
+The hooks in `.githooks/` are connected by `npm install` (the `prepare` script); in an already installed folder — `git config core.hooksPath .githooks`. `commit-msg` rejects a message that does not match the format; `pre-push` rejects a tag that does not match the version in `apps/desktop/package.json` and runs the type check and tests; a push of `change/*` branches only skips them, because `spec-dispatch` pushes those after the orchestrator's run and CI checks their pull requests. Before the tests it clears `GIT_DIR` and the other `GIT_*` variables git sets for hooks, so a test that runs git in a temporary repository cannot write to this one.
 
-Changes go through a feature branch and a pull request. CI checks types, the full test suite and the desktop build; PR titles use Conventional Commits. Squash merge keeps one semantic commit per PR. `main` requires passing CI and resolved conversations, with no external reviewer required for this single-owner project. Force pushes and branch deletion are blocked. GitHub security alerts and Dependabot update PRs cover dependency maintenance.
+Changes go through a feature branch and a pull request. CI checks types, the full test suite and the desktop build; PR titles use Conventional Commits, checked by the separate `PR title` workflow on Linux. Squash merge keeps one semantic commit per PR. `main` requires passing CI and resolved conversations, with no external reviewer required for this single-owner project. Force pushes and branch deletion are blocked. GitHub security alerts and Dependabot update PRs cover dependency maintenance.
 
 Releases have two stages. Start from clean `main` synchronized with `origin/main`:
 
