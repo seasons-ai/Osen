@@ -1,0 +1,41 @@
+name: PR title
+
+# Its own workflow on Linux: the check takes seconds and does not wait for a macOS runner,
+# and editing the title re-runs only this check, not the full CI.
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: PR title
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Validate Conventional Commit title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { checkMessage, parse } from "./scripts/release.ts";
+          const title = process.env.PR_TITLE ?? "";
+          const error = checkMessage(title);
+          if (error || !parse({ hash: "", subject: title, body: "" })) {
+            console.error(error ?? "PR titles must use Conventional Commits: type(scope): description");
+            process.exit(1);
+          }
+          NODE
