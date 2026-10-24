@@ -148,9 +148,11 @@ describe("XLSX chars limit and whitespace", () => {
   });
 
   it("a few XML bytes that fan out to gigabytes stop at chars before the text is built", () => {
-    const t = Date.now();
+    // CPU time of this fork, not wall clock: under a loaded machine the wait for a core lands in wall clock
+    const t = process.cpuUsage();
     expect(extractDocument(xfd(100_000), DOC_LIMITS)).toEqual({ ok: false, code: "chars" });
-    expect(Date.now() - t).toBeLessThan(5000);
+    const { user, system } = process.cpuUsage(t);
+    expect((user + system) / 1000).toBeLessThan(5000);
   }, 30_000);
 
   it("the limit is exact on the output length", () => {
