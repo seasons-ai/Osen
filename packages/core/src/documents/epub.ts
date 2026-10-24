@@ -7,6 +7,9 @@ import type { Zip } from "./zip.ts";
 const CONTAINER = "META-INF/container.xml";
 const ENCRYPTION = "META-INF/encryption.xml";
 const CHAPTER_TYPES = ["application/xhtml+xml", "text/html"];
+// XHTML <title/> and friends: HTML parsing would treat "/>" as an open RCDATA/RAWTEXT element and swallow the chapter.
+// Linear: fixed "<"+name start, one [^<>]* body that cannot overlap the start, the closing "/" outside the body group.
+const SELF_CLOSING_RAW = /<(title|script|style|textarea|xmp|noembed|noframes|iframe|noscript)(?=[\s/>])([^<>]*)\/>/gi;
 
 const local = (name: string): string => name.slice(name.indexOf(":") + 1);
 const kids = (el: XmlElement, name?: string): XmlElement[] =>
@@ -38,7 +41,7 @@ function chapterHtml(zip: Zip, path: string): string {
   try { html = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { return damaged(path); }
   const enc = /^\s*<\?xml[^>]*?\bencoding\s*=\s*["']([^"']+)["']/i.exec(html)?.[1];
   if (enc !== undefined && enc.toLowerCase() !== "utf-8") damaged(path);
-  return html;
+  return html.replace(SELF_CLOSING_RAW, "<$1$2></$1>");
 }
 
 export function epubText(zip: Zip, chars: number): string {
