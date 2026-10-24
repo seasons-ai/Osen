@@ -97,10 +97,20 @@ const iconPlist = (file: string) => `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>CFBundleIconFile</key><string>${file}</string></dict></plist>`;
 
-it("icon: icon.icns in Resources and CFBundleIconFile pointing to it — OK", () => {
+it("icon: icon.icns in Resources, CFBundleIconFile pointing to it, bytes equal to the reference — OK", () => {
   fill(join(dir, "Contents"), ["Resources/icon.icns"]);
   writeFileSync(join(dir, "Contents/Info.plist"), iconPlist("icon.icns"));
-  expect(appIconLine(join(dir, "Contents"))).toEqual({ ok: true, text: "icon: Contents/Resources/icon.icns, CFBundleIconFile icon.icns" });
+  writeFileSync(join(dir, "ref.icns"), "x");
+  expect(appIconLine(join(dir, "Contents"), join(dir, "ref.icns"))).toEqual({ ok: true, text: `icon: Contents/Resources/icon.icns, CFBundleIconFile icon.icns, bytes match ${join(dir, "ref.icns")}` });
+});
+
+it("icon: icon.icns with other bytes than the reference — FAIL naming the reference", () => {
+  fill(join(dir, "Contents"), ["Resources/icon.icns"]);
+  writeFileSync(join(dir, "Contents/Info.plist"), iconPlist("icon.icns"));
+  writeFileSync(join(dir, "ref.icns"), "electron icon");
+  const r = appIconLine(join(dir, "Contents"), join(dir, "ref.icns"));
+  expect(r.ok).toBe(false);
+  expect(r.text).toContain(`bytes differ from ${join(dir, "ref.icns")}`);
 });
 
 it("icon: no icon.icns or CFBundleIconFile names another file — FAIL", () => {
