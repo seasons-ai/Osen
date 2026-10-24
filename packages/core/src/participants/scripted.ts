@@ -56,7 +56,7 @@ export function createScriptedDriver(
       if (!step) {
         const n = scenario.steps.length;
         throw new ParticipantCallError(
-          "call_error", providerMessages().scriptExhausted(n, n + 1), false,
+          "call_error", providerMessages().scriptExhausted(n, index + 1), false,
         );
       }
       if (step.delayMs !== undefined) await sleep(step.delayMs, undefined, { signal: request.signal });

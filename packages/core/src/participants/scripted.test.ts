@@ -8,6 +8,7 @@ import type { Scenario } from "./scripted.ts";
 import { ParticipantCallError } from "./driver.ts";
 import type { TurnRequest } from "./driver.ts";
 import { createSession, runSession } from "../engine.ts";
+import { setProcessLanguage } from "../i18n/index.ts";
 
 const DEV = { COUNCIL_DEV: "1" };
 
@@ -72,6 +73,29 @@ describe("scripted", () => {
     expect(e).toBeInstanceOf(ParticipantCallError);
     expect((e as ParticipantCallError).message).toContain("Сценарий исчерпан");
     expect((e as ParticipantCallError).retryable).toBe(false);
+  });
+
+  it("Script exhaustion: call number on repeated calls", async () => {
+    const msgs = async (): Promise<string[]> => {
+      const d = driver([{ raw: "1" }, { raw: "2" }]);
+      await d.call(mk().request);
+      await d.call(mk().request);
+      return [
+        ((await fail(d.call(mk().request))) as Error).message,
+        ((await fail(d.call(mk().request))) as Error).message,
+      ];
+    };
+    expect(await msgs()).toEqual([
+      "Сценарий исчерпан: в сценарии шагов 2, это вызов №3.",
+      "Сценарий исчерпан: в сценарии шагов 2, это вызов №4.",
+    ]);
+    setProcessLanguage("en");
+    try {
+      expect(await msgs()).toEqual([
+        "Script exhausted: the script has 2 steps, this is call #3.",
+        "Script exhausted: the script has 2 steps, this is call #4.",
+      ]);
+    } finally { setProcessLanguage("ru"); }
   });
 
   it("without COUNCIL_DEV=1 no driver is created", () => {
