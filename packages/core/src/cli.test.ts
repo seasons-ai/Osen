@@ -409,6 +409,27 @@ describe("storage and subcommands", () => {
     expect((await run(["foo"], { env: dev(tmp()) })).err).toContain("Неизвестная команда «foo».");
   });
 
+  it("13a. subcommand named like an object property is unknown, as cli foo (en and ru)", async () => {
+    const prev = getProcessLanguage();
+    try { for (const lang of ["en", "ru"] as const) {
+      setProcessLanguage(lang);
+      const env = (h: string) => dev(h);
+      const foo = await run(["cli", "foo"], { env: env(tmp()) });
+      const topFoo = await run(["foo"], { env: env(tmp()) });
+      expect(foo.code).toBe(2);
+      for (const name of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+        const h = tmp();
+        const r = await run(["cli", name], { env: env(h) });
+        expect([r.code, r.err], `${lang} cli ${name}`).toEqual([2, foo.err.replace("«foo»", `«${name}»`)]);
+        expect(r.err).not.toContain("function Object");
+        expect(existsSync(join(h, "cli"))).toBe(false);
+      }
+      const top = await run(["constructor"], { env: env(tmp()) });
+      expect([top.code, top.err]).toEqual([2, topFoo.err.replace("«foo»", "«constructor»")]);
+      expect(foo.err).toContain(lang === "en" ? "Unknown cli subcommand «foo»" : "Неизвестная подкоманда cli «foo»");
+    } } finally { setProcessLanguage(prev); }
+  });
+
   it("14. repeated launch does not change the previous journal", async () => {
     const home = tmp();
     const id = idOf((await run(full(), { env: dev(home) })).out);
@@ -2236,6 +2257,19 @@ describe("journal of a newer version in council output", () => {
     const before = sha(home, "s1");
     const r = await run(["stop", "s1"], { env: dev(home) });
     expect([r.code, r.out]).toEqual([0, "Остановка сессии s1 запрошена."]);
+    expect(existsSync(stopRequestPath(home, "s1"))).toBe(true);
+    expect(sha(home, "s1")).toBe(before);
+  });
+
+  it("stop: newer_version session with a dead executor — exit code 2, nothing to stop, no request, not called interrupted", async () => {
+    const home = tmp();
+    make(home, "s1", { pid: await deadPid() });
+    const before = sha(home, "s1");
+    const r = await run(["stop", "s1"], { env: dev(home) });
+    expect(r.code).toBe(2);
+    expect(r.err).toContain(`Сессия s1: исполнитель не работает, останавливать нечего; ${NEWER}.`);
+    expect(r.err).not.toContain("прервана");
+    expect(existsSync(stopRequestPath(home, "s1"))).toBe(false);
     expect(sha(home, "s1")).toBe(before);
   });
 
