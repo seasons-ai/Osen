@@ -51,7 +51,7 @@ export function createSettings(deps: SettingsDeps): SettingsApi {
     const cli = provider.kind === "cli";
     const models = status.models.filter((m) => m !== DEFAULT_MODEL);
     const modelsSource: SettingsProvider["modelsSource"] =
-      provider.models.length > 0 ? "owner" : status.modelsConfirmed ? "provider" : models.length > 0 ? "unconfirmed" : "unavailable";
+      status.modelsConfirmed ? "provider" : models.length > 0 ? "unconfirmed" : "unavailable";
     const noKey = !cli && provider.apiKeyEnv && !status.keySet;
     const modelsReason =
       modelsSource === "unconfirmed" ? (status.modelsReason ?? null)
@@ -63,7 +63,7 @@ export function createSettings(deps: SettingsDeps): SettingsApi {
       warning: status.warning ?? null, version: status.version ?? null, path: status.path ?? null,
       baseUrl: status.baseUrl ?? null, keyEnv: status.keyEnv ?? null, keySet: status.keySet ?? false,
       billing: cli ? "subscription" : status.keyEnv ? "paid" : "free",
-      models, defaultModel: cli ? DEFAULT_MODEL : null,
+      models, ownerModels: provider.models.filter((m) => m !== DEFAULT_MODEL), defaultModel: cli ? DEFAULT_MODEL : null,
       modelsSource, modelsReason, modelsAt: modelsSource === "provider" ? now().toISOString() : null,
       cli: provider.kind === "cli" ? await deps.transition.forProvider(provider.agent, status) : null,
     };
