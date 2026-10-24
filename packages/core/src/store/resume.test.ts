@@ -442,6 +442,23 @@ describe("runResumedSession", () => {
     expect(existsSync(resumeLockPath(dir, "s"))).toBe(false);
   });
 
+  it("a second resume of a session running in this process is busy and the first stays running", async () => {
+    const dir = tmp();
+    await noConsensus(dir);
+    const plan = planResume(dir, "s", { rounds: 1, isAlive: dead });
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let started!: () => void;
+    const hasStarted = new Promise<void>((r) => { started = r; });
+    const slow: ParticipantDriver = { call: async (r) => { started(); await gate; return scripted(agree()).call(r); } };
+    const first = runResumedSession({ dataDir: dir, plan, drivers: { p1: slow, p2: scripted(agree()) } });
+    await hasStarted;
+    expect((await rejects(runResumedSession({ dataDir: dir, plan, drivers: { p1: scripted(agree()), p2: scripted(agree()) } }))).reason).toBe("busy");
+    expect(readSession(dir, "s")!.status).toBe("running");
+    release();
+    await first;
+  });
+
   it("killed new executor: interrupted, repeat continuation accepted", async () => {
     const dir = tmp();
     await noConsensus(dir);

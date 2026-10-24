@@ -2651,6 +2651,40 @@ describe("run-prepared: the launch deadline is rechecked after slow provider che
     expect(listSessions(home, () => false)).toHaveLength(0);
   });
 
+  it("Internal prepared launch: the deadline expired after reading the file", async () => {
+    const home = tmp();
+    const stub = cliStub("claude");
+    const deadline = new Date(Date.now() + 400).toISOString();
+    const session = createSession({
+      topic: "Тема", framing: "", origin: "mcp", limits: { maxRounds: 1, turnTimeoutSec: 30, contextChars: 20000 },
+      participants: [1, 2].map((n) => ({ name: `N${n}`, providerId: "claude", model: "default", role: null })),
+    }, { maxParticipants: 8 });
+    const file = writeLaunchFile(home, { session, scenarios: {}, deadline });
+    const r = await run(["run-prepared", file], {
+      env: dev(home),
+      inspectDeps: { locate: async (a) => { await untilPast(deadline); return stub.loc()(a); } },
+    });
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.err.split("\n")[0]!)).toEqual({ code: "launch_expired", message: cliMessages().launchExpired(deadline) });
+    expect(listSessions(home, () => false)).toHaveLength(0);
+  });
+
+  it("Internal prepared launch: the launch file is already expired when read → launch_expired first on stderr (start and resume)", async () => {
+    const home = tmp();
+    const deadline = new Date(Date.now() - 1000).toISOString();
+    const session = createSession({
+      topic: "Тема", framing: "", origin: "mcp", limits: { maxRounds: 1, turnTimeoutSec: 30, contextChars: 20000 },
+      participants: [1, 2].map((n) => ({ name: `N${n}`, providerId: "scripted", model: "m", role: null })),
+    }, { maxParticipants: 8 });
+    const start = await run(["run-prepared", writeLaunchFile(home, { session, scenarios: {}, deadline })], { env: dev(home) });
+    expect(start.code).not.toBe(0);
+    expect(JSON.parse(start.err.split("\n")[0]!)).toEqual({ code: "launch_expired", message: cliMessages().launchExpired(deadline) });
+    expect(listSessions(home, () => false)).toHaveLength(0);
+    const resume = await run(["run-prepared", writeLaunchFile(home, { kind: "resume", sessionId: "s1", journalBytes: 0, scenarios: {}, deadline })], { env: dev(home) });
+    expect(resume.code).not.toBe(0);
+    expect(JSON.parse(resume.err.split("\n")[0]!)).toEqual({ code: "launch_expired", message: cliMessages().launchExpired(deadline) });
+  });
+
   describe("resume with a replacement: provider re-check under the lock", () => {
     // p2 fails in round 1 (session failed), then the owner replaces it with the claude stub
     async function seed(home: string) {

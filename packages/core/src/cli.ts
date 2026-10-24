@@ -393,6 +393,13 @@ export function resumeRevalidator(plan: ResumePlan, driverOptions: Parameters<ty
   };
 }
 
+/** A refusal before acceptance: one JSON line `{code, message}` first on stderr, for the MCP server to read. */
+function rejectLaunch(io: CliIo, log: Logger, code: string, message: string): number {
+  log.error("Prepared launch rejected", `${code}: ${message}`);
+  io.stderr(JSON.stringify({ code, message }));
+  return EXIT.usage;
+}
+
 /** Resume kind of the launch file. A refusal before acceptance is one JSON line `{code, message}` first on stderr, for the MCP server to read. */
 async function runPreparedResume(p: LaunchResumePayload, file: string, dataDir: string, io: CliIo, log: Logger, fail: (message: string) => number): Promise<number> {
   const id = p.sessionId;
@@ -423,9 +430,7 @@ async function runPreparedResume(p: LaunchResumePayload, file: string, dataDir: 
     return EXIT[run.state.finish!.status];
   } catch (e) {
     if (e instanceof ResumeRejectedError) {
-      log.error("Prepared resume rejected", `${e.reason}: ${e.message}`);
-      io.stderr(JSON.stringify({ code: e.reason, message: e.message }));
-      return EXIT.usage;
+      return rejectLaunch(io, log, e.reason, e.message);
     }
     if (e instanceof RegistryError) return fail(e.message);
     throw e;
@@ -440,7 +445,7 @@ async function runPrepared(file: string, dataDir: string, io: CliIo, log: Logger
   try {
     payload = readLaunchFile(file);
   } catch (e) {
-    if (e instanceof LaunchFileError) return fail(e.message);
+    if (e instanceof LaunchFileError) return e.expired ? rejectLaunch(io, log, "launch_expired", e.message) : fail(e.message);
     throw e;
   }
   if (payload.kind === "resume") return runPreparedResume(payload, file, dataDir, io, log, fail);
@@ -466,7 +471,7 @@ async function runPrepared(file: string, dataDir: string, io: CliIo, log: Logger
       drivers[p.id] = found.runtime ? createCliDriver(found.runtime) : createHttpDriver(found.http!);
     }
     // the provider checks above can outlast the deadline: the server has already answered with a timeout
-    if (Date.now() > Date.parse(payload.deadline)) return fail(t.launchExpired(payload.deadline));
+    if (Date.now() > Date.parse(payload.deadline)) return rejectLaunch(io, log, "launch_expired", t.launchExpired(payload.deadline));
     log.info(`Prepared start: session ${session.id}`);
     const { state } = await runStoredSession({
       session, drivers, materials, ...(workspace?.length ? { workspace } : {}), signal: io.signal, dataDir, logger: log,
