@@ -8,7 +8,7 @@ import { ProviderModels, modelsAfterAdd, modelsAfterRemove, modelsSourceText } f
 const now = new Date(2026, 9, 8, 15, 0);
 const prov = (o: Partial<SettingsProvider> = {}): SettingsProvider => ({
   id: "router", kind: "openai-http", label: "OpenRouter", available: true, reason: null, warning: null, version: null, path: null,
-  baseUrl: "https://x/v1", keyEnv: "K", keySet: true, billing: "paid", models: ["m1", "m2"], defaultModel: "def",
+  baseUrl: "https://x/v1", keyEnv: "K", keySet: true, billing: "paid", models: ["m1", "m2"], ownerModels: [], defaultModel: "def",
   modelsSource: "provider", modelsReason: null, modelsAt: new Date(2026, 9, 8, 11, 30).toISOString(), cli: null, ...o
 });
 const html = (p: SettingsProvider, o: { draft?: string; busy?: boolean } = {}) =>
@@ -33,16 +33,6 @@ describe("ProviderModels", () => {
     const d = new Date(2026, 9, 5, 9, 5);
     expect(html(prov({ modelsAt: d.toISOString() }))).toContain(`перечень получен ${new Intl.DateTimeFormat("ru", { day: "numeric", month: "long" }).format(d)} в ${hm(d)}`);
     expect(modelsSourceText(prov({ modelsAt: null }), now)).toBe("перечень получен от провайдера");
-  });
-
-  it("owner: delete buttons and list return", () => {
-    const h = html(prov({ modelsSource: "owner", modelsAt: null }));
-    expect(h).toContain("перечень задан вручную");
-    expect(h).toContain("Вернуть перечень провайдера");
-    expect(h).not.toContain("Обновить модели");
-    expect(h).toContain('aria-label="Убрать модель m1"');
-    expect(h).toContain('aria-label="Убрать модель m2"');
-    expect(h).toMatch(/<span class="tag">m1<button type="button" class="settings-chip__x" aria-label="Убрать модель m1">/);
   });
 
   it("unconfirmed: reason after the colon, no delete buttons", () => {
@@ -77,14 +67,26 @@ describe("ProviderModels", () => {
     expect(html(prov(), { draft: "new" })).toContain('value="new"');
   });
 
+  it("Ручная модель не отключает обновление: refresh stays, remove only on added models", () => {
+    const h = html(prov({ ownerModels: ["m2"] }));
+    expect(h).toContain("Обновить модели");
+    expect(h).toContain("Убрать добавленные модели");
+    expect(h).toContain('aria-label="Убрать модель m2"');
+    expect(h).not.toContain('aria-label="Убрать модель m1"');
+    expect(html(prov())).not.toContain("Убрать добавленные модели");
+    expect(html(prov())).not.toContain("Убрать модель");
+  });
+
   it("modelsAfterAdd and modelsAfterRemove", () => {
     const p = prov();
     expect(modelsAfterAdd(p, "")).toBeNull();
     expect(modelsAfterAdd(p, "   ")).toBeNull();
     expect(modelsAfterAdd(p, " m1 ")).toBeNull();
     expect(modelsAfterAdd(p, "def")).toBeNull();
-    expect(modelsAfterAdd(p, " new ")).toEqual(["m1", "m2", "new"]);
-    expect(modelsAfterRemove(p, "m1")).toEqual(["m2"]);
+    expect(modelsAfterAdd(p, " new ")).toEqual(["new"]);
+    const q = prov({ ownerModels: ["m2"] });
+    expect(modelsAfterAdd(q, "new")).toEqual(["m2", "new"]);
+    expect(modelsAfterRemove(q, "m2")).toEqual([]);
   });
 
   it("name with < is escaped", () => {
@@ -105,7 +107,6 @@ describe("ProviderModels: English", () => {
   }));
   it("modelsSourceText: other sources", () => en(() => {
     expect(modelsSourceText(prov({ modelsAt: null }), now)).toBe("list received from the provider");
-    expect(modelsSourceText(prov({ modelsSource: "owner" }), now)).toBe("list set manually");
     expect(modelsSourceText(prov({ modelsSource: "unconfirmed" }), now)).toBe("list not confirmed");
     expect(modelsSourceText(prov({ modelsSource: "unconfirmed", modelsReason: "ответ без списка" }), now)).toBe("list not confirmed: ответ без списка");
     expect(modelsSourceText(prov({ modelsSource: "unavailable", modelsReason: "нет ключа" }), now)).toBe("нет ключа");
@@ -119,12 +120,16 @@ describe("ProviderModels: English", () => {
     expect(h).toContain("Refresh models");
     expect(h).toContain('placeholder="Model name"');
     expect(h).toContain("Add model");
-    expect(html(prov({ modelsSource: "owner", modelsAt: null, models: ["gpt-x"] }))).toContain("Restore the provider&#x27;s list");
-    expect(html(prov({ modelsSource: "owner", modelsAt: null, models: ["gpt-x"] }))).toContain('aria-label="Remove model gpt-x"');
+    expect(html(prov())).not.toContain("Remove added models");
+    const own = html(prov({ models: ["m1", "gpt-x"], ownerModels: ["gpt-x"] }));
+    expect(own).toContain("Remove added models");
+    expect(own).toContain("Refresh models");
+    expect(own).toContain('aria-label="Remove model gpt-x"');
+    expect(own).not.toContain('aria-label="Remove model m1"');
     expect(html(prov(), { busy: true })).toContain("Refreshing…");
   }));
   it("the lineup does not depend on the language", () => {
-    for (const p of [prov(), prov({ modelsSource: "owner" })]) {
+    for (const p of [prov(), prov({ ownerModels: ["m1"] })]) {
       const ru = tags(html(p));
       setProcessLanguage("en");
       expect(tags(html(p))).toEqual(ru);

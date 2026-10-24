@@ -12,7 +12,7 @@ rm -rf "$HOME/Library/Application Support/model-council-backup-"*
 ```
 
 - `history-pins.json` — pins of the "History" screen: `{ "pinnedSessionIds": [ … ] }`. Read and written only by the app; it has no search, filter, session content or secrets, and session logs are not changed. A missing or corrupted file means "no pins"; the app does not fix or overwrite a corrupted file — the owner edits or deletes it. The `council` command does not read it.
-- `config.json` — the participant registry: created on first start from the CLIs found (a pinned CLI that failed its pre-launch check is added too and shown unavailable with the check reason), an existing file is not overwritten; there are no keys in the file. Fields: `providers[]` (`id`, `kind`, `label`, `agent`, optional `path` — an explicit path to the executable, `models` — the owner's list on top of the CLI's list) and `defaults` (`maxRounds`, `turnTimeoutSec`, `contextChars`, `maxParticipants`, `materialsIgnore`, `materialsChars`, `participants[]`). Contents after the first start with two CLIs:
+- `config.json` — the participant registry: created on first start from the CLIs found (a pinned CLI that failed its pre-launch check is added too and shown unavailable with the check reason), an existing file is not overwritten; there are no keys in the file. Fields: `providers[]` (`id`, `kind`, `label`, `agent`, optional `path` — an explicit path to the executable, `models` — the models added by the owner, shown together with the list requested from the CLI) and `defaults` (`maxRounds`, `turnTimeoutSec`, `contextChars`, `maxParticipants`, `materialsIgnore`, `materialsChars`, `participants[]`). Contents after the first start with two CLIs:
 
 ```json
 {

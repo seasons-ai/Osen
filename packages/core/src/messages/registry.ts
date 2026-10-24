@@ -45,7 +45,6 @@ export const registryMessages = defineMessages({
 
     cliNotFound: (agent: string) => `Command ${agent} not found`,
     helpFailed: (agent: string, err: string) => `Could not read the help of ${agent}: ${err}`,
-    modelsByOwner: "The list is set by the owner in config.json",
     keyFileDefault: ".env in the data folder",
     keyNotSet: (env: string, file: string) => `Key not set: put the value of the variable ${env} into the file ${file}`,
     inspectFailed: (name: string, err: string) => `Inspection of ${name} failed: ${err}`,
@@ -93,7 +92,6 @@ export const registryMessages = defineMessages({
 
     cliNotFound: (agent: string) => `Команда ${agent} не найдена`,
     helpFailed: (agent: string, err: string) => `Не удалось прочитать справку ${agent}: ${err}`,
-    modelsByOwner: "Перечень задан владельцем в config.json",
     keyFileDefault: ".env папки данных",
     keyNotSet: (env: string, file: string) => `Ключ не задан: впишите значение переменной ${env} в файл ${file}`,
     inspectFailed: (name: string, err: string) => `Осмотр ${name} завершился ошибкой: ${err}`,

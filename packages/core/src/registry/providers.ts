@@ -60,6 +60,9 @@ const realDeps: InspectDeps = {
   listHttpModels,
 };
 
+// provider.models holds only the models the owner added; the requested list comes first.
+const withOwnerModels = (found: string[], owner: string[]): string[] => [...found, ...owner.filter((m) => !found.includes(m))];
+
 interface Options { env: Env; withModels?: boolean; deps?: Partial<InspectDeps>; keyFile?: string; dataDir?: string }
 
 async function inspectCli(provider: CliProvider, { env: rawEnv, withModels = true, deps, dataDir }: Options): Promise<ProviderInspection> {
@@ -101,14 +104,10 @@ async function inspectCli(provider: CliProvider, { env: rawEnv, withModels = tru
   } else status.reason = plan.reason;
 
   if (withModels) {
-    if (provider.models.length) {
-      status.modelsReason = registryMessages().modelsByOwner;
-    } else {
-      const found = await d.listModels(agent, { path, env: childEnv, help });
-      status.models = found.models;
-      status.modelsConfirmed = found.confirmed;
-      if (found.reason) status.modelsReason = found.reason;
-    }
+    const found = await d.listModels(agent, { path, env: childEnv, help });
+    status.models = withOwnerModels(found.models, provider.models);
+    status.modelsConfirmed = found.confirmed;
+    if (found.reason) status.modelsReason = found.reason;
   }
   return runtime ? { status, runtime } : { status };
 }
@@ -131,15 +130,12 @@ async function inspectHttp(provider: HttpProvider, { env, withModels = true, dep
   const http: HttpRuntime = { baseUrl, keyFile, ...(apiKeyEnv ? { apiKeyEnv, apiKey } : {}) };
   status.available = true;
   if (withModels) {
-    if (provider.models.length) {
-      status.modelsReason = registryMessages().modelsByOwner;
-    } else {
-      const found = await d.listHttpModels(http);
-      if (found.unavailable) return { status: { ...status, available: false, ...(found.reason ? { reason: found.reason } : {}) } };
-      status.models = found.models;
-      status.modelsConfirmed = found.confirmed;
-      if (found.reason) status.modelsReason = found.reason;
-    }
+    const found = await d.listHttpModels(http);
+    if (found.unavailable && provider.models.length === 0) return { status: { ...status, available: false, ...(found.reason ? { reason: found.reason } : {}) } };
+    // With the owner's models the provider stays usable even if the endpoint has no list.
+    if (!found.unavailable) status.models = withOwnerModels(found.models, provider.models);
+    status.modelsConfirmed = !found.unavailable && found.confirmed;
+    if (found.reason) status.modelsReason = found.reason;
   }
   return { status, http };
 }

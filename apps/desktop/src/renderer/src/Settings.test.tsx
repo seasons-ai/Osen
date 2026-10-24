@@ -16,7 +16,7 @@ import type { BridgeEvent } from "../../shared/bridge.ts";
 const prov = (o: Partial<SettingsProvider> = {}): SettingsProvider => ({
   id: "p", kind: "cli", label: "P", available: true, reason: null, warning: null, version: null, path: null,
   baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: ["m1"], defaultModel: "dflt",
-  modelsSource: "provider", modelsReason: null, modelsAt: null, cli: null, ...o,
+  ownerModels: [], modelsSource: "provider", modelsReason: null, modelsAt: null, cli: null, ...o,
 });
 const http = (o: Partial<SettingsProvider> = {}) =>
   prov({ id: "h", kind: "openai-http", label: "H", baseUrl: "http://x/v1", keyEnv: "H_KEY", keySet: true, billing: "paid", ...o });

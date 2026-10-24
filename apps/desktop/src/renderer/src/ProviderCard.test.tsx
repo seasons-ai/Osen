@@ -14,7 +14,7 @@ import { ProviderCard } from "./ProviderCard.tsx";
 
 const base: SettingsProvider = {
   id: "p", kind: "cli", label: "Claude Code", available: true, reason: null, warning: null, version: "2.1.288", path: "/opt/homebrew/bin/claude",
-  baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: [], defaultModel: null, modelsSource: "provider", modelsReason: null, modelsAt: null, cli: null,
+  baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: [], defaultModel: null, ownerModels: [], modelsSource: "provider", modelsReason: null, modelsAt: null, cli: null,
 };
 const http = (o: Partial<SettingsProvider> = {}): SettingsProvider => ({
   ...base, kind: "openai-http", label: "OpenRouter", version: null, path: null, baseUrl: "https://openrouter.ai/api/v1", keyEnv: "OPENROUTER_API_KEY", keySet: true, billing: "paid", ...o

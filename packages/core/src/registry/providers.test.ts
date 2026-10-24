@@ -187,14 +187,48 @@ describe("models", () => {
     expect(r.status).toMatchObject({ models: [], modelsConfirmed: false, modelsReason: "нет данных" });
 
     list.mockClear();
-    r = await inspectProvider({ ...claude, models: ["my-model"] }, { env: env(), deps: { listModels: list } });
-    expect(r.status).toMatchObject({ models: ["my-model"], modelsConfirmed: false });
-    expect(r.status.modelsReason).toContain("владельцем");
-
-    list.mockClear();
     r = await inspectProvider(claude, { env: env(), withModels: false, deps: { listModels: list } });
     expect(list).not.toHaveBeenCalled();
     expect(r.status.modelsReason).toBeUndefined();
+  });
+});
+
+describe("Ручная модель не отключает обновление", () => {
+  const cliDeps = (listModels: NonNullable<Parameters<typeof inspectProvider>[1]["deps"]>["listModels"]) => ({ listModels });
+  const httpP = (models: string[]): HttpProvider => ({ id: "gw", kind: "openai-http", label: "GW", models, baseUrl: "http://127.0.0.1:1/v1" });
+
+  it("CLI: list is requested with owner models, merged without duplicates", async () => {
+    fakeClaude();
+    const list = vi.fn(async () => ({ models: ["a", "b"], confirmed: true }));
+    const r = await inspectProvider({ ...claude, models: ["b", "mine"] }, { env: env(), deps: cliDeps(list) });
+    expect(list).toHaveBeenCalledOnce();
+    expect(r.status).toMatchObject({ models: ["a", "b", "mine"], modelsConfirmed: true });
+  });
+
+  it("CLI: unconfirmed list keeps its reason and owner models", async () => {
+    fakeClaude();
+    const r = await inspectProvider({ ...claude, models: ["mine"] }, { env: env(), deps: cliDeps(async () => ({ models: [], confirmed: false, reason: "нет данных" })) });
+    expect(r.status).toMatchObject({ models: ["mine"], modelsConfirmed: false, modelsReason: "нет данных" });
+  });
+
+  it("HTTP: list is requested with owner models, merged without duplicates", async () => {
+    const listHttpModels = vi.fn(async () => ({ models: ["a", "b"], confirmed: true }));
+    const r = await inspectProvider(httpP(["b", "mine"]), { env: {}, deps: { listHttpModels } });
+    expect(listHttpModels).toHaveBeenCalledOnce();
+    expect(r.status).toMatchObject({ available: true, models: ["a", "b", "mine"], modelsConfirmed: true });
+    expect(r.http).toBeDefined();
+  });
+
+  it("HTTP: no list from the endpoint — stays available with owner models and the reason", async () => {
+    const r = await inspectProvider(httpP(["mine"]), { env: {}, deps: { listHttpModels: async () => ({ models: [], confirmed: false, unavailable: true, reason: "нет списка" }) } });
+    expect(r.status).toMatchObject({ available: true, models: ["mine"], modelsConfirmed: false, modelsReason: "нет списка" });
+    expect(r.http).toBeDefined();
+  });
+
+  it("HTTP: no list and no owner models — unavailable as before", async () => {
+    const r = await inspectProvider(httpP([]), { env: {}, deps: { listHttpModels: async () => ({ models: [], confirmed: false, unavailable: true, reason: "нет списка" }) } });
+    expect(r.status).toMatchObject({ available: false, reason: "нет списка" });
+    expect(r.http).toBeUndefined();
   });
 });
 
@@ -254,12 +288,12 @@ describe("inspectProvider openai-http", () => {
     expect(s.requests).toHaveLength(0);
   });
 
-  it("owner's list remains, no request", async () => {
+  it("Ручная модель не отключает обновление: HTTP merges the endpoint list with the owner's models", async () => {
     const s = await serve();
-    const r = await inspectProvider(prov(s, { models: ["mine"] }), { env: {} });
-    expect(r.status).toMatchObject({ available: true, models: ["mine"], modelsConfirmed: false });
-    expect(r.status.modelsReason).toContain("владельцем");
-    expect(s.requests).toHaveLength(0);
+    const r = await inspectProvider(prov(s, { models: [FAKE_MODELS[0]!, "mine"] }), { env: {} });
+    expect(s.requests.length).toBeGreaterThan(0);
+    expect(r.status).toMatchObject({ available: true, models: [...FAKE_MODELS, "mine"], modelsConfirmed: true });
+    expect(r.status.modelsReason).toBeUndefined();
   });
 
   it("server closed", async () => {
@@ -423,7 +457,7 @@ describe("CLI participants: keys from .env files stay out of the CLI environment
     expect(stdout).toContain("COUNCIL_PARTICIPANT=1");
     expect(stdout).toContain(`${fromShell}=1`);
 
-    const http = await inspectProvider({ id: "h", kind: "openai-http", label: "H", baseUrl: "http://127.0.0.1:1/v1", apiKeyEnv: keyA, models: ["m"] }, { env: merged, dataDir });
+    const http = await inspectProvider({ id: "h", kind: "openai-http", label: "H", baseUrl: "http://127.0.0.1:1/v1", apiKeyEnv: keyA, models: ["m"] }, { env: merged, dataDir, withModels: false });
     expect(http.http?.apiKey).toBe("secret-a");
   });
 });
