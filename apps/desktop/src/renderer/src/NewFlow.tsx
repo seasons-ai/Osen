@@ -30,6 +30,12 @@ export const refetchOnReturn = (prev: boolean, now: boolean, bridge: { materials
 export const reloadRegistryOnReturn = (prev: boolean, now: boolean, bridge: { registry(): Promise<RegistryView> }): Promise<{ registry: RegistryView | null; error: string | null }> | null =>
   !prev && now ? bridge.registry().then((registry) => ({ registry, error: null }), (e) => ({ registry: null, error: message(e) })) : null;
 
+// Setup reads the remembered lineup once on mount, so it opens only after the registry and the lineup request (answer, null or error) have both settled.
+export const setupReady = (registry: RegistryView | null, lastLoaded: boolean): boolean => registry !== null && lastLoaded;
+// The remembered lineup always settles: an error gives null, so the setup opens with the registry defaults.
+export const loadLast = (bridge: { lastParticipants(): Promise<RosterEntry[] | null> }): Promise<RosterEntry[] | null> =>
+  bridge.lastParticipants().then((v) => v, () => null);
+
 function Setup({ registry, registryError = null, template, last, rerun = null, active = true, onBack, onStarted }: {
   registry: RegistryView;
   registryError?: string | null;
@@ -215,6 +221,7 @@ export function NewFlow({ onStarted, rerun = null, active = true }: { onStarted(
   const [registryError, setRegistryError] = useState<string | null>(null);
   const [reloadError, setReloadError] = useState<string | null>(null);
   const [last, setLast] = useState<RosterEntry[] | null>(null);
+  const [lastLoaded, setLastLoaded] = useState(false);
   const [picked, setPicked] = useState<{ template: TemplateCard | null } | null>(null);
   const [rerunUsed, setRerunUsed] = useState(false); // "Back to templates" returns to the gallery, the rerun is no longer substituted
   const activeRerun = rerun !== null && !rerunUsed ? rerun : null;
@@ -258,7 +265,7 @@ export function NewFlow({ onStarted, rerun = null, active = true }: { onStarted(
       (v) => { if (alive) setRegistry(v); },
       (e) => { if (alive) setRegistryError(message(e)); },
     );
-    window.council.lastParticipants().then((v) => { if (alive) setLast(v); }, () => {});
+    loadLast(window.council).then((v) => { if (alive) { setLast(v); setLastLoaded(true); } });
     return () => { alive = false; };
   }, []);
   const wasActive = useRef(active);
@@ -295,7 +302,7 @@ export function NewFlow({ onStarted, rerun = null, active = true }: { onStarted(
     );
   }
   const back = () => { setPicked(null); setRerunUsed(true); setReloadError(null); }; // the next setup starts without the previous reread error
-  if (registry === null) {
+  if (registry === null || !setupReady(registry, lastLoaded)) {
     return (
       <>
         <header className="topbar">

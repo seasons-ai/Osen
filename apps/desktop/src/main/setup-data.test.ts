@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,19 @@ import type { ProviderStatus, Registry, Session } from "@model-council/core";
 import { setProcessLanguage } from "@model-council/core/i18n";
 import { applyProcessLanguage, userTemplatesDir } from "@model-council/core";
 import { lastRoster, listScenarios, registryView, scenarioPath, templatesView } from "./setup-data.ts";
+
+// Counts the bytes read from every file through readFileSync and readSync (core modules import the same node:fs).
+const fsReads = vi.hoisted(() => ({ bytes: new Map<string, number>(), fds: new Map<number, string>() }));
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  const add = (path: string | undefined, n: number) => { if (path !== undefined) fsReads.bytes.set(path, (fsReads.bytes.get(path) ?? 0) + n); };
+  return {
+    ...fs,
+    openSync: (...a: Parameters<typeof fs.openSync>) => { const fd = fs.openSync(...a); fsReads.fds.set(fd, String(a[0])); return fd; },
+    readSync: (...a: Parameters<typeof fs.readSync>) => { const n = fs.readSync(...a); add(fsReads.fds.get(a[0]), n); return n; },
+    readFileSync: (...a: Parameters<typeof fs.readFileSync>) => { const r = fs.readFileSync(...a); add(typeof a[0] === "number" ? fsReads.fds.get(a[0]) : String(a[0]), Buffer.byteLength(r)); return r; },
+  };
+});
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "council-setup-")); });
@@ -164,6 +177,64 @@ describe("lastRoster", () => {
   it("the newer desktop session is taken", () => {
     write("old", "desktop", 1, "old"); write("new", "desktop", 3, "new"); write("c", "cli", 5, "cli");
     expect(lastRoster(dir)).toEqual([{ providerId: "claude", model: "new1" }, { providerId: "scripted", model: "new2" }]);
+  });
+});
+
+describe("lastRoster: Remembering the participant lineup", () => {
+  const ts = (n: number) => new Date(Date.UTC(2026, 0, 1, 0, 0, n)).toISOString();
+  const session = (id: string, origin: Session["origin"], n: number, model: string, extra: Partial<Session> = {}): Session => ({
+    id, createdAt: ts(n), origin, topic: id, templateId: null, framing: "",
+    participants: [1, 2].map((i) => ({ id: `p${i}`, name: `n${i}`, providerId: i === 1 ? "claude" : "scripted", model: `${model}${i}`, role: null })),
+    limits: { maxRounds: 4, turnTimeoutSec: 60, contextChars: 1000 }, ...extra,
+  });
+  const created = (s: Session) => JSON.stringify({ seq: 1, ts: s.createdAt, type: "session_created", session: s, pid: 1 });
+  const journal = (id: string, firstLine: string, tail = "") => {
+    mkdirSync(join(dir, "sessions", id), { recursive: true });
+    writeFileSync(join(dir, "sessions", id, "events.jsonl"), `${firstLine}\n${tail}`);
+  };
+  const tail = "x".repeat(200 * 1024);
+  const bytesOf = (id: string) => fsReads.bytes.get(join(dir, "sessions", id, "events.jsonl")) ?? 0;
+  beforeEach(() => { fsReads.bytes.clear(); });
+
+  describe("Long history", () => {
+    it("reads only the first line of the other journals: ties, an unreadable journal and a foreign first line", () => {
+      const lines = new Map<string, string>();
+      for (let i = 0; i < 50; i++) {
+        const id = `s${String(i).padStart(2, "0")}`;
+        lines.set(id, created(session(id, i % 2 ? "cli" : "desktop", i + 1, id)));
+        journal(id, lines.get(id)!, tail);
+      }
+      // equal createdAt with the newest desktop one: the larger id wins
+      for (const id of ["tie-a", "tie-b"]) { lines.set(id, created(session(id, "desktop", 100, id))); journal(id, lines.get(id)!, tail); }
+      // a directory instead of a journal is unreadable; a journal whose first line is not session_created is skipped
+      mkdirSync(join(dir, "sessions", "broken", "events.jsonl"), { recursive: true });
+      lines.set("foreign", JSON.stringify({ seq: 1, ts: ts(200), type: "turn_started", turn: 1, round: 1, participantId: "p1" }));
+      journal("foreign", lines.get("foreign")!, tail);
+      expect(lastRoster(dir)).toEqual([{ providerId: "claude", model: "tie-b1" }, { providerId: "scripted", model: "tie-b2" }]);
+      for (const [id, line] of lines) {
+        if (id !== "tie-b") expect(bytesOf(id), id).toBeLessThanOrEqual(Buffer.byteLength(line) + 1 + 4096);
+      }
+    });
+  });
+
+  describe("Long first event", () => {
+    it("a first line over 4 KiB does not skip the session", () => {
+      const materials = Array.from({ length: 100 }, (_, i) => ({ id: `m${i + 1}`, name: `material-${i + 1}.md`, chars: 10, sha256: "a".repeat(64) }));
+      const long = session("long", "desktop", 5, "long", { framing: "f".repeat(5000), materials });
+      expect(Buffer.byteLength(created(long))).toBeGreaterThan(4096);
+      journal("long", created(long));
+      journal("other", created(session("other", "desktop", 1, "other")), tail);
+      expect(lastRoster(dir)).toEqual([{ providerId: "claude", model: "long1" }, { providerId: "scripted", model: "long2" }]);
+    });
+  });
+
+  describe("Participant replacement on resume", () => {
+    it("proposes the participant that replaced one on resume", () => {
+      const s = session("res", "desktop", 5, "res");
+      const resumed = { seq: 2, ts: ts(6), type: "session_resumed", pid: 1, maxRounds: 4, replacements: [{ oldParticipantId: "p2", participant: { id: "p3", name: "n3", providerId: "claude", model: "swapped", role: null, replaces: "p2" } }] };
+      journal("res", created(s), `${JSON.stringify(resumed)}\n`);
+      expect(lastRoster(dir)).toEqual([{ providerId: "claude", model: "res1" }, { providerId: "claude", model: "swapped" }]);
+    });
   });
 });
 
