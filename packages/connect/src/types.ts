@@ -39,10 +39,12 @@ export interface ActionOptions {
   name?: string;
 }
 
+export interface ExecResult { ok: boolean; stdout: string; stderr: string }
+
 export interface ConnectDeps {
   home: string;
   hasCommand(bin: Bin): boolean;
-  exec(bin: Bin, args: string[]): { ok: boolean; stdout: string; stderr: string };
+  exec(bin: Bin, args: string[]): ExecResult | Promise<ExecResult>;
   // Claude.app bundle paths that count as "Claude Desktop installed" (docs/clients.md); the installer passes
   // /Applications/Claude.app and ~/Applications/Claude.app, tests pass their own
   desktopApps: string[];
