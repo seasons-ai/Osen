@@ -246,14 +246,14 @@ describe("Wait panel: en", () => {
   });
   it("language from the context when the process language is ru", () => {
     const ctx = (language: Language) => renderToStaticMarkup(
-      <LanguageProvider initial={{ language, source: "file", locked: false }}><WaitPanelView {...props()} /></LanguageProvider>,
+      <LanguageProvider initial={{ language, source: "file", locked: false, damaged: false }}><WaitPanelView {...props()} /></LanguageProvider>,
     );
     expect(ctx("en")).toContain("Waiting for the owner");
     expect(ctx("en")).toContain("4:32 left");
     expect(ctx("ru")).toContain("Ждём владельца");
     expect(ctx("ru")).toContain("осталось 4:32");
     const note = (language: Language) => renderToStaticMarkup(
-      <LanguageProvider initial={{ language, source: "file", locked: false }}><WaitInterruptedNote state={state()} /></LanguageProvider>,
+      <LanguageProvider initial={{ language, source: "file", locked: false, damaged: false }}><WaitInterruptedNote state={state()} /></LanguageProvider>,
     );
     expect(note("en")).toContain("Interrupted while waiting for the owner");
     expect(note("ru")).toContain("Прервано во время ожидания владельца");

@@ -109,6 +109,15 @@ async function run(language: Language) {
   rmSync(link);
   await installCommand(o);
 
+  // (e2) a foreign object appears after the check, before the link is created: refused, never deleted
+  const raceHome = freshHome();
+  const raceLink = join(raceHome, ".local/bin/council");
+  const race1 = await installCommand(opts(raceHome, { symlink: (t, p) => { writeFileSync(p, "raced file\n"); symlinkSync(t, p); } }));
+  report(!race1.ok && race1.code === "foreign" && race1.path === raceLink && !!race1.detail && readFileSync(raceLink, "utf8") === "raced file\n", `${tag} (e2) foreign file appearing before link creation: refused foreign with path and kind, content unchanged`);
+  rmSync(raceLink);
+  const race2 = await installCommand(opts(raceHome, { symlink: (t, p) => { symlinkSync("/usr/local/bin/other-council", p); symlinkSync(t, p); } }));
+  report(!race2.ok && race2.code === "foreign" && race2.path === raceLink && !!race2.detail && readlinkSync(raceLink) === "/usr/local/bin/other-council", `${tag} (e2) foreign symlink appearing before link creation: refused foreign with path and kind, target unchanged`);
+
   // (f) shadowed by an earlier PATH entry
   const shadow = join(dir, "shadow");
   script(join(shadow, "council"), "echo shadow");

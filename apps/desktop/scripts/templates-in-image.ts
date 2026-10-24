@@ -63,13 +63,15 @@ export function bundleIdentityLine(plist: string): { ok: boolean; text: string }
   return { ok, text: `Info.plist: CFBundleIdentifier ${String(id)}, CFBundleDisplayName ${String(name)}${ok ? "" : " (expected com.osen.desktop and Osen)"}` };
 }
 
-/** Report line of the package icon check: Contents/Resources/icon.icns exists, CFBundleIconFile in Info.plist points to it. */
-export function appIconLine(contents: string): { ok: boolean; text: string } {
+/** Report line of the package icon check: Contents/Resources/icon.icns exists, CFBundleIconFile in Info.plist points to it, its bytes equal `reference`. */
+export function appIconLine(contents: string, reference = join(import.meta.dirname, "../../../design/mockup-osen/brand/app-icon/icon.icns")): { ok: boolean; text: string } {
   const info = JSON.parse(execFileSync("plutil", ["-convert", "json", "-o", "-", join(contents, "Info.plist")], { encoding: "utf8" })) as Record<string, unknown>;
   const file = String(info["CFBundleIconFile"]);
-  const has = existsSync(join(contents, "Resources/icon.icns"));
-  const ok = has && file === "icon.icns";
-  return { ok, text: `icon: Contents/Resources/icon.icns${has ? "" : " is missing"}, CFBundleIconFile ${file}${ok ? "" : " (expected icon.icns)"}` };
+  const icon = join(contents, "Resources/icon.icns");
+  const has = existsSync(icon);
+  const same = has && readFileSync(icon).equals(readFileSync(reference));
+  const ok = same && file === "icon.icns";
+  return { ok, text: `icon: Contents/Resources/icon.icns${has ? "" : " is missing"}, CFBundleIconFile ${file}${file === "icon.icns" ? "" : " (expected icon.icns)"}${has ? `, bytes ${same ? "match" : "differ from"} ${reference}` : ""}` };
 }
 
 /** @fontsource fonts that the build must carry: file name without the Vite hash and extension. */

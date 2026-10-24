@@ -57,7 +57,7 @@ describe("view", () => {
     expect(v).toMatchObject({ configPath: configPath(dir), envPath: envFilePath(dir), registryError: null });
     expect(v.providers[0]).toEqual({
       id: "claude", kind: "cli", label: "Claude Code", available: true, reason: null, warning: "новая версия", version: "1.2.3", path: "/bin/claude",
-      baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: ["opus"], defaultModel: DEFAULT_MODEL,
+      baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: ["opus"], ownerModels: [], defaultModel: DEFAULT_MODEL,
       modelsSource: "provider", modelsReason: null, modelsAt: NOW.toISOString(), cli: expect.objectContaining({ agent: "claude", source: null, level: "none", pin: null }),
     });
     expect(v.providers[1]).toMatchObject({ id: "api", billing: "paid", baseUrl: "https://api.example/v1", keyEnv: "API_KEY", keySet: true, defaultModel: null, models: ["m1"] });
@@ -81,11 +81,39 @@ describe("view", () => {
     };
     const v = await make((id) => ({ id, kind: "openai-http", label: id, available: true, models: [], modelsConfirmed: false, ...status[id] })).api.view();
     const by = Object.fromEntries(v.providers.map((p) => [p.id, p]));
-    expect(by["api"]).toMatchObject({ modelsSource: "owner", modelsReason: null, modelsAt: null, models: ["own"] });
+    expect(by["api"]).toMatchObject({ modelsSource: "unconfirmed", modelsReason: "задан", modelsAt: null, models: ["own"], ownerModels: ["own"] });
     expect(by["b"]).toMatchObject({ modelsSource: "provider", modelsReason: null, modelsAt: NOW.toISOString(), models: ["x"] });
     expect(by["c"]).toMatchObject({ modelsSource: "unconfirmed", modelsReason: "не подтверждён", modelsAt: null });
     expect(by["d"]).toMatchObject({ modelsSource: "unavailable", modelsReason: "пусто", modelsAt: null });
     expect(by["claude"]).toMatchObject({ modelsSource: "unavailable", modelsReason: null, reason: "нет" }); // the unavailability reason is already shown in the card
+  });
+
+  it("Ручная модель не отключает обновление: only own models are stored, the list stays from the endpoint", async () => {
+    seed();
+    const { api } = make((id) => ({ id, kind: "openai-http", label: id, available: true, models: ["e1", "e2", "my-model"], modelsConfirmed: true }));
+    const v = await api.saveModels("api", ["my-model"]);
+    expect(JSON.parse(raw()).providers.find((p: { id: string }) => p.id === "api").models).toEqual(["my-model"]);
+    expect(v.providers.find((p) => p.id === "api")).toMatchObject({ ownerModels: ["my-model"], models: ["e1", "e2", "my-model"], modelsSource: "provider" });
+  });
+
+  it("an old config with the full list in models is read as added models", async () => {
+    seed((r) => ({ ...r, providers: r.providers.map((p) => (p.id === "api" ? { ...p, models: ["e1", "e2"] } : p)) }));
+    const v = await make((id) => ({ id, kind: "openai-http", label: id, available: true, models: ["e1", "e2", "e3"], modelsConfirmed: true })).api.view();
+    expect(v.providers.find((p) => p.id === "api")).toMatchObject({ ownerModels: ["e1", "e2"], models: ["e1", "e2", "e3"], modelsSource: "provider" });
+  });
+
+  it("Убрать добавленные модели: models emptied, the endpoint list stays", async () => {
+    seed((r) => ({ ...r, providers: r.providers.map((p) => (p.id === "api" ? { ...p, models: ["e1", "e2"] } : p)) }));
+    const { api } = make((id) => ({ id, kind: "openai-http", label: id, available: true, models: ["e1", "e2", "e3"], modelsConfirmed: true }));
+    const v = await api.saveModels("api", []);
+    expect(JSON.parse(raw()).providers.find((p: { id: string }) => p.id === "api").models).toEqual([]);
+    expect(v.providers.find((p) => p.id === "api")).toMatchObject({ ownerModels: [], models: ["e1", "e2", "e3"], modelsSource: "provider" });
+  });
+
+  it("Эндпоинт без перечня и своя модель: available, the added model and the reason", async () => {
+    seed((r) => ({ ...r, providers: r.providers.map((p) => (p.id === "api" ? { ...p, models: ["my-model"] } : p)) }));
+    const v = await make((id) => ({ id, kind: "openai-http", label: id, available: true, models: ["my-model"], modelsConfirmed: false, modelsReason: "Endpoint unreachable" })).api.view();
+    expect(v.providers.find((p) => p.id === "api")).toMatchObject({ available: true, ownerModels: ["my-model"], models: ["my-model"], modelsSource: "unconfirmed", modelsReason: "Endpoint unreachable" });
   });
 
   it("key not set: keySet false, the reason and \"unavailable without a key\"", async () => {

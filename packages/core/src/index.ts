@@ -13,6 +13,7 @@ export * from "./participants/scripted.ts";
 export * from "./engine.ts";
 export * from "./materials.ts";
 export { materialsMessages } from "./messages/materials.ts";
+export { engineMessages } from "./messages/engine.ts";
 export * from "./pdf/extract.ts";
 export * from "./documents/extract.ts";
 export * from "./ocr/run.ts";

@@ -110,10 +110,7 @@ export function findTextBranching(fileName: string, sourceText: string, consts: 
 }
 
 // Known places. Key: "<path from root>#<constant name or catalog field>" (matched by name); value — justification.
-const ALLOWED: Record<string, string> = {
-  // found by the catalog check of change 235; the fix (an archive marker instead of the text) is change 264-fix-materials-archive-text-match
-  "packages/core/src/materials.ts#archiveInFolder": "same-process comparison of a folder archive refusal; to be replaced by a marker in 264-fix-materials-archive-text-match",
-};
+const ALLOWED: Record<string, string> = {};
 
 describe("Refusal codes and identifiers do not depend on the language: no text matching", () => {
   it("the search finds every text match in the built-in sample", () => {

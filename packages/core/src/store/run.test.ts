@@ -761,6 +761,18 @@ describe("Executor lock at session start", () => {
     expect(existsSync(resumeLockPath(dir, "r"))).toBe(false);
   });
 
+  it("a repeated start of the same id in the same process keeps the first run marked as running", async () => {
+    const dir = tmp();
+    const g = await gated("m");
+    const run = runStoredSession({ session: mk("m"), drivers: g.drivers, dataDir: dir });
+    await g.hasStarted;
+    await expect(runStoredSession({ session: mk("m"), drivers: await pair("consensus"), dataDir: dir })).rejects.toBeInstanceOf(SessionExistsError);
+    expect(readSession(dir, "m")!.status).toBe("running");
+    expect(() => requestStop(dir, "m")).not.toThrow();
+    g.release();
+    await run;
+  });
+
   it("rejects another executor of a running session with busy before any writes", async () => {
     const dir = tmp();
     const g = await gated("b");

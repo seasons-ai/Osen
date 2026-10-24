@@ -224,3 +224,23 @@ describe("parsers (moved from Widget)", () => {
     expect(parseClaudeInitializeModels(JSON.parse(await claudeAnswer()))).toEqual(CLAUDE_MODELS);
   });
 });
+
+describe("Перечень моделей от CLI: Потомок получателя перечня игнорирует SIGTERM", () => {
+  test("the answer is received and after the stop grace no one is left in the request group", async () => {
+    // the stub starts a SIGTERM-ignoring descendant that holds no pipes, waits for its pid, then answers
+    const { path, root } = await stub(`read -r line
+id=$(printf '%s' "$line" | sed 's/.*"request_id":"\\([^"]*\\)".*/\\1/')
+sh -c 'trap "" TERM; echo $$ > "$1"; exec sleep 30' sh "$(dirname "$0")/pid" >/dev/null 2>&1 </dev/null &
+while [ ! -s "$(dirname "$0")/pid" ]; do sleep 0.05; done
+printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{"models":[{"value":"m1"}]}}}\\n' "$id"
+exec sleep 30`, "/bin/sh");
+    const line = await claudeInitialize(path, { PATH: process.env.PATH }, ["--print"], 20_000);
+    expect(parseClaudeInitializeModels(JSON.parse(line))).toEqual(["m1"]);
+    const pid = Number(await readFile(join(root, "pid"), "utf8"));
+    const alive = (): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    try {
+      await new Promise((res) => setTimeout(res, 3000));
+      expect(alive()).toBe(false);
+    } finally { try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ } }
+  }, 60_000);
+});

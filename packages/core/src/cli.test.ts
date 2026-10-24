@@ -247,6 +247,30 @@ describe("storage and subcommands", () => {
     }
   });
 
+  it("1b. --turn-timeout 0, 1.5, abc, 2147484: the reason names both bounds 1 and 2147483 on en and ru; --max-rounds 0 keeps \"at least 1\" (change 234)", async () => {
+    const prev = getProcessLanguage();
+    try {
+      for (const lang of ["en", "ru"] as const) {
+        setProcessLanguage(lang);
+        for (const v of ["0", "1.5", "abc", "2147484"]) {
+          const home = tmp();
+          const b = await run(full(["--turn-timeout", v]), { env: dev(home) });
+          expect(b.code, `${lang} ${v}`).toBe(2);
+          expect(b.err, `${lang} ${v}`).toContain(cliMessages(lang).intRange("--turn-timeout", 1, 2147483));
+          expect(b.err, `${lang} ${v}`).toContain(cliMessages(lang).help);
+          expect(b.out, `${lang} ${v}`).toBe("");
+          expect(existsSync(join(home, "sessions")) ? readdirSync(join(home, "sessions")) : [], `${lang} ${v}`).toEqual([]);
+        }
+        const m = await run([...base, ...two(), "--max-rounds", "0"], { env: dev(tmp()) });
+        expect(m.code).toBe(2);
+        expect(m.err).toContain(cliMessages(lang).intRequired("--max-rounds"));
+        expect(m.err.split("\n")[0]).not.toContain("2147483");
+      }
+    } finally {
+      setProcessLanguage(prev);
+    }
+  });
+
   it("2. list: fields, truncation, empty storage", async () => {
     const home = tmp();
     const empty = await run(["list"], { env: dev(home) });
@@ -383,6 +407,27 @@ describe("storage and subcommands", () => {
       expect(r.err).toContain(help());
     }
     expect((await run(["foo"], { env: dev(tmp()) })).err).toContain("Неизвестная команда «foo».");
+  });
+
+  it("13a. subcommand named like an object property is unknown, as cli foo (en and ru)", async () => {
+    const prev = getProcessLanguage();
+    try { for (const lang of ["en", "ru"] as const) {
+      setProcessLanguage(lang);
+      const env = (h: string) => dev(h);
+      const foo = await run(["cli", "foo"], { env: env(tmp()) });
+      const topFoo = await run(["foo"], { env: env(tmp()) });
+      expect(foo.code).toBe(2);
+      for (const name of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+        const h = tmp();
+        const r = await run(["cli", name], { env: env(h) });
+        expect([r.code, r.err], `${lang} cli ${name}`).toEqual([2, foo.err.replace("«foo»", `«${name}»`)]);
+        expect(r.err).not.toContain("function Object");
+        expect(existsSync(join(h, "cli"))).toBe(false);
+      }
+      const top = await run(["constructor"], { env: env(tmp()) });
+      expect([top.code, top.err]).toEqual([2, topFoo.err.replace("«foo»", "«constructor»")]);
+      expect(foo.err).toContain(lang === "en" ? "Unknown cli subcommand «foo»" : "Неизвестная подкоманда cli «foo»");
+    } } finally { setProcessLanguage(prev); }
   });
 
   it("14. repeated launch does not change the previous journal", async () => {
@@ -2212,6 +2257,19 @@ describe("journal of a newer version in council output", () => {
     const before = sha(home, "s1");
     const r = await run(["stop", "s1"], { env: dev(home) });
     expect([r.code, r.out]).toEqual([0, "Остановка сессии s1 запрошена."]);
+    expect(existsSync(stopRequestPath(home, "s1"))).toBe(true);
+    expect(sha(home, "s1")).toBe(before);
+  });
+
+  it("stop: newer_version session with a dead executor — exit code 2, nothing to stop, no request, not called interrupted", async () => {
+    const home = tmp();
+    make(home, "s1", { pid: await deadPid() });
+    const before = sha(home, "s1");
+    const r = await run(["stop", "s1"], { env: dev(home) });
+    expect(r.code).toBe(2);
+    expect(r.err).toContain(`Сессия s1: исполнитель не работает, останавливать нечего; ${NEWER}.`);
+    expect(r.err).not.toContain("прервана");
+    expect(existsSync(stopRequestPath(home, "s1"))).toBe(false);
     expect(sha(home, "s1")).toBe(before);
   });
 
@@ -2627,6 +2685,40 @@ describe("run-prepared: the launch deadline is rechecked after slow provider che
     expect(listSessions(home, () => false)).toHaveLength(0);
   });
 
+  it("Internal prepared launch: the deadline expired after reading the file", async () => {
+    const home = tmp();
+    const stub = cliStub("claude");
+    const deadline = new Date(Date.now() + 400).toISOString();
+    const session = createSession({
+      topic: "Тема", framing: "", origin: "mcp", limits: { maxRounds: 1, turnTimeoutSec: 30, contextChars: 20000 },
+      participants: [1, 2].map((n) => ({ name: `N${n}`, providerId: "claude", model: "default", role: null })),
+    }, { maxParticipants: 8 });
+    const file = writeLaunchFile(home, { session, scenarios: {}, deadline });
+    const r = await run(["run-prepared", file], {
+      env: dev(home),
+      inspectDeps: { locate: async (a) => { await untilPast(deadline); return stub.loc()(a); } },
+    });
+    expect(r.code).not.toBe(0);
+    expect(JSON.parse(r.err.split("\n")[0]!)).toEqual({ code: "launch_expired", message: cliMessages().launchExpired(deadline) });
+    expect(listSessions(home, () => false)).toHaveLength(0);
+  });
+
+  it("Internal prepared launch: the launch file is already expired when read → launch_expired first on stderr (start and resume)", async () => {
+    const home = tmp();
+    const deadline = new Date(Date.now() - 1000).toISOString();
+    const session = createSession({
+      topic: "Тема", framing: "", origin: "mcp", limits: { maxRounds: 1, turnTimeoutSec: 30, contextChars: 20000 },
+      participants: [1, 2].map((n) => ({ name: `N${n}`, providerId: "scripted", model: "m", role: null })),
+    }, { maxParticipants: 8 });
+    const start = await run(["run-prepared", writeLaunchFile(home, { session, scenarios: {}, deadline })], { env: dev(home) });
+    expect(start.code).not.toBe(0);
+    expect(JSON.parse(start.err.split("\n")[0]!)).toEqual({ code: "launch_expired", message: cliMessages().launchExpired(deadline) });
+    expect(listSessions(home, () => false)).toHaveLength(0);
+    const resume = await run(["run-prepared", writeLaunchFile(home, { kind: "resume", sessionId: "s1", journalBytes: 0, scenarios: {}, deadline })], { env: dev(home) });
+    expect(resume.code).not.toBe(0);
+    expect(JSON.parse(resume.err.split("\n")[0]!)).toEqual({ code: "launch_expired", message: cliMessages().launchExpired(deadline) });
+  });
+
   describe("resume with a replacement: provider re-check under the lock", () => {
     // p2 fails in round 1 (session failed), then the owner replaces it with the claude stub
     async function seed(home: string) {
@@ -2687,5 +2779,48 @@ describe("run-prepared: the launch deadline is rechecked after slow provider che
       expect(existsSync(launchAcceptedPath(file))).toBe(true);
       expect(readEvents(home, "f1")!.events.some((e) => e.type === "session_resumed")).toBe(true);
     });
+  });
+});
+
+describe("Sessions and store in council: unreadable session in the terminal list", () => {
+  const ts = "2026-01-01T00:00:00.000Z";
+  const mk = (home: string, id: string) => {
+    createSessionJournal(home, id);
+    appendEvent(home, id, {
+      seq: 1, ts, type: "session_created", pid: 1,
+      session: {
+        id, createdAt: ts, origin: "cli", topic: `Topic ${id}`, templateId: null, framing: "",
+        participants: [1, 2].map((i) => ({ id: `p${i}`, name: `n${i}`, providerId: "scripted", model: "m", role: null })),
+        limits: { maxRounds: 3, turnTimeoutSec: 60, contextChars: 1000 },
+      },
+    });
+  };
+  it("stdout only the readable one, stderr `<id>: reason` per skipped one, logged, code 0, --json unchanged", async () => {
+    const prev = getProcessLanguage();
+    const home = tmp(), clean = tmp();
+    mk(home, "sess-a"); mk(clean, "sess-a");
+    mk(home, "sess-b"); writeFileSync(eventsPath(home, "sess-b"), "garbage\n");
+    mk(home, "sess-c"); chmodSync(eventsPath(home, "sess-c"), 0o000);
+    try {
+      for (const lang of ["en", "ru"] as const) {
+        setProcessLanguage(lang);
+        const m = cliMessages(lang);
+        const r = await run(["list"], { env: dev(home) });
+        expect(r.code, lang).toBe(0);
+        expect(r.out, lang).toContain("sess-a");
+        expect(r.out, lang).not.toMatch(/sess-[bc]/);
+        const storeNoCreation = lang === "en" ? "the journal has no session creation event" : "в журнале нет события создания сессии";
+        expect(r.err.split("\n"), lang).toEqual([m.sessionNotRead("sess-b", storeNoCreation), m.sessionNotRead("sess-c", "EACCES")]);
+        const j = await run(["list", "--json"], { env: dev(home) });
+        const jc = await run(["list", "--json"], { env: dev(clean) });
+        expect(j.code, lang).toBe(0);
+        expect(j.out, lang).toBe(jc.out);
+      }
+      const log = readFileSync(join(home, "logs", "app.log"), "utf8");
+      expect(log.match(/ERROR \[cli\] Session journal not read/g)).toHaveLength(8);
+    } finally {
+      chmodSync(eventsPath(home, "sess-c"), 0o600);
+      setProcessLanguage(prev);
+    }
   });
 });

@@ -352,7 +352,7 @@ describe("SolutionPanelView: en", () => {
   });
   it("language from the context when the process language is ru", () => {
     const ctx = (language: Language) => renderToStaticMarkup(
-      <LanguageProvider initial={{ language, source: "file", locked: false }}>
+      <LanguageProvider initial={{ language, source: "file", locked: false, damaged: false }}>
         <SolutionPanelView state={swap} selected={null} onSelect={() => {}} diff />
       </LanguageProvider>);
     const e = ctx("en"), r = ctx("ru");

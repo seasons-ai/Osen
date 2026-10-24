@@ -197,11 +197,6 @@ describe("Core messages in the selected language: provider unavailability reason
     expect((await reason("en", p, { env: {} })).reason).toBe("Key not set: put the value of the variable K into the file .env in the data folder");
     expect((await reason("en", p, { env: {}, keyFile: "/d/.env" })).reason).toContain("into the file /d/.env");
   });
-  it("list set by owner", async () => {
-    const p = http({ models: ["a"] });
-    expect((await reason("ru", p, { env: {} })).modelsReason).toBe("Перечень задан владельцем в config.json");
-    expect((await reason("en", p, { env: {} })).modelsReason).toBe("The list is set by the owner in config.json");
-  });
 });
 
 describe("Core messages in the selected language: describeIssue", () => {

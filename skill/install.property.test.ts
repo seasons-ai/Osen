@@ -142,6 +142,11 @@ describe("Installer output in the chosen language: exit code, actions and snapsh
           const skillFiles = (snap: Record<string, string>) => Object.entries(snap).filter(([k]) => k.startsWith(`.${agent}/skills/osen/`));
           if (c.skill[agent] === "other-copy") expect(skillFiles(r[language].after), `seed ${seed}: ${agent}`).toEqual(skillFiles(before));
           if (c.skill[agent] === "other-copy" && present) expect(code, `seed ${seed}: ${agent}`).toBe(1);
+          // a foreign or other-copy skill folder and no osen server: install never adds the server (change 257)
+          if ((c.skill[agent] === "foreign" || c.skill[agent] === "other-copy") && c.server[agent] === "none" && present && !un) {
+            const entries = agent === "claude" ? readJson(join(w.deps.home, ".claude.json")).mcpServers : readJson(join(w.deps.home, ".codex/fake-state.json")).servers;
+            expect(entries?.osen, `seed ${seed}: ${agent}`).toBeUndefined();
+          }
           // our own legacy entry is removed if the agent is present, it is not a preview and osen has no mismatches for the agent (or it is an uninstall)
           const clean = c.server[agent] !== "broken" && (un || (c.skill[agent] !== "foreign" && c.skill[agent] !== "other-copy" && c.server[agent] !== "foreign"));
           if (c.legacy[agent] === "ours" && present && !dry && clean) expect(w.legacyLeft(agent), `seed ${seed}: ${agent}`).toBe(false);

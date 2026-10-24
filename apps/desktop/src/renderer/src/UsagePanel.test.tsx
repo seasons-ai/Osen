@@ -230,7 +230,7 @@ describe("UsagePanel: tariff estimate", () => {
 
 // English view and language switch with the summary shown: the data is the same, labels are new.
 describe("UsagePanel: English", () => {
-  const view = (language: "en" | "ru") => ({ language, source: "file" as const, locked: false });
+  const view = (language: "en" | "ru") => ({ language, source: "file" as const, locked: false, damaged: false });
   const htmlIn = (language: "en" | "ru", summary: UsageSummary | null, o: { period?: UsagePeriod; error?: string | null } = {}) =>
     renderToStaticMarkup(<LanguageProvider initial={view(language)}><UsagePanelView period={o.period ?? T} now={NOW} summary={summary} error={o.error ?? null} onPeriod={() => {}} /></LanguageProvider>);
   const est = (byCurrency: { currency: string; amount: number; records: number }[]) => ({ byCurrency, skipped: { no_model: 0, default_model: 0, no_tariff: 0, no_split: 0 } });

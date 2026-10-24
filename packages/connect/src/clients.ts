@@ -39,9 +39,9 @@ function readDoc(file: string, emptyIsObject: boolean): Doc {
   return { kind: "ok", obj: v };
 }
 
-function readEntry(client: ClientId, deps: ConnectDeps, name: string): Read {
+async function readEntry(client: ClientId, deps: ConnectDeps, name: string): Promise<Read> {
   if (client === "codex") {
-    const r = deps.exec("codex", ["mcp", "get", name, "--json"]);
+    const r = await deps.exec("codex", ["mcp", "get", name, "--json"]);
     try {
       const t = JSON.parse(r.stdout)?.transport;
       if (isObj(t)) return { kind: "found", entry: toEntry(t) };
@@ -70,11 +70,11 @@ function classify(e: ServerCommand, c: ServerCommand): State {
   return "foreign";
 }
 
-export function status(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions = {}): Status {
+export async function status(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions = {}): Promise<Status> {
   const file = settingsFile(client, deps.home);
   const installed = client === "claude-desktop" ? existsSync(file) || deps.desktopApps.some((p) => existsSync(p)) : deps.hasCommand(client === "codex" ? "codex" : "claude");
   if (!installed) return { client, state: "not_installed", file };
-  const r = readEntry(client, deps, opts.name ?? "osen");
+  const r = await readEntry(client, deps, opts.name ?? "osen");
   if (r.kind === "corrupt") return { client, state: "corrupt", file, reason: r.reason };
   if (r.kind === "none") return { client, state: "not_connected", file };
   return { client, state: classify(r.entry, cmd), file, entry: r.entry };
@@ -107,24 +107,31 @@ function writeDesktop(file: string, name: string, cmd: ServerCommand | null): Fa
   }
 }
 
-function writeCli(client: ClientId, deps: ConnectDeps, name: string, op: Op, cmd: ServerCommand): Failure | null {
+async function writeCli(client: ClientId, deps: ConnectDeps, name: string, op: Op, cmd: ServerCommand, prev?: ServerCommand): Promise<Failure | null> {
   const bin = client === "codex" ? "codex" : "claude";
   const rm = client === "codex" ? ["mcp", "remove", name] : ["mcp", "remove", "--scope", "user", name];
-  const add = client === "codex" ? ["mcp", "add", name, "--", cmd.command, ...cmd.args] : ["mcp", "add", "--scope", "user", name, "--", cmd.command, ...cmd.args];
-  for (const args of [...(op === "add" ? [] : [rm]), ...(op === "remove" ? [] : [add])]) {
-    const r = deps.exec(bin, args);
-    if (!r.ok) return { ok: false, reason: { code: "cli", detail: (r.stderr || r.stdout).trim() } };
+  const addOf = (c: ServerCommand) => client === "codex" ? ["mcp", "add", name, "--", c.command, ...c.args] : ["mcp", "add", "--scope", "user", name, "--", c.command, ...c.args];
+  const fail = (r: { stderr: string; stdout: string }): Failure => ({ ok: false, reason: { code: "cli", detail: (r.stderr || r.stdout).trim() } });
+  if (op === "remove") { const r = await deps.exec(bin, rm); return r.ok ? null : fail(r); }
+  // codex mcp add overwrites an existing entry, so a replace never removes first
+  if (op === "replace" && client !== "codex") {
+    const r = await deps.exec(bin, rm);
+    if (!r.ok) return fail(r);
   }
-  return null;
+  const r = await deps.exec(bin, addOf(cmd));
+  if (r.ok) return null;
+  // best effort: put the previous entry back; the caller re-reads the real state
+  if (op === "replace" && prev && client !== "codex") await deps.exec(bin, addOf(prev));
+  return fail(r);
 }
 
-function apply(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions, before: Status, op: Op): ActionResult {
+async function apply(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions, before: Status, op: Op): Promise<ActionResult> {
   const name = opts.name ?? "osen";
   const { file } = before;
   const goal: State = op === "remove" ? "not_connected" : "connected";
   if (opts.dryRun) return { ok: true, client, file, changed: true, state: goal, need: NEED[client] };
-  const f = client === "claude-desktop" ? writeDesktop(file, name, op === "remove" ? null : cmd) : writeCli(client, deps, name, op, cmd);
-  const after = status(client, cmd, deps, opts);
+  const f = client === "claude-desktop" ? writeDesktop(file, name, op === "remove" ? null : cmd) : await writeCli(client, deps, name, op, cmd, before.entry);
+  const after = await status(client, cmd, deps, opts);
   if (f) return { ok: false, client, file, refusal: "failed", state: after.state, ...(before.entry ? { entry: before.entry } : {}), reason: f.reason };
   if (after.state !== goal) return { ok: false, client, file, refusal: "failed", state: after.state, ...(after.entry ? { entry: after.entry } : {}), reason: { code: "verify", detail: file } };
   return { ok: true, client, file, changed: true, state: goal, need: NEED[client] };
@@ -135,20 +142,20 @@ function refuse(s: Status): ActionResult {
 }
 const same = (s: Status, state: State): ActionResult => ({ ok: true, client: s.client, file: s.file, changed: false, state, need: "none" });
 
-export function connect(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions = {}): ActionResult {
-  const s = status(client, cmd, deps, opts);
+export async function connect(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions = {}): Promise<ActionResult> {
+  const s = await status(client, cmd, deps, opts);
   if (s.state === "connected") return same(s, "connected");
-  return s.state === "not_connected" ? apply(client, cmd, deps, opts, s, "add") : refuse(s);
+  return s.state === "not_connected" ? await apply(client, cmd, deps, opts, s, "add") : refuse(s);
 }
 
-export function update(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions = {}): ActionResult {
-  const s = status(client, cmd, deps, opts);
+export async function update(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions = {}): Promise<ActionResult> {
+  const s = await status(client, cmd, deps, opts);
   if (s.state === "connected") return same(s, "connected");
-  return s.state === "stale_path" ? apply(client, cmd, deps, opts, s, "replace") : refuse(s);
+  return s.state === "stale_path" ? await apply(client, cmd, deps, opts, s, "replace") : refuse(s);
 }
 
-export function disconnect(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions = {}): ActionResult {
-  const s = status(client, cmd, deps, opts);
+export async function disconnect(client: ClientId, cmd: ServerCommand, deps: ConnectDeps, opts: ActionOptions = {}): Promise<ActionResult> {
+  const s = await status(client, cmd, deps, opts);
   if (s.state === "not_connected") return same(s, "not_connected");
-  return s.state === "connected" || s.state === "stale_path" ? apply(client, cmd, deps, opts, s, "remove") : refuse(s);
+  return s.state === "connected" || s.state === "stale_path" ? await apply(client, cmd, deps, opts, s, "remove") : refuse(s);
 }

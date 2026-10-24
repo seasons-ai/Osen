@@ -14,7 +14,7 @@ import { ProviderCard } from "./ProviderCard.tsx";
 
 const base: SettingsProvider = {
   id: "p", kind: "cli", label: "Claude Code", available: true, reason: null, warning: null, version: "2.1.288", path: "/opt/homebrew/bin/claude",
-  baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: [], defaultModel: null, modelsSource: "provider", modelsReason: null, modelsAt: null, cli: null,
+  baseUrl: null, keyEnv: null, keySet: false, billing: "subscription", models: [], defaultModel: null, ownerModels: [], modelsSource: "provider", modelsReason: null, modelsAt: null, cli: null,
 };
 const http = (o: Partial<SettingsProvider> = {}): SettingsProvider => ({
   ...base, kind: "openai-http", label: "OpenRouter", version: null, path: null, baseUrl: "https://openrouter.ai/api/v1", keyEnv: "OPENROUTER_API_KEY", keySet: true, billing: "paid", ...o
@@ -394,4 +394,28 @@ describe("CLI transition in the card", () => {
     expect(h).not.toContain("Source");
     expect(h).not.toContain("Osen pin");
   });
+});
+
+// Requirement: "Вид экрана «Настройки» по макету osen", scenarios "Ошибка провайдера", "Эндпоинт HTTP-провайдера не ответил", "Бейдж других недоступных провайдеров"
+describe("ProviderCard: badge of an unavailable provider", () => {
+  afterEach(() => setProcessLanguage("ru"));
+  const badge = (p: SettingsProvider, lang: "en" | "ru") => {
+    setProcessLanguage(lang);
+    const m = html(p).match(/<span class="badge" data-tone="([a-z]+)"><svg[^>]*><use href="#[^"]+"><\/use><\/svg> ([^<]+)<\/span>/);
+    return m ? { tone: m[1], text: m[2] } : null;
+  };
+  const text = { ru: { down: "не отвечает", key: "ключ не задан", cli: "недоступен" }, en: { down: "not responding", key: "key not set", cli: "unavailable" } };
+  for (const lang of ["ru", "en"] as const) {
+    it(`${lang}: HTTP with a key set, without a key variable and with a key rejection read «${text[lang].down}»`, () => {
+      for (const p of [
+        http({ available: false, reason: "Эндпоинт не отвечает" }),
+        http({ available: false, keyEnv: null, keySet: false, billing: "free", reason: "Эндпоинт не отвечает" }),
+        http({ available: false, reason: "HTTP 401" }),
+      ]) expect(badge(p, lang)).toEqual({ tone: "danger", text: text[lang].down });
+    });
+    it(`${lang}: HTTP with the key not set and an unavailable CLI keep their badges`, () => {
+      expect(badge(http({ available: false, keySet: false }), lang)).toEqual({ tone: "warn", text: text[lang].key });
+      expect(badge(base_down(), lang)).toEqual({ tone: "danger", text: text[lang].cli });
+    });
+  }
 });

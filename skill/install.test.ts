@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, it, expect } from "vitest";
-import { installMessages, run } from "./install.ts";
+import { installMessages, installerLanguage, run } from "./install.ts";
 import type { Deps } from "./install.ts";
 
 const tmps: string[] = [];
@@ -455,6 +455,87 @@ describe("language choice when run from a terminal", () => {
     put(join(home, "preferences.json"), "{ broken");
     expect(help({ COUNCIL_HOME: home })).toBe(installMessages("en").help);
   });
+
+  it("Language from .env: COUNCIL_LANG in the data folder .env is used, the process env wins, nothing is created", () => {
+    const home = tmp();
+    put(join(home, ".env"), "COUNCIL_LANG=ru\n");
+    const before = snapshot(home);
+    expect(installerLanguage({ COUNCIL_HOME: home })).toBe("ru");
+    expect(installerLanguage({ COUNCIL_HOME: home, COUNCIL_LANG: "en" })).toBe("en");
+    expect(snapshot(home)).toEqual(before);
+    expect(readdirSync(home)).toEqual([".env"]);
+    const missing = join(tmp(), "data");
+    expect(installerLanguage({ COUNCIL_HOME: missing })).toBe("en");
+    expect(existsSync(missing)).toBe(false);
+    put(join(home, ".env"), "COUNCIL_LANG=ru\n");
+    expect(help({ COUNCIL_HOME: home })).toBe(installMessages("ru").help);
+  });
+});
+
+describe("Состояние подключения клиента: Тот же сервер, другой существующий интерпретатор", () => {
+  it.each(["en", "ru"] as const)("a Desktop entry with the same main.ts and another existing program is told apart from a missing file (%s)", async (language) => {
+    const app = join(tmp(), "Claude.app");
+    mkdirSync(app, { recursive: true });
+    const t = setup({ codex: false, claude: false });
+    t.deps.language = language;
+    t.deps.desktopApps = [app];
+    t.deps.nodePath = "/usr/local/bin/node-test";
+    put(t.main, "// server\n");
+    const other = join(tmp(), "other-node");
+    put(other, "#!/bin/sh\n");
+    const cfg = join(t.home, "Library/Application Support/Claude/claude_desktop_config.json");
+    const text = JSON.stringify({ mcpServers: { osen: { command: other, args: [t.main] } } });
+    put(cfg, text);
+    expect(await run(["--dry-run"], t.deps)).toBe(1);
+    const line = t.text().split("\n").filter((l) => l.startsWith("Claude Desktop")).join("\n");
+    expect(line).toContain(other);
+    expect(line).toContain("/usr/local/bin/node-test");
+    expect(line).not.toContain(language === "en" ? "missing file" : "несуществующий файл");
+    expect(readFileSync(cfg, "utf8")).toBe(text);
+  });
+});
+
+describe("Установленная копия скилла: Сбой обновления", () => {
+  it.each(["en", "ru"] as const)("a failing copy leaves the previous folder and no temporary entries (%s)", async (language) => {
+    const t = setup();
+    t.deps.language = language;
+    await run([], t.deps);
+    put(join(t.repoRoot, "skill/osen/SKILL.md"), "# новый\n");
+    const before = snapshot(t.home);
+    const roots = [".claude/skills", ".codex/skills"].map((d) => [d, readdirSync(join(t.home, d))] as const);
+    // a half-written temporary folder must not survive the failure
+    t.deps.copy = (_src, dst) => { mkdirSync(dst); writeFileSync(join(dst, "half.md"), "x"); throw new Error("disk full"); };
+    t.out.length = 0;
+    expect(await run([], t.deps)).toBe(1);
+    expect(snapshot(t.home)).toEqual(before);
+    for (const [d, names] of roots) expect(readdirSync(join(t.home, d))).toEqual(names);
+    expect(t.text()).toContain("disk full");
+    expect(t.text()).toContain(language === "en" ? "could not write" : "не удалось записать");
+  });
+});
+
+describe("Установка без вреда существующему: Чужая папка скилла и нет записи сервера", () => {
+  for (const variant of ["another copy", "no marker"] as const) {
+    for (const dry of [false, true]) {
+      it(`${variant}${dry ? ", --dry-run" : ""}: no osen server is added next to a foreign skill folder`, async () => {
+        const t = setup(); t.deps.language = "en";
+        for (const agent of ["claude", "codex"]) {
+          put(join(t.home, `.${agent}/skills/osen/SKILL.md`), "mine\n");
+          if (variant === "another copy") put(join(t.home, `.${agent}/skills/osen/.osen-install`), "/other/copy\n");
+        }
+        put(t.claudeFile, JSON.stringify({ mcpServers: { other: { type: "stdio", command: "x", args: [], env: {} } } }));
+        put(t.codexFile, JSON.stringify({ servers: { other: { command: "x", args: [] } } }));
+        const before = snapshot(t.home);
+        expect(await run(dry ? ["--dry-run"] : [], t.deps)).toBe(1);
+        expect(snapshot(t.home)).toEqual(before);
+        expect(t.mutating()).toEqual([]);
+        expect(t.claudeServers()["osen"]).toBeUndefined();
+        expect(t.codexServers()["osen"]).toBeUndefined();
+        expect(t.text()).toContain("Claude Code · skill · mismatch");
+        expect(t.text()).toContain("Codex · server · mismatch: server not added: the osen skill folder is foreign");
+      });
+    }
+  }
 });
 
 describe("Claude Desktop", () => {

@@ -396,6 +396,19 @@ describe("Переключение и откат", () => {
     expect(claude()).toMatchObject({ active: "1.0.0", previous: null });
   });
 
+  it("Переключение и откат: use of the active version with a changed install file: code 2, pins.json byte-for-byte unchanged", () => {
+    const inst = claude().installed.find((i: { version: string }) => i.version === "1.0.0");
+    const file = installedPath(dir, "claude", inst);
+    detachExecutable(file);
+    appendFileSync(file, "# changed\n");
+    const bytes = readFileSync(pinsPath(dir));
+    const r = usePin(dir, "claude", "1.0.0", { record, now });
+    expect(r).toMatchObject({ ok: false, code: 2 });
+    for (const part of ["1.0.0", file, inst.sha256, sha(file)]) expect(r.text).toContain(part);
+    expect(r.text).not.toContain("already active");
+    expect(readFileSync(pinsPath(dir)).equals(bytes)).toBe(true);
+  });
+
   it("Переключение и откат: file changed after install: rollback is refused and previous is kept", () => {
     usePin(dir, "claude", "1.1.0", { record, now });
     const inst = claude().installed.find((i: { version: string }) => i.version === "1.0.0");

@@ -89,7 +89,14 @@ export function runProcess(spec: RunSpec): Promise<RunResult> {
     });
     child.on("exit", (code, sig) => {
       exit = { code, signal: sig };
-      exitTimer = setTimeout(settle, EXIT_CLOSE_GRACE_MS);
+      exitTimer = setTimeout(() => {
+        // The leader is gone but a descendant still holds a pipe: end the group; the result stays as it is and the SIGKILL timer outlives it.
+        if (!aborted) {
+          killTree("SIGTERM");
+          killTimer = setTimeout(() => killTree("SIGKILL"), spec.killGraceMs ?? 2000);
+        }
+        settle();
+      }, EXIT_CLOSE_GRACE_MS);
     });
     child.on("close", settle);
 

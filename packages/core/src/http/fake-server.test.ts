@@ -115,6 +115,14 @@ describe("fake server", () => {
     expect(ev.some((e) => e !== "[DONE]" && "error" in (JSON.parse(e) as object))).toBe(true);
   });
 
+  it("fake-midstream-rate: the stream has an error event with the string code rate_limit_exceeded", async () => {
+    const s = await start();
+    const ev = await events(await post(s, "fake-midstream-rate"));
+    expect(ev.at(-1)).toBe("[DONE]");
+    const errs = ev.filter((e) => e !== "[DONE]").map((e) => JSON.parse(e) as { error?: { code?: unknown } }).filter((e) => e.error);
+    expect(errs.map((e) => e.error?.code)).toEqual(["rate_limit_exceeded"]);
+  });
+
   it("requests stores method, path, authorization and body", async () => {
     const s = await start();
     await post(s, "fake-error", { headers: { "Content-Type": "application/json", Authorization: "Bearer a" } });

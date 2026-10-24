@@ -181,7 +181,7 @@ export function failReason(state: SessionState, language?: Language): string {
   return finishReasonView(state, language) || messages(language).failGeneric;
 }
 
-export function spend(state: SessionState): { total: number; cap: number | null; incomplete: boolean } {
-  const u = tokenUsage(state);
+export function spend(state: SessionState, live = false): { total: number; cap: number | null; incomplete: boolean } {
+  const u = tokenUsage(state, { live });
   return { total: u.total, cap: state.session?.limits.maxTotalTokens ?? null, incomplete: u.incomplete };
 }

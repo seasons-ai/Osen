@@ -11,7 +11,7 @@ import { LanguageProvider } from "./language.tsx";
 import { SettingsScreen, initialSettings, reduceSettings } from "./Settings.tsx";
 import type { LanguageView } from "../../shared/bridge.ts";
 
-const lang = (language: "en" | "ru"): LanguageView => ({ language, source: "file", locked: false });
+const lang = (language: "en" | "ru"): LanguageView => ({ language, source: "file", locked: false, damaged: false });
 const av = (o: Partial<AppearanceView> = {}): AppearanceView => ({ mode: "dark", lightTheme: "tuman", theme: "osen", ...o });
 const html = (view: AppearanceView, language: "en" | "ru" = "ru", error: string | null = null) =>
   renderToStaticMarkup(<LanguageProvider initial={lang(language)}><AppearanceSection view={view} error={error} onChoose={() => {}} /></LanguageProvider>);

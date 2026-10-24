@@ -13,6 +13,7 @@ import net from "node:net";
 import { basename, join, resolve } from "node:path";
 import { OCR_LIMITS, runOcrHelper, setOcrRuntime, setProcessLanguage } from "../../src/index.ts";
 import { makeImage } from "../../src/ocr/fixture.ts";
+import { makeImageOnlyPdf } from "../../src/pdf/fixture.ts";
 import { connect } from "../../../../apps/desktop/scenarios/mockup-tokens/cdp.ts";
 
 const repo = resolve(import.meta.dirname, "../../../..");
@@ -51,7 +52,9 @@ const T: Record<"ru" | "en", Texts> = {
     reason: {
       missing: "распознавание текста недоступно — нет помощника osen-ocr", noText: "на изображении не найден текст", damaged: "изображение повреждено",
       bytes: `изображение больше ${MIB} МиБ`, pixels: `изображение больше ${MP} мегапикселей`, timeout: `распознавание текста дольше ${SEC} секунд`,
-      memory: `распознавание текста заняло больше ${RSS} МиБ памяти`, folder: `в папке больше ${OCR_LIMITS.folderImages} изображений — распознаны первые ${OCR_LIMITS.folderImages}`,
+      memory: `распознавание текста заняло больше ${RSS} МиБ памяти`,
+      helperError: "не удалось распознать текст изображения — помощник распознавания сообщил об ошибке", pdfHelperError: "не удалось распознать текст PDF — помощник распознавания сообщил об ошибке",
+      folder: `в папке больше ${OCR_LIMITS.folderImages} изображений — распознаны первые ${OCR_LIMITS.folderImages}`,
     },
   },
   en: {
@@ -59,7 +62,9 @@ const T: Record<"ru" | "en", Texts> = {
     reason: {
       missing: "text recognition is unavailable — the osen-ocr helper is missing", noText: "no text found in the image", damaged: "the image is damaged",
       bytes: `the image is larger than ${MIB} MiB`, pixels: `the image is larger than ${MP} megapixels`, timeout: `text recognition took longer than ${SEC} seconds`,
-      memory: `text recognition used more than ${RSS} MiB of memory`, folder: `the folder has more than ${OCR_LIMITS.folderImages} images — the first ${OCR_LIMITS.folderImages} were recognized`,
+      memory: `text recognition used more than ${RSS} MiB of memory`,
+      helperError: "could not recognize the image text — the recognition helper reported an error", pdfHelperError: "could not recognize the PDF text — the recognition helper reported an error",
+      folder: `the folder has more than ${OCR_LIMITS.folderImages} images — the first ${OCR_LIMITS.folderImages} were recognized`,
     },
   },
 };
@@ -164,6 +169,11 @@ function buildFixtures() {
   writeFileSync(big, pngHeader(10, 10));
   const fd = openSync(big, "r+"); ftruncateSync(fd, OCR_LIMITS.bytes + 2 ** 20); closeSync(fd);
   writeFileSync(join(fx, "huge.png"), pngHeader(10001, 10001));
+  // change 246: a scan PDF without a text layer and a folder with an image, for unknown helper codes
+  writeFileSync(join(fx, "scan.pdf"), makeImageOnlyPdf());
+  mkdirSync(join(fx, "helperproj"));
+  writeFileSync(join(fx, "helperproj", "README.md"), "Project description.\n");
+  copyFileSync(join(fx, "shot.png"), join(fx, "helperproj", "shot.png"));
   // Folder for the limit: README, a header-damaged image that sorts first, 60 images with distinct bytes.
   const proj = join(fx, "proj");
   mkdirSync(proj);
@@ -187,10 +197,13 @@ function cases(): Case[] {
     ref("blank", "blank.png"), ref("truncated", "truncated.png"), ref("big", "big.png"), ref("huge", "huge.png"),
     ref("missing", "shot.png", join(stubs, "no-such-helper")),
     ref("timeout", "shot.png", printing({ ok: false, code: "timeout" })), ref("memory", "shot.png", printing({ ok: false, code: "memory" })),
+    // change 246: unknown helper codes give catalog words, never the raw code
+    ref("vision", "shot.png", printing({ ok: false, code: "vision" })), ref("bad_request", "shot.png", printing({ ok: false, code: "bad_request" })),
+    ref("pdf-vision", "scan.pdf", printing({ ok: false, code: "vision" })),
     { id: "folder", kind: "folder", path: join(fx, "proj"), helper: md5Stub() },
   ];
 }
-const REFUSAL: Record<string, string> = { blank: "noText", truncated: "damaged", big: "bytes", huge: "pixels", missing: "missing", timeout: "timeout", memory: "memory" };
+const REFUSAL: Record<string, string> = { blank: "noText", truncated: "damaged", big: "bytes", huge: "pixels", missing: "missing", timeout: "timeout", memory: "memory", vision: "helperError", bad_request: "helperError", "pdf-vision": "pdfHelperError" };
 
 /** Child stand: ok lines are forwarded, the RESULT line is parsed. */
 async function subStand(what: string, script: string, dataDir: string, lang: string, manifest: string) {
@@ -300,7 +313,24 @@ async function suite(lang: "ru" | "en") {
       }
     } else for (const [what, res] of [["MCP", mcp], ["app", desk]] as const) assert.deepEqual(res.cases[c.id], cli[c.id], `${what} ${c.id} differs from the terminal`);
   }
+  for (const id of ["vision", "bad_request", "pdf-vision"]) {
+    for (const [what, res] of [["MCP", mcp], ["app", desk]] as const) {
+      const e = (res.cases[id] as { error: string }).error;
+      assert.ok(!/vision|bad_request/.test(e), `${what} ${id}: the helper code reached the reason «${e}»`);
+    }
+  }
   ok(`${tag} parity: ${accepted} accepted cases give the same names, chars, sha256, snapshot text and skipped list in the terminal, MCP council_start and the app main modules; ${refused} refusals name the same reason in all three`);
+
+  // ---- 246. Unknown helper code: image in a folder is skipped with the same reason, the code is nowhere in the output ----
+  {
+    const r = await attach(join(fx, "helperproj"), { COUNCIL_OCR_HELPER: printing({ ok: false, code: "vision" }) }, ["--max-rounds", "1"]);
+    assert.ok(r.code === 0 || r.code === 3, `helperproj: code ${r.code}${dump(r.r)}`);
+    const o = outcome(r.r);
+    assert.deepEqual(o.items.map((i) => i.name), ["README.md"], "helperproj materials");
+    assert.deepEqual(o.skipped, [{ name: "shot.png", reason: t.reason.helperError }], `helperproj skipped${dump(r.r)}`);
+    assert.ok(!/vision/.test(r.r.out + r.r.err), `the helper code reached the output${dump(r.r)}`);
+    ok(`${tag} 246: helper codes vision and bad_request refuse an explicit PNG with "${t.reason.helperError}", vision refuses a scan PDF with "${t.reason.pdfHelperError}" (terminal, MCP, app, no code in the reason); in a folder the PNG is skipped with the same reason, README collected, no "vision" in the output`);
+  }
 
   // ---- 5. Folder ----
   const f = cli.folder!;

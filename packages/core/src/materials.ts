@@ -129,8 +129,8 @@ function readTail(fd: number): Buffer | undefined {
   return readSync(fd, tail, 0, TAIL_BYTES, size - TAIL_BYTES) === TAIL_BYTES ? tail : undefined;
 }
 
-// string — text, { refused } — not text or the PDF, document or image was refused with a reason, { image } — an image whose recognition is deferred (defer)
-function readText(abs: string, defer = false): string | { refused: string } | { image: ImageFormat } | { pdf: true } | { archive: true } {
+// string — text, { refused } — not text or the PDF, document or image was refused with a reason (archive: true — a ZIP archive in a folder, defer), { image } — an image whose recognition is deferred (defer)
+function readText(abs: string, defer = false): string | { refused: string; archive?: true } | { image: ImageFormat } | { pdf: true } | { archive: true } {
   const fd = openSync(abs, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     if (!fstatSync(fd).isFile()) throw new Error(materialsMessages().notRegularFile);
@@ -142,12 +142,12 @@ function readText(abs: string, defer = false): string | { refused: string } | { 
       return r.ok ? r.text : { refused: pdfReason(r) };
     }
     // an empty ZIP is only the end record: it goes to the archive reader, which refuses it as empty
-    if (n === 22 && head.readUInt32LE(0) === 0x06054b50) return defer ? { refused: materialsMessages().archiveInFolder } : { archive: true };
+    if (n === 22 && head.readUInt32LE(0) === 0x06054b50) return defer ? { refused: materialsMessages().archiveInFolder, archive: true } : { archive: true };
     if (n >= 4 && head.readUInt32LE(0) === 0x04034b50) {
       const r = readDocumentText(fd);
       if (r.ok) return r.text;
       if (r.code === "bytes") return { refused: materialsMessages().zipTooLarge(DOC_LIMITS.bytes / 2 ** 20) };
-      if (r.code === "unsupported") return defer ? { refused: materialsMessages().archiveInFolder } : { archive: true };
+      if (r.code === "unsupported") return defer ? { refused: materialsMessages().archiveInFolder, archive: true } : { archive: true };
       return { refused: documentReason(r) };
     }
     // RTF is ASCII, so this check comes before the plain-text decode; CFB covers DOC and encrypted Office files
@@ -321,8 +321,8 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
             else if (typeof text === "object" && "pdf" in text) out.push({ rel: eRel, abs, pdf: true });
             else if (typeof text === "object") {
               // an archive attached separately by the same path is expanded under its own prefix, not skipped here
-              const refused = (text as { refused: string }).refused;
-              if (!(refused === m.archiveInFolder && explicit.has(abs))) skip(refused); // defer: an archive is never returned here
+              const { refused, archive } = text as { refused: string; archive?: true };
+              if (!(archive && explicit.has(abs))) skip(refused);
             }
             else {
               seen.add(abs);
@@ -339,10 +339,17 @@ export function collectMaterials(paths: readonly string[], options: CollectOptio
   // first folders, then explicit files: a file that includes the walk of a folder is named with the folder whatever the order of paths; the place in the set is by the index of the input path
   const buckets = paths.map((): typeof found => []);
   const isFolder = (i: number) => Number(prefixes.has(resolve(paths[i]!)));
+  // a path named again (same resolved path) is taken once: by its first occurrence, before any walk or reason
+  const firstIndex = new Map<string, number>();
+  paths.forEach((p, i) => {
+    const r = resolve(p);
+    if (!firstIndex.has(r)) firstIndex.set(r, i);
+  });
   for (const i of paths.map((_, i) => i).sort((a, b) => isFolder(b) - isFolder(a))) {
     const p = paths[i]!;
     found = buckets[i]!;
     const abs = resolve(p);
+    if (firstIndex.get(abs) !== i) continue;
     const base = basename(abs);
     if (isEnvName(base)) {
       reasons.push(m.pathNamed(p, m.envRefused));

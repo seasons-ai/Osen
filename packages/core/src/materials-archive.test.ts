@@ -8,6 +8,7 @@ import { makePdf } from "./pdf/fixture.ts";
 import { setProcessLanguage } from "./i18n/process-language.ts";
 import { materialsMessages } from "./messages/materials.ts";
 import { setDocumentExtractorRuntime, DOC_NOT_CACHED } from "./documents/extract.ts";
+import { listArchiveEntries } from "./documents/archive-run.ts";
 import { writeExecutable } from "./executable.testutil.ts";
 import { OCR_NOT_CACHED, setOcrRuntime } from "./ocr/run.ts";
 import { PDF_NOT_CACHED, setPdfExtractorRuntime, setPdfOcrTesting } from "./pdf/extract.ts";
@@ -314,6 +315,15 @@ describe("ZIP archive as a folder", () => {
     expect(names(set)).toEqual(["g.zip/a.txt", "g.zip/out/x.txt"]);
     expect(reasonOf(set, "g.zip/.gitignore")).toBe(m().archiveMethod);
   }, SLOW);
+
+  it("an image entry whose helper answers an unknown code is skipped with catalog words, not the code", () => {
+    ocrHelper({ ok: false, code: "vision" });
+    const f = zipAt("v.zip", [{ name: "scan.png", data: png() }, { name: "a.txt", data: "a" }]);
+    const set = collectMaterials([f], opts);
+    expect(names(set)).toEqual(["v.zip/a.txt"]);
+    expect(reasonOf(set, "v.zip/scan.png")).toBe("не удалось распознать текст изображения — помощник распознавания сообщил об ошибке");
+    expect(JSON.stringify(set.skipped)).not.toContain("vision");
+  }, SLOW);
 });
 
 // header-valid PNG without pixels: enough for a stub helper
@@ -464,16 +474,19 @@ describe("Архив ZIP как папка: повторный сбор посл
 });
 
 describe("Архив ZIP как папка: показ пропусков и причины", () => {
-  it("an archive inside a folder that is also attached separately is expanded, not skipped", () => {
+  it("an archive inside a folder that is also attached separately is expanded, not skipped, on ru and en", () => {
     put("d/notes.md", "n");
     const z = put("d/export.zip", makeZip([{ name: "a.txt", data: "a" }]));
-    for (const paths of [[join(root, "d"), z], [z, join(root, "d")]]) {
-      const set = collectMaterials(paths, opts);
-      expect(names(set).sort()).toEqual(["d/notes.md", "export.zip/a.txt"]);
-      expect(set.skipped.map((s) => s.name)).not.toContain("d/export.zip");
+    for (const lang of ["ru", "en"] as const) {
+      setProcessLanguage(lang);
+      for (const paths of [[join(root, "d"), z], [z, join(root, "d")]]) {
+        const set = collectMaterials(paths, opts);
+        expect(names(set).sort()).toEqual(["d/notes.md", "export.zip/a.txt"]);
+        expect(set.skipped.map((s) => s.name)).not.toContain("d/export.zip");
+      }
+      const alone = collectMaterials([join(root, "d")], opts);
+      expect(reasonOf(alone, "d/export.zip")).toBe(lang === "ru" ? "архив внутри папки не раскрывается — приложите его отдельно" : "an archive inside a folder is not expanded — attach it separately");
     }
-    const alone = collectMaterials([join(root, "d")], opts);
-    expect(reasonOf(alone, "d/export.zip")).toBe(m().archiveInFolder);
   }, SLOW);
 
   it("a NUL in an unsafe entry name is shown as \\u0000, also for a repeated name", () => {
@@ -507,6 +520,19 @@ process.stdout.write('{"ok":false,"code":"failed","detail":"worker exit"}\\n');
       const reasons = refusal(() => collectMaterials([f], opts)).reasons;
       expect(reasons).toEqual([`«${f}»: ${m().archiveFailed(expected[lang][mode])}`]);
       expect(reasons[0]).not.toMatch(/\bexit \d|worker error|worker exit/);
+    }
+  }, SLOW);
+});
+
+describe("Document extraction isolation: working directory of the archive process", () => {
+  it("listArchiveEntries runs the extraction process in /, not in the parent's working directory", () => {
+    const before = process.cwd();
+    process.chdir(root);
+    try {
+      setDocumentExtractorRuntime({ script: join(import.meta.dirname, "pdf/testdata/child-cwd.ts") });
+      expect(listArchiveEntries(makeZip([{ name: "a.txt", data: "a" }]))).toMatchObject({ ok: true, cwd: "/" });
+    } finally {
+      process.chdir(before);
     }
   }, SLOW);
 });
