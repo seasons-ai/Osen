@@ -3,12 +3,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getProcessLanguage, setProcessLanguage } from "@model-council/core/i18n";
 import { Shell } from "./App.tsx";
 import { LanguagePanel, nextLanguage } from "./LanguagePanel.tsx";
+import { languageChoiceIgnored as choiceIgnored } from "../../shared/settings.ts";
 import { LanguageProvider, applyLanguageView } from "./language.tsx";
 import { initialUi, reduce } from "./store.ts";
 import type { LanguageView } from "../../shared/bridge.ts";
 import type { ReactNode } from "react";
 
-const v = (language: "en" | "ru", locked = false): LanguageView => ({ language, source: locked ? "env" : "file", locked });
+const v = (language: "en" | "ru", locked = false, damaged = false): LanguageView => ({ language, source: locked ? "env" : damaged ? "default" : "file", locked, damaged });
 const withLang = (view: LanguageView, node: ReactNode) => renderToStaticMarkup(<LanguageProvider initial={view}>{node}</LanguageProvider>);
 const shellHtml = (view: LanguageView, version?: string) =>
   renderToStaticMarkup(<Shell state={reduce(initialUi(), { type: "error", message: "x" })} dispatch={() => {}} version={version} language={view.language} />);
@@ -57,6 +58,22 @@ describe("language block", () => {
   });
   it("without a representation — empty", () => {
     expect(renderToStaticMarkup(<LanguagePanel />)).toBe("");
+  });
+});
+
+describe("choiceIgnored: the click on an option reaches setLanguage only when not ignored", () => {
+  it("damaged file: the current language goes through", () => {
+    expect(choiceIgnored(v("en", false, true), "en", false)).toBe(false);
+    expect(choiceIgnored(v("en", false, true), "ru", false)).toBe(false);
+  });
+  it("healthy or missing file: the current language is dropped, the other goes through", () => {
+    expect(choiceIgnored(v("en"), "en", false)).toBe(true);
+    expect(choiceIgnored({ language: "en", source: "default", locked: false, damaged: false }, "en", false)).toBe(true);
+    expect(choiceIgnored(v("en"), "ru", false)).toBe(false);
+  });
+  it("locked or busy: everything is dropped", () => {
+    expect(choiceIgnored(v("en", true), "ru", false)).toBe(true);
+    expect(choiceIgnored(v("en", false, true), "en", true)).toBe(true);
   });
 });
 

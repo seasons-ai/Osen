@@ -47,8 +47,8 @@ export interface ResumeView {
 // An accepted independent draft for the feed. text === null — the snapshot was not read or was changed, the reason is in error.
 export interface DraftView { draftId: string; participantId: string; attempts: number; chars: number; reasoning: string; text: string | null; error: string | null }
 
-/** Interface language: locked — set by the COUNCIL_LANG environment variable, a change is rejected. */
-export interface LanguageView { language: Language; source: "env" | "file" | "default"; locked: boolean }
+/** Interface language: locked — set by the COUNCIL_LANG environment variable, a change is rejected; damaged — preferences.json is damaged, choosing even the current language rewrites it. */
+export interface LanguageView { language: Language; source: "env" | "file" | "default"; locked: boolean; damaged: boolean }
 
 /** Theme: the stored choice (mode and light theme are independent) and the effective theme derived from it. */
 export type ThemeMode = "dark" | "light" | "system";
