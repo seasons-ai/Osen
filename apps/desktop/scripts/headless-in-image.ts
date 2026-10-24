@@ -23,24 +23,34 @@ const dirs = (work: string, name: string) => {
   return { env: { COUNCIL_DEV: "1", COUNCIL_HOME: home, HOME: userHome }, home };
 };
 
+// "missing" or "not executable" for an unusable wrapper, "" otherwise
+const unusable = (contents: string, name: string) => {
+  const p = bin(contents, name);
+  if (!existsSync(p)) return "is missing";
+  try { accessSync(p, constants.X_OK); return ""; } catch { return "is not executable"; }
+};
+
 /** Wrappers exist, are executable and name neither /Applications nor a user folder. */
 export function wrappersLine(contents: string): Line {
   const bad: string[] = [];
   for (const name of WRAPPERS) {
-    const p = bin(contents, name);
-    if (!existsSync(p)) { bad.push(`${name} is missing`); continue; }
-    try { accessSync(p, constants.X_OK); } catch { bad.push(`${name} is not executable`); continue; }
-    const text = readFileSync(p, "utf8");
+    const why = unusable(contents, name);
+    if (why) { bad.push(`${name} ${why}`); continue; }
+    const text = readFileSync(bin(contents, name), "utf8");
     for (const lit of ["/Applications", "/Users/"]) if (text.includes(lit)) bad.push(`${name} contains ${lit}`);
   }
   return { ok: bad.length === 0, text: `wrappers bin/osen-mcp and bin/council: executable, no install path literals${bad.length ? `: ${bad.join("; ")}` : ""}` };
 }
 
-/** Every module specifier of the entry files and chunks is a Node builtin or a file inside out/main. */
+// pdf.js loaders in pdf-worker.mjs import the worker and wasm by an address the library computes
+const COMPUTED_IMPORT_ALLOWED = ["pdf-worker.mjs"];
+
+/** Every module specifier of the *.mjs files of out/main (entry files and workers) and of the chunks is a Node builtin or a file inside out/main. */
 export function selfContainedLine(contents: string): Line {
   const main = mainDir(contents);
   const chunks = existsSync(join(main, "chunks")) ? readdirSync(join(main, "chunks")).filter((f) => f.endsWith(".js")).map((f) => `chunks/${f}`) : [];
-  const files = ["osen-mcp.mjs", "council.mjs", ...chunks];
+  const mjs = existsSync(main) ? readdirSync(main).filter((f) => f.endsWith(".mjs")) : [];
+  const files = [...new Set(["osen-mcp.mjs", "council.mjs", ...mjs])].concat(chunks);
   const offenders: string[] = [];
   for (const f of files) {
     const p = join(main, f);
@@ -52,7 +62,7 @@ export function selfContainedLine(contents: string): Line {
       const arg = (n["arguments"] as Node[] | undefined)?.[0];
       if (n.type === "CallExpression" && callee && (callee.type === "Import" || (callee.type === "Identifier" && callee["name"] === "require"))) {
         if (arg?.type === "StringLiteral") specs.push(arg["value"] as string);
-        else offenders.push(`${f}: computed specifier`);
+        else if (!COMPUTED_IMPORT_ALLOWED.includes(f) || callee.type !== "Import") offenders.push(`${f}: computed specifier`);
       }
     });
     for (const s of specs) {
@@ -64,7 +74,7 @@ export function selfContainedLine(contents: string): Line {
       offenders.push(`${f}: ${s}`);
     }
   }
-  return { ok: offenders.length === 0, text: `entry files and chunks import only node:* and files of out/main (${files.length} files)${offenders.length ? `: ${offenders.join("; ")}` : ""}` };
+  return { ok: offenders.length === 0, text: `entry files, workers and chunks import only node:* and files of out/main (${files.length} files)${offenders.length ? `: ${offenders.join("; ")}` : ""}` };
 }
 
 /** osen-mcp over stdio: only JSON-RPC lines on stdout, the tools of the server registry, exit 0 when stdin closes. */
@@ -307,6 +317,8 @@ export async function reportHeadlessLines(contents: string, work: string, report
   const self = selfContainedLine(contents);
   report(self.ok, self.text);
   // the runs below need the wrappers: without them the lines would only repeat the same fault
+  const mcpWhy = unusable(contents, "osen-mcp");
+  if (mcpWhy) report(false, `MCP server osen-mcp: FAIL — the wrapper is missing or not executable (bin/osen-mcp ${mcpWhy})`);
   if (!wrappers.ok) return;
   for (const line of [await mcpLine(contents, work), helpLine(contents, work), scriptedRunLine(contents, work), await detachedStartLine(contents, work), await launchSweepLine(contents, work), await launchCloseLine(contents, work)]) report(line.ok, line.text);
 }

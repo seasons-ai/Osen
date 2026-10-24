@@ -76,6 +76,34 @@ describe("Requirement: foreign council is not overwritten", () => {
   });
 });
 
+describe("Requirement: foreign council is not overwritten (race after the check)", () => {
+  it("Чужой объект появился после проверки: a foreign file is refused and kept", async () => {
+    const symlink = (t: string, p: string) => { writeFileSync(p, "my own script"); symlinkSync(t, p); };
+    const r = await installCommand(opts({ symlink }));
+    expect(r).toMatchObject({ ok: false, code: "foreign", path: link() });
+    expect((r as { detail: string }).detail).toMatch(/file/);
+    expect(readFileSync(link(), "utf8")).toBe("my own script");
+  });
+  it("Чужой объект появился после проверки: a foreign symlink is refused and keeps its target", async () => {
+    const symlink = (t: string, p: string) => { symlinkSync("/usr/local/bin/other-council", p); symlinkSync(t, p); };
+    const r = await installCommand(opts({ symlink }));
+    expect(r).toMatchObject({ ok: false, code: "foreign", path: link() });
+    expect(readlinkSync(link())).toBe("/usr/local/bin/other-council");
+  });
+  it("Чужой объект появился после проверки: a parallel own install is success without changes", async () => {
+    const symlink = (t: string, p: string) => { symlinkSync(t, p); symlinkSync(t, p); };
+    const r = await installCommand(opts({ symlink }));
+    expect(r).toMatchObject({ ok: true, changed: false });
+    expect(readlinkSync(link())).toBe(wrapper);
+  });
+  it("Чужой объект появился после проверки: another error still cleans the created dirs", async () => {
+    const symlink = () => { throw Object.assign(new Error("EACCES: denied"), { code: "EACCES" }); };
+    const r = await installCommand(opts({ symlink }));
+    expect(r).toMatchObject({ ok: false, code: "create_failed" });
+    expect(existsSync(join(home, ".local"))).toBe(false);
+  });
+});
+
 describe("Requirement: command install", () => {
   it("first install creates the dir and the link", async () => {
     const r = await installCommand(opts({ shell: stubShell("sh1", "exit 1") }));

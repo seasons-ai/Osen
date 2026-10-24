@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { TOOLS } from "../../../packages/mcp/src/server.ts";
-import { helpLine, mcpLine, scriptedRunLine, selfContainedLine, wrappersLine } from "./headless-in-image.ts";
+import { helpLine, mcpLine, reportHeadlessLines, scriptedRunLine, selfContainedLine, wrappersLine } from "./headless-in-image.ts";
 
 const BIN = join(import.meta.dirname, "../resources/bin");
 const roots: string[] = [];
@@ -49,6 +49,9 @@ function bundle(o: Opts = {}): { contents: string; work: string } {
   writeFileSync(join(main, "osen-mcp.mjs"), `${o.mcpImport ?? 'import "./chunks/c.js";'}\n${fakeMcp(o.noise ?? "")}`);
   writeFileSync(join(main, "council.mjs"), `import "./chunks/c.js";\nimport "node:fs";\n${FAKE_COUNCIL}`);
   writeFileSync(join(main, "chunks/c.js"), 'export const a = "import x from \\"ajv\\"";\n// require("zod")\nexport const b = import("node:path");\n');
+  // workers next to the entry files: pdf-worker carries a computed import() like the pdf.js loaders
+  for (const w of ["html-worker.mjs", "pdf-extract.mjs", "doc-extract.mjs"]) writeFileSync(join(main, w), 'import "node:worker_threads";\nimport "./chunks/c.js";\n');
+  writeFileSync(join(main, "pdf-worker.mjs"), 'import "./chunks/c.js";\nconst src = globalThis.workerSrc;\nexport const w = import(src);\n');
   return { contents, work: join(root, "work") };
 }
 
@@ -120,5 +123,43 @@ describe("headless entry points in the image", () => {
     const r = await mcpLine(contents, work);
     expect(r.ok).toBe(false);
     expect(r.text).toContain("other_tool");
+  });
+
+  it("image without bin/osen-mcp: the MCP server line is FAIL with the reason, the runs are skipped", async () => {
+    const { contents, work } = bundle({ skipWrapper: "osen-mcp" });
+    const lines: { ok: boolean; text: string }[] = [];
+    await reportHeadlessLines(contents, work, (ok, text) => lines.push({ ok, text }));
+    expect(lines).toHaveLength(3);
+    expect(lines[2]!.ok).toBe(false);
+    expect(lines[2]!.text).toBe("MCP server osen-mcp: FAIL — the wrapper is missing or not executable (bin/osen-mcp is missing)");
+    const noExec: { ok: boolean; text: string }[] = [];
+    const b = bundle({ noExec: "osen-mcp" });
+    await reportHeadlessLines(b.contents, b.work, (ok, text) => noExec.push({ ok, text }));
+    expect(noExec.map((l) => l.text)).toContain("MCP server osen-mcp: FAIL — the wrapper is missing or not executable (bin/osen-mcp is not executable)");
+    // a missing council wrapper says nothing about osen-mcp: wrappers FAIL, the runs are skipped, no MCP server line
+    const noCouncil: string[] = [];
+    const c = bundle({ skipWrapper: "council" });
+    await reportHeadlessLines(c.contents, c.work, (_ok, text) => noCouncil.push(text));
+    expect(noCouncil).toHaveLength(2);
+  });
+
+  it("worker importing a package outside the bundle: FAIL with file and specifier", () => {
+    for (const w of ["html-worker.mjs", "pdf-extract.mjs", "doc-extract.mjs"]) {
+      const { contents } = bundle();
+      const p = join(contents, "Resources/app.asar.unpacked/out/main", w);
+      writeFileSync(p, 'import "pdfjs-dist";\n', { flag: "a" });
+      const r = selfContainedLine(contents);
+      expect(r.ok).toBe(false);
+      expect(r.text).toContain(`${w}: pdfjs-dist`);
+    }
+  });
+
+  it("computed import(): allowed in pdf-worker.mjs only, FAIL computed specifier in osen-mcp.mjs", () => {
+    const ok = selfContainedLine(bundle().contents);
+    expect(ok).toMatchObject({ ok: true });
+    expect(ok.text).toContain("(7 files)"); // 6 *.mjs of out/main and chunks/c.js
+    const r = selfContainedLine(bundle({ mcpImport: "const x = process.env.X;\nimport(x);" }).contents);
+    expect(r.ok).toBe(false);
+    expect(r.text).toContain("osen-mcp.mjs: computed specifier");
   });
 });

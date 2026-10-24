@@ -19,6 +19,8 @@ export interface CommandOptions {
   shell?: string;
   timeoutMs?: number;
   language?: Language;
+  /** Test seam for the link creation in the missing branch. */
+  symlink?: (target: string, path: string) => void;
 }
 export type LinkKind = "missing" | "own" | "stale" | "foreign";
 type ForeignKind = "file" | "dir" | "symlink" | "other";
@@ -142,9 +144,20 @@ export async function installCommand(o: CommandOptions): Promise<InstallResult> 
     try {
       createdDir = firstMissing(dir);
       mkdirSync(dir, { recursive: true });
-      symlinkSync(o.wrapper, c.link);
+      (o.symlink ?? symlinkSync)(o.wrapper, c.link);
     } catch (e) {
-      try { unlinkSync(c.link); } catch { /* not created */ }
+      if ((e as NodeJS.ErrnoException).code === "EEXIST") {
+        // Someone created the path after the check: never delete it, classify it again
+        let c2;
+        try {
+          c2 = classifyLink(o);
+        } catch (e2) {
+          return failure(e2);
+        }
+        if (c2.kind === "foreign") return foreignRefusal(c2, o.language);
+        if (c2.kind !== "own") return failure(e);
+        return { ok: true, changed: false, updated: false, status: await commandStatus(o) };
+      }
       if (createdDir) removeCreated(createdDir, dir);
       return failure(e);
     }
