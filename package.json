@@ -24,7 +24,7 @@
     "dist:check": "node apps/desktop/scripts/check-image.ts"
   },
   "devDependencies": {
-    "@babel/parser": "7.29.9",
+    "@babel/parser": "8.0.8",
     "@types/node": "^26.6.5",
     "typescript": "^7.0.2",
     "vitest": "^5.0.4"
