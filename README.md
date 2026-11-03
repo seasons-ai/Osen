@@ -10,6 +10,8 @@
 [![platform](https://img.shields.io/badge/platform-macOS%20arm64-lightgrey?style=flat)](docs/deploy.md)
 [![licence](https://img.shields.io/badge/licence-MIT-lightgrey?style=flat)](LICENSE)
 
+**[seasonsai.io/osen](https://seasonsai.io/osen/)** — a run you can read before you download anything.
+
 Claude, Codex and any OpenAI-compatible model take turns on your problem. Each turn amends one shared solution, accepts it or objects. The session ends when every participant accepts the same version — or tells you plainly that they did not.
 
 ![Osen, the Discussion screen: participants, the turn feed by rounds and the agreed version](docs/images/osen-discussion.png)
